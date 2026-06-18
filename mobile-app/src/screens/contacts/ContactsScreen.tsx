@@ -1,0 +1,171 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { fetchContacts } from "../../api/contacts";
+import { Contact } from "../../types";
+import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { ErrorBanner } from "../../components/common/ErrorBanner";
+
+type Props = {
+  navigation: NativeStackNavigationProp<any>;
+};
+
+function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => void }) {
+  const initials = (contact.name || "?")
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+
+  return (
+    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{initials}</Text>
+      </View>
+      <View style={styles.rowInfo}>
+        <Text style={styles.name}>{contact.name}</Text>
+        {!!contact.phone && <Text style={styles.sub}>{contact.phone}</Text>}
+        {!!contact.email && <Text style={styles.sub}>{contact.email}</Text>}
+      </View>
+      {!!contact.tags?.length && (
+        <View style={styles.tagBadge}>
+          <Text style={styles.tagText}>{contact.tags[0]}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+export default function ContactsScreen({ navigation }: Props) {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async (p = 0, q = "") => {
+    if (p === 0) setLoading(true);
+    else setLoadingMore(true);
+    setError("");
+    try {
+      const data = await fetchContacts({ page: p, size: 25, search: q });
+      const items = data.content ?? [];
+      setContacts((prev) => (p === 0 ? items : [...prev, ...items]));
+      setTotalPages(data.totalPages ?? 1);
+      setPage(p);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err.message || "Failed to load contacts");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => { load(0, search); }, []);
+
+  function handleSearch(text: string) {
+    setSearch(text);
+    load(0, text);
+  }
+
+  function loadMore() {
+    if (!loadingMore && page + 1 < totalPages) {
+      load(page + 1, search);
+    }
+  }
+
+  if (loading) return <LoadingSpinner message="Loading contacts…" />;
+
+  return (
+    <SafeAreaView style={styles.root} edges={["bottom"]}>
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts…"
+          placeholderTextColor="#94a3b8"
+          value={search}
+          onChangeText={handleSearch}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+        />
+      </View>
+
+      {!!error && <ErrorBanner message={error} onRetry={() => load(0, search)} />}
+
+      <FlatList
+        data={contacts}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <ContactRow
+            contact={item}
+            onPress={() => navigation.navigate("ContactDetail", { contact: item })}
+          />
+        )}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>No contacts found.</Text>
+          </View>
+        }
+        contentContainerStyle={contacts.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#f1f5f9" },
+  searchBar: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  searchInput: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    fontSize: 15,
+    color: "#0f172a",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ccfbf1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontSize: 16, fontWeight: "700", color: "#0f766e" },
+  rowInfo: { flex: 1 },
+  name: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  sub: { fontSize: 13, color: "#64748b", marginTop: 1 },
+  tagBadge: { backgroundColor: "#eff6ff", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
+  tagText: { fontSize: 11, color: "#1d4ed8", fontWeight: "600" },
+  separator: { height: 1, backgroundColor: "#f1f5f9" },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center" },
+  emptyText: { color: "#94a3b8", fontSize: 15 },
+});
