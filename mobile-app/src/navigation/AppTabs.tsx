@@ -29,7 +29,7 @@ function ContactsNavigator() {
       />
       <ContactsStack.Screen
         name="ContactDetail"
-        component={ContactDetailScreen}
+        component={ContactDetailScreen as any}
         options={({ route }: any) => ({ title: route.params?.contact?.name || "Contact" })}
       />
     </ContactsStack.Navigator>

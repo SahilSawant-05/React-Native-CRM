@@ -16,6 +16,7 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
+  navigation?: any;
 };
 
 export default function ContactDetailScreen({ route }: Props) {

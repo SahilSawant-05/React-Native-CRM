@@ -50,6 +50,7 @@ export interface WorkItem {
   contactId?: number | string;
   title?: string;
   contactName?: string;
+  contactPhone?: string;
   description?: string;
   status?: string;
   priority?: string;
