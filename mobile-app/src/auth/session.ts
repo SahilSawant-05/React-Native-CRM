@@ -1,10 +1,8 @@
-import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
-const SECURE_KEYS = ["crm_token"];
-const ASYNC_KEYS = ["crm_role", "crm_tenantId", "crm_user", "crm_lastActivityAt"];
+const ALL_KEYS = ["crm_token", "crm_role", "crm_tenantId", "crm_user", "crm_lastActivityAt"];
 
 export function decodeToken(token: string | null): Record<string, any> | null {
   if (!token) return null;
@@ -25,18 +23,18 @@ export function isTokenExpired(token: string | null): boolean {
 }
 
 export async function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync("crm_token");
+  return AsyncStorage.getItem("crm_token");
 }
 
 export async function markActivity(): Promise<void> {
-  const token = await SecureStore.getItemAsync("crm_token");
+  const token = await AsyncStorage.getItem("crm_token");
   if (token) {
     await AsyncStorage.setItem("crm_lastActivityAt", String(Date.now()));
   }
 }
 
 export async function isIdleExpired(): Promise<boolean> {
-  const token = await SecureStore.getItemAsync("crm_token");
+  const token = await AsyncStorage.getItem("crm_token");
   if (!token) return false;
   const lastActivityAt = Number(
     (await AsyncStorage.getItem("crm_lastActivityAt")) || Date.now()
@@ -50,8 +48,8 @@ export async function saveAuthSession(data: {
   tenantId: string | number;
   user: object;
 }): Promise<void> {
-  await SecureStore.setItemAsync("crm_token", data.token);
   await AsyncStorage.multiSet([
+    ["crm_token", data.token],
     ["crm_role", data.role],
     ["crm_tenantId", String(data.tenantId)],
     ["crm_user", JSON.stringify(data.user)],
@@ -60,8 +58,7 @@ export async function saveAuthSession(data: {
 }
 
 export async function clearAuthSession(): Promise<void> {
-  await SecureStore.deleteItemAsync("crm_token");
-  await AsyncStorage.multiRemove(ASYNC_KEYS);
+  await AsyncStorage.multiRemove(ALL_KEYS);
 }
 
 export async function loadStoredSession(): Promise<{
@@ -70,11 +67,7 @@ export async function loadStoredSession(): Promise<{
   tenantId: string | null;
   user: string | null;
 }> {
-  const token = await SecureStore.getItemAsync("crm_token");
-  const [role, tenantId, user] = await AsyncStorage.multiGet([
-    "crm_role",
-    "crm_tenantId",
-    "crm_user",
-  ]).then((pairs) => pairs.map(([, v]) => v));
+  const pairs = await AsyncStorage.multiGet(["crm_token", "crm_role", "crm_tenantId", "crm_user"]);
+  const [token, role, tenantId, user] = pairs.map(([, v]) => v);
   return { token, role, tenantId, user };
 }
