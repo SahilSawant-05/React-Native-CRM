@@ -15,7 +15,7 @@ export function setSessionExpiredCallback(cb: () => void) {
 }
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL:" https://api.techoceanhub.com",
   timeout: 15000,
 });
 
