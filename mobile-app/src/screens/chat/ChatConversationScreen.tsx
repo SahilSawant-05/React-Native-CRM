@@ -31,45 +31,60 @@ function formatDate(dateStr?: string) {
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(dateStr));
 }
 
-function MessageBubble({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
+function StatusTick({ status }: { status?: string }) {
+  const s = (status ?? "").toUpperCase();
+  if (s === "READ") {
+    return <Text style={[styles.statusIcon, { color: "#38bdf8" }]}> ✓✓</Text>;
+  }
+  if (s === "DELIVERED") {
+    return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.8)" }]}> ✓✓</Text>;
+  }
+  // SENT / default
+  return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.55)" }]}> ✓</Text>;
+}
+
+// In inverted FlatList, index 0 = newest message (rendered at bottom).
+// nextMessage is the item rendered above (older), used for date separators.
+function MessageBubble({ message, nextMessage }: { message: Message; nextMessage?: Message }) {
   const isOut = message.direction === "OUTBOUND";
   const text = message.textBody || message.body || message.text || "";
   const time = message.createdAt || message.timestamp;
 
-  const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
+  const nextDate = nextMessage ? formatDate(nextMessage.createdAt || nextMessage.timestamp) : null;
   const thisDate = formatDate(time);
-  const showDateSep = prevDate !== thisDate;
+  // Show separator below this bubble (rendered above in inverted list) when day changes
+  const showDateSep = nextDate !== null && nextDate !== thisDate;
 
   return (
     <>
-      {showDateSep && (
-        <View style={styles.dateSep}>
-          <Text style={styles.dateSepText}>{thisDate}</Text>
-        </View>
-      )}
       <View style={[styles.bubbleRow, isOut ? styles.bubbleRowOut : styles.bubbleRowIn]}>
         <View style={[styles.bubble, isOut ? styles.bubbleOut : styles.bubbleIn]}>
           {!!text && (
             <Text style={[styles.bubbleText, isOut && styles.bubbleTextOut]}>{text}</Text>
           )}
-          <Text style={[styles.bubbleTime, isOut && styles.bubbleTimeOut]}>
-            {formatTime(time)}
-            {isOut && (
-              <Text style={styles.statusIcon}>
-                {message.status === "READ" ? " ✓✓" : message.status === "DELIVERED" ? " ✓✓" : " ✓"}
-              </Text>
-            )}
-          </Text>
+          <View style={styles.bubbleMeta}>
+            <Text style={[styles.bubbleTime, isOut && styles.bubbleTimeOut]}>
+              {formatTime(time)}
+            </Text>
+            {isOut && <StatusTick status={message.status} />}
+          </View>
         </View>
       </View>
+      {showDateSep && (
+        <View style={styles.dateSep}>
+          <Text style={styles.dateSepText}>{thisDate}</Text>
+        </View>
+      )}
     </>
   );
 }
 
 export default function ChatConversationScreen({ route }: Props) {
   const { inbox } = route.params;
+  // messages[0] = newest (inverted list)
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -79,17 +94,20 @@ export default function ChatConversationScreen({ route }: Props) {
 
   const load = useCallback(async (p = 0) => {
     if (p === 0) setLoading(true);
+    else setLoadingMore(true);
     setError("");
     try {
       const data = await fetchMessages(inbox.contactId, p);
-      const content = (data.content ?? []).reverse();
-      setMessages((prev) => (p === 0 ? content : [...content, ...prev]));
+      // API returns desc (newest first) — perfect for inverted FlatList
+      const content = data.content ?? [];
+      setMessages((prev) => (p === 0 ? content : [...prev, ...content]));
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Failed to load messages");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [inbox.contactId]);
 
@@ -104,12 +122,13 @@ export default function ChatConversationScreen({ route }: Props) {
     setSending(true);
     const optimistic: Message = {
       id: `temp-${Date.now()}`,
-      body: trimmed,
+      textBody: trimmed,
       direction: "OUTBOUND",
       createdAt: new Date().toISOString(),
       status: "SENT",
     };
-    setMessages((prev) => [...prev, optimistic]);
+    // Prepend so it appears at bottom of inverted list immediately
+    setMessages((prev) => [optimistic, ...prev]);
     setText("");
     try {
       await sendTextMessage(inbox.contactId, trimmed);
@@ -136,17 +155,25 @@ export default function ChatConversationScreen({ route }: Props) {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item, index) => String(item.id ?? item.timestamp ?? item.createdAt ?? index)}
+          inverted
+          keyExtractor={(item, index) =>
+            String(item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index)
+          }
           renderItem={({ item, index }) => (
-            <MessageBubble message={item} prevMessage={messages[index - 1]} />
+            <MessageBubble message={item} nextMessage={messages[index + 1]} />
           )}
-          onStartReached={() => { if (page + 1 < totalPages) load(page + 1); }}
-          onStartReachedThreshold={0.2}
+          // Scrolling up in inverted list = reaching the end = load older messages
+          onEndReached={() => { if (!loadingMore && page + 1 < totalPages) load(page + 1); }}
+          onEndReachedThreshold={0.3}
           contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color="#0f766e" style={{ marginVertical: 12 }} />
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyChat}>
-              <Text style={styles.emptyChatText}>No messages yet. Say hello! 👋</Text>
+              <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
             </View>
           }
         />
@@ -216,7 +243,8 @@ const styles = StyleSheet.create({
   },
   bubbleText: { fontSize: 15, color: "#0f172a", lineHeight: 20 },
   bubbleTextOut: { color: "#fff" },
-  bubbleTime: { fontSize: 10, color: "#94a3b8", alignSelf: "flex-end" },
+  bubbleMeta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end" },
+  bubbleTime: { fontSize: 10, color: "#94a3b8" },
   bubbleTimeOut: { color: "rgba(255,255,255,0.65)" },
   statusIcon: { fontSize: 10 },
   emptyChat: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
