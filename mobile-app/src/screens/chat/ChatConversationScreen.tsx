@@ -33,7 +33,7 @@ function formatDate(dateStr?: string) {
 
 function MessageBubble({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
   const isOut = message.direction === "OUTBOUND";
-  const text = message.body || message.text || "";
+  const text = message.textBody || message.body || message.text || "";
   const time = message.createdAt || message.timestamp;
 
   const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;

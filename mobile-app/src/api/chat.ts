@@ -19,15 +19,20 @@ export interface InboxPage {
 }
 
 export interface Message {
-  id: number | string;
-  body?: string;
-  text?: string;
+  id?: number | string;
+  messageId?: number | string;
+  textBody?: string;   // primary content field from API
+  body?: string;       // fallback
+  text?: string;       // fallback
   direction: "INBOUND" | "OUTBOUND";
   type?: string;
+  mediaType?: string;
   mediaUrl?: string;
+  mediaFileName?: string;
   createdAt?: string;
   timestamp?: string;
   status?: string;
+  errorMessage?: string;
 }
 
 export interface MessagesPage {
@@ -45,7 +50,7 @@ function normalizePage<T>(data: any, key = "items", assignId?: (raw: any, idx: n
     Array.isArray(data?.items) ? data.items :
     Array.isArray(data) ? data : [];
   const items: T[] = assignId
-    ? raw.map((item, idx) => ({ ...item, id: item.id ?? item._id ?? assignId(item, idx) }))
+    ? raw.map((item, idx) => ({ ...item, id: item.id ?? item._id ?? item.messageId ?? assignId(item, idx) }))
     : raw;
   return {
     content: items,
