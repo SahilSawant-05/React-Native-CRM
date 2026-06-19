@@ -39,24 +39,25 @@ function StatusTick({ status }: { status?: string }) {
   if (s === "DELIVERED") {
     return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.8)" }]}> ✓✓</Text>;
   }
-  // SENT / default
   return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.55)" }]}> ✓</Text>;
 }
 
-// In inverted FlatList, index 0 = newest message (rendered at bottom).
-// nextMessage is the item rendered above (older), used for date separators.
-function MessageBubble({ message, nextMessage }: { message: Message; nextMessage?: Message }) {
+function MessageBubble({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
   const isOut = message.direction === "OUTBOUND";
   const text = message.textBody || message.body || message.text || "";
   const time = message.createdAt || message.timestamp;
 
-  const nextDate = nextMessage ? formatDate(nextMessage.createdAt || nextMessage.timestamp) : null;
+  const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
   const thisDate = formatDate(time);
-  // Show separator below this bubble (rendered above in inverted list) when day changes
-  const showDateSep = nextDate !== null && nextDate !== thisDate;
+  const showDateSep = prevDate !== thisDate;
 
   return (
     <>
+      {showDateSep && (
+        <View style={styles.dateSep}>
+          <Text style={styles.dateSepText}>{thisDate}</Text>
+        </View>
+      )}
       <View style={[styles.bubbleRow, isOut ? styles.bubbleRowOut : styles.bubbleRowIn]}>
         <View style={[styles.bubble, isOut ? styles.bubbleOut : styles.bubbleIn]}>
           {!!text && (
@@ -70,18 +71,13 @@ function MessageBubble({ message, nextMessage }: { message: Message; nextMessage
           </View>
         </View>
       </View>
-      {showDateSep && (
-        <View style={styles.dateSep}>
-          <Text style={styles.dateSepText}>{thisDate}</Text>
-        </View>
-      )}
     </>
   );
 }
 
 export default function ChatConversationScreen({ route }: Props) {
   const { inbox } = route.params;
-  // messages[0] = newest (inverted list)
+  // messages[0] = oldest, messages[last] = newest (chronological order)
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -92,17 +88,22 @@ export default function ChatConversationScreen({ route }: Props) {
   const [totalPages, setTotalPages] = useState(1);
   const flatListRef = useRef<FlatList>(null);
 
+  const scrollToBottom = (animated = true) => {
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 100);
+  };
+
   const load = useCallback(async (p = 0) => {
     if (p === 0) setLoading(true);
     else setLoadingMore(true);
     setError("");
     try {
       const data = await fetchMessages(inbox.contactId, p);
-      // API returns desc (newest first) — perfect for inverted FlatList
-      const content = data.content ?? [];
-      setMessages((prev) => (p === 0 ? content : [...prev, ...content]));
+      // API returns desc (newest first) — reverse to get oldest-first for display
+      const content = [...(data.content ?? [])].reverse();
+      setMessages((prev) => (p === 0 ? content : [...content, ...prev]));
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
+      if (p === 0) scrollToBottom(false);
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Failed to load messages");
     } finally {
@@ -127,9 +128,10 @@ export default function ChatConversationScreen({ route }: Props) {
       createdAt: new Date().toISOString(),
       status: "SENT",
     };
-    // Prepend so it appears at bottom of inverted list immediately
-    setMessages((prev) => [optimistic, ...prev]);
+    // Append so it appears at the bottom
+    setMessages((prev) => [...prev, optimistic]);
     setText("");
+    scrollToBottom();
     try {
       await sendTextMessage(inbox.contactId, trimmed);
     } catch (err: any) {
@@ -152,25 +154,24 @@ export default function ChatConversationScreen({ route }: Props) {
       >
         {!!error && <ErrorBanner message={error} />}
 
+        {loadingMore && (
+          <ActivityIndicator color="#0f766e" style={{ marginVertical: 8 }} />
+        )}
+
         <FlatList
           ref={flatListRef}
           data={messages}
-          inverted
           keyExtractor={(item, index) =>
             String(item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index)
           }
           renderItem={({ item, index }) => (
-            <MessageBubble message={item} nextMessage={messages[index + 1]} />
+            <MessageBubble message={item} prevMessage={messages[index - 1]} />
           )}
-          // Scrolling up in inverted list = reaching the end = load older messages
-          onEndReached={() => { if (!loadingMore && page + 1 < totalPages) load(page + 1); }}
-          onEndReachedThreshold={0.3}
+          // Scroll to top loads older messages
+          onStartReached={() => { if (!loadingMore && page + 1 < totalPages) load(page + 1); }}
+          onStartReachedThreshold={0.2}
           contentContainerStyle={styles.messageList}
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator color="#0f766e" style={{ marginVertical: 12 }} />
-            ) : null
-          }
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
