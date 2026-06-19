@@ -38,12 +38,15 @@ export interface MessagesPage {
 }
 
 // API returns { items: [], totalElements, totalPages, page }
-function normalizePage<T>(data: any, key = "items"): { content: T[]; totalElements: number; totalPages: number; number: number } {
-  const items: T[] =
+function normalizePage<T>(data: any, key = "items", assignId?: (raw: any, idx: number) => string): { content: T[]; totalElements: number; totalPages: number; number: number } {
+  const raw: any[] =
     Array.isArray(data?.[key]) ? data[key] :
     Array.isArray(data?.content) ? data.content :
     Array.isArray(data?.items) ? data.items :
     Array.isArray(data) ? data : [];
+  const items: T[] = assignId
+    ? raw.map((item, idx) => ({ ...item, id: item.id ?? item._id ?? assignId(item, idx) }))
+    : raw;
   return {
     content: items,
     totalElements: data?.totalElements ?? items.length,
@@ -66,14 +69,14 @@ export async function fetchInbox(params: {
       ...(params.search ? { search: params.search } : {}),
     },
   });
-  return normalizePage<InboxItem>(res.data, "items");
+  return normalizePage<InboxItem>(res.data, "items", (raw, idx) => `inbox-${raw.contactId ?? raw.contactPhone ?? idx}`);
 }
 
 export async function fetchMessages(contactId: string | number, page = 0): Promise<MessagesPage> {
   const res = await api.get(`/api/messages/contact/${contactId}/page`, {
     params: { page, size: 30, sort: "createdAt,desc" },
   });
-  return normalizePage<Message>(res.data, "items");
+  return normalizePage<Message>(res.data, "items", (raw, idx) => `msg-${contactId}-${raw.createdAt ?? raw.timestamp ?? idx}`);
 }
 
 export async function markAsRead(contactId: string | number): Promise<void> {

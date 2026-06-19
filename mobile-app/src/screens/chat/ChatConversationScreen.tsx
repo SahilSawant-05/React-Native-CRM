@@ -136,7 +136,7 @@ export default function ChatConversationScreen({ route }: Props) {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item, index) => String(item.id ?? item.timestamp ?? item.createdAt ?? index)}
           renderItem={({ item, index }) => (
             <MessageBubble message={item} prevMessage={messages[index - 1]} />
           )}
