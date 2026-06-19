@@ -8,14 +8,13 @@ import ChatInboxScreen from "../screens/chat/ChatInboxScreen";
 import ChatConversationScreen from "../screens/chat/ChatConversationScreen";
 import ContactsScreen from "../screens/contacts/ContactsScreen";
 import ContactDetailScreen from "../screens/contacts/ContactDetailScreen";
-import OpportunitiesScreen from "../screens/opportunities/OpportunitiesScreen";
 import TasksScreen from "../screens/tasks/TasksScreen";
+import OpportunitiesScreen from "../screens/opportunities/OpportunitiesScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 
 const Tab = createBottomTabNavigator();
 const ChatStack = createNativeStackNavigator();
 const ContactsStack = createNativeStackNavigator();
-const DealsStack = createNativeStackNavigator();
 
 const HEADER_OPTS = {
   headerStyle: { backgroundColor: "#fff" },
@@ -27,11 +26,17 @@ const HEADER_OPTS = {
 function ChatNavigator() {
   return (
     <ChatStack.Navigator screenOptions={HEADER_OPTS}>
-      <ChatStack.Screen name="ChatInbox" component={ChatInboxScreen} options={{ title: "Messages" }} />
+      <ChatStack.Screen
+        name="ChatInbox"
+        component={ChatInboxScreen}
+        options={{ title: "Messages" }}
+      />
       <ChatStack.Screen
         name="ChatConversation"
         component={ChatConversationScreen as any}
-        options={({ route }: any) => ({ title: route.params?.inbox?.contactName || "Chat" })}
+        options={({ route }: any) => ({
+          title: route.params?.inbox?.contactName || "Chat",
+        })}
       />
     </ChatStack.Navigator>
   );
@@ -40,44 +45,40 @@ function ChatNavigator() {
 function ContactsNavigator() {
   return (
     <ContactsStack.Navigator screenOptions={HEADER_OPTS}>
-      <ContactsStack.Screen name="ContactsList" component={ContactsScreen} options={{ title: "Contacts" }} />
+      <ContactsStack.Screen
+        name="ContactsList"
+        component={ContactsScreen}
+        options={{ title: "Contacts" }}
+      />
       <ContactsStack.Screen
         name="ContactDetail"
         component={ContactDetailScreen as any}
-        options={({ route }: any) => ({ title: route.params?.contact?.name || "Contact" })}
+        options={({ route }: any) => ({
+          title: route.params?.contact?.name || "Contact",
+        })}
+      />
+      <ContactsStack.Screen
+        name="Opportunities"
+        component={OpportunitiesScreen}
+        options={{ title: "Deals" }}
       />
     </ContactsStack.Navigator>
   );
 }
 
-function DealsNavigator() {
-  return (
-    <DealsStack.Navigator screenOptions={HEADER_OPTS}>
-      <DealsStack.Screen name="OpportunitiesList" component={OpportunitiesScreen} options={{ title: "Deals" }} />
-      <DealsStack.Screen name="TasksList" component={TasksScreen} options={{ title: "My Tasks" }} />
-    </DealsStack.Navigator>
-  );
-}
-
-/* ── Tab bar icon ─────────────────────────────────────── */
-interface TabIconProps {
+/* ── Custom tab icon ─────────────────────────────────── */
+function TabIcon({
+  emoji,
+  label,
+  focused,
+}: {
   emoji: string;
   label: string;
   focused: boolean;
-  badge?: number;
-}
-
-function TabIcon({ emoji, label, focused, badge }: TabIconProps) {
+}) {
   return (
-    <View style={tabStyles.iconWrap}>
-      <View>
-        <Text style={[tabStyles.emoji, focused && tabStyles.emojiFocused]}>{emoji}</Text>
-        {!!badge && badge > 0 && (
-          <View style={tabStyles.badge}>
-            <Text style={tabStyles.badgeText}>{badge > 99 ? "99+" : badge}</Text>
-          </View>
-        )}
-      </View>
+    <View style={tabStyles.wrap}>
+      <Text style={[tabStyles.emoji, focused && tabStyles.emojiFocused]}>{emoji}</Text>
       <Text style={[tabStyles.label, focused && tabStyles.labelFocused]}>{label}</Text>
     </View>
   );
@@ -92,55 +93,67 @@ export default function AppTabs() {
         tabBarStyle: tabStyles.bar,
       }}
     >
+      {/* 1 — Work Queue */}
       <Tab.Screen
         name="Queue"
         component={WorkQueueScreen}
         options={{
           headerShown: true,
-          headerStyle: { backgroundColor: "#fff" },
-          headerTintColor: "#0f766e",
-          headerTitleStyle: { fontWeight: "800" as const, fontSize: 17 },
-          headerShadowVisible: false,
+          ...HEADER_OPTS,
           title: "Work Queue",
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" label="Queue" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="📋" label="Queue" focused={focused} />
+          ),
         }}
       />
 
+      {/* 2 — Chat */}
       <Tab.Screen
         name="Chat"
         component={ChatNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" label="Chat" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="💬" label="Chat" focused={focused} />
+          ),
         }}
       />
 
+      {/* 3 — Contacts */}
       <Tab.Screen
         name="Contacts"
         component={ContactsNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👥" label="Contacts" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="👥" label="Contacts" focused={focused} />
+          ),
         }}
       />
 
+      {/* 4 — Tasks */}
       <Tab.Screen
-        name="Deals"
-        component={DealsNavigator}
+        name="Tasks"
+        component={TasksScreen}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🎯" label="Deals" focused={focused} />,
+          headerShown: true,
+          ...HEADER_OPTS,
+          title: "My Tasks",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="✅" label="Tasks" focused={focused} />
+          ),
         }}
       />
 
+      {/* 5 — Profile */}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
           headerShown: true,
-          headerStyle: { backgroundColor: "#fff" },
-          headerTintColor: "#0f766e",
-          headerTitleStyle: { fontWeight: "800" as const, fontSize: 17 },
-          headerShadowVisible: false,
+          ...HEADER_OPTS,
           title: "Profile",
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" label="Profile" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="👤" label="Profile" focused={focused} />
+          ),
         }}
       />
     </Tab.Navigator>
@@ -149,26 +162,26 @@ export default function AppTabs() {
 
 const tabStyles = StyleSheet.create({
   bar: {
-    height: Platform.OS === "ios" ? 82 : 64,
+    height: Platform.OS === "ios" ? 84 : 66,
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
-    paddingTop: 6,
-    paddingBottom: Platform.OS === "ios" ? 24 : 8,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 26 : 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 12,
+    elevation: 14,
   },
-  iconWrap: {
+  wrap: {
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
   },
   emoji: {
     fontSize: 22,
-    opacity: 0.45,
+    opacity: 0.4,
   },
   emojiFocused: {
     opacity: 1,
@@ -181,24 +194,5 @@ const tabStyles = StyleSheet.create({
   },
   labelFocused: {
     color: "#0f766e",
-  },
-  badge: {
-    position: "absolute",
-    top: -4,
-    right: -8,
-    backgroundColor: "#ef4444",
-    borderRadius: 99,
-    minWidth: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: "#fff",
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "800",
   },
 });
