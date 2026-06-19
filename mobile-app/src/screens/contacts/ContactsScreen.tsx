@@ -53,11 +53,13 @@ export default function ContactsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [errorDetail, setErrorDetail] = useState("");
 
   const load = useCallback(async (p = 0, q = "") => {
     if (p === 0) setLoading(true);
     else setLoadingMore(true);
     setError("");
+    setErrorDetail("");
     try {
       const data = await fetchContacts({ page: p, size: 25, search: q });
       const items = data.content ?? [];
@@ -65,7 +67,10 @@ export default function ContactsScreen({ navigation }: Props) {
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || "Failed to load contacts");
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err.message || "Failed to load contacts";
+      setError(msg);
+      setErrorDetail(status ? `HTTP ${status} — ${err.config?.url ?? ""}` : err.message ?? "");
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -101,7 +106,7 @@ export default function ContactsScreen({ navigation }: Props) {
         />
       </View>
 
-      {!!error && <ErrorBanner message={error} onRetry={() => load(0, search)} />}
+      {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, search)} />}
 
       <FlatList
         data={contacts}

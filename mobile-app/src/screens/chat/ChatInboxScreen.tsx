@@ -82,10 +82,12 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [errorDetail, setErrorDetail] = useState("");
 
   const load = useCallback(async (p = 0, s = status, q = search, silent = false) => {
     if (p === 0 && !silent) setLoading(true);
     setError("");
+    setErrorDetail("");
     try {
       const data = await fetchInbox({ page: p, size: 20, status: s || undefined, search: q || undefined });
       const content = data.content ?? [];
@@ -93,7 +95,10 @@ export default function ChatInboxScreen({ navigation }: Props) {
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || "Failed to load inbox");
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err.message || "Failed to load inbox";
+      setError(msg);
+      setErrorDetail(status ? `HTTP ${status} — ${err.config?.url ?? ""}` : err.message ?? "");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -145,7 +150,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
         </ScrollView>
       </View>
 
-      {!!error && <ErrorBanner message={error} onRetry={() => load(0, status, search)} />}
+      {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, status, search)} />}
 
       <FlatList
         data={items}

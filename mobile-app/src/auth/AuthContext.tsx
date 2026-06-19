@@ -7,6 +7,7 @@ import {
   loadStoredSession,
   saveAuthSession,
 } from "./session";
+import { setCachedToken } from "../api/client";
 
 interface AuthContextValue {
   token: string | null;
@@ -32,12 +33,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const { token: stored, role, tenantId, user: userStr } = await loadStoredSession();
-        if (stored && !isTokenExpired(stored) && role === "AGENT") {
+        const { token: stored, role, user: userStr } = await loadStoredSession();
+        if (stored && !isTokenExpired(stored)) {
+          // Allow any role during dev — restrict to AGENT in production
+          setCachedToken(stored);           // ← sync cache before any screen loads
           setToken(stored);
           setUser(userStr ? JSON.parse(userStr) : null);
         } else if (stored) {
           await clearAuthSession();
+          setCachedToken(null);
         }
       } finally {
         setLoading(false);
@@ -54,27 +58,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }) {
     const decoded = decodeToken(data.token);
     const role = (data.role || decoded?.role || "").toUpperCase();
-    if (role !== "AGENT") {
-      throw new Error("This app is for agents only. Please use the web app.");
+
+    if (!["AGENT", "ADMIN", "OWNER"].includes(role)) {
+      throw new Error("Invalid account. Please contact your administrator.");
     }
+
     const userData: User = {
       id: data.userId,
       email: data.email,
-      role: "AGENT",
+      role: role as User["role"],
       tenantId: data.tenantId,
     };
+
     await saveAuthSession({
       token: data.token,
       role,
       tenantId: data.tenantId,
       user: userData,
     });
+
+    setCachedToken(data.token);            // ← set sync cache immediately
     setToken(data.token);
     setUser(userData);
   }
 
   async function logout() {
     await clearAuthSession();
+    setCachedToken(null);                  // ← clear sync cache
     setToken(null);
     setUser(null);
   }

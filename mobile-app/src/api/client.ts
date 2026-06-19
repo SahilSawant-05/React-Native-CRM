@@ -1,54 +1,50 @@
 import axios from "axios";
 import { API_BASE_URL } from "../config/env";
-import {
-  clearAuthSession,
-  getToken,
-  isIdleExpired,
-  isTokenExpired,
-  markActivity,
-} from "../auth/session";
+import { clearAuthSession, isTokenExpired } from "../auth/session";
+
+/* ── In-memory token cache (set by AuthContext on mount/login/logout) ── */
+let _token: string | null = null;
+
+export function setCachedToken(token: string | null) {
+  _token = token;
+}
 
 let _onSessionExpired: (() => void) | null = null;
-
 export function setSessionExpiredCallback(cb: () => void) {
   _onSessionExpired = cb;
 }
 
 const api = axios.create({
-  baseURL:" https://api.techoceanhub.com",
-  timeout: 15000,
+  baseURL: API_BASE_URL,
+  timeout: 20000,
 });
 
-api.interceptors.request.use(async (config) => {
-  const token = await getToken();
-
-  if (token) {
-    if (isTokenExpired(token) || (await isIdleExpired())) {
-      await clearAuthSession();
+/* ── Synchronous request interceptor — no async needed ─────────────── */
+api.interceptors.request.use((config) => {
+  if (_token) {
+    if (isTokenExpired(_token)) {
+      clearAuthSession();
       _onSessionExpired?.();
-      return Promise.reject(new axios.Cancel("Session expired"));
+      return Promise.reject(new Error("Session expired"));
     }
-    config.headers.Authorization = `Bearer ${token}`;
-    await markActivity();
+    config.headers.Authorization = `Bearer ${_token}`;
   }
 
-  if (config.data instanceof FormData) {
-    delete config.headers["Content-Type"];
-  } else {
+  if (!(config.data instanceof FormData)) {
     config.headers["Content-Type"] = "application/json";
   }
 
   return config;
 });
 
+/* ── Response error handler ─────────────────────────────────────────── */
 api.interceptors.response.use(
-  (response) => response,
+  (res) => res,
   async (error) => {
-    const requestUrl = error.config?.url || "";
-    const isLoginRequest = requestUrl.includes("/auth/login");
-
-    if (error.response?.status === 401 && !isLoginRequest) {
+    const isLogin = error.config?.url?.includes("/auth/login");
+    if (error.response?.status === 401 && !isLogin) {
       await clearAuthSession();
+      setCachedToken(null);
       _onSessionExpired?.();
     }
     return Promise.reject(error);
