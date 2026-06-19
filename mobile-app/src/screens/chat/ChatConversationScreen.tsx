@@ -87,10 +87,7 @@ export default function ChatConversationScreen({ route }: Props) {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const flatListRef = useRef<FlatList>(null);
-
-  const scrollToBottom = (animated = true) => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 100);
-  };
+  const initialScrollDone = useRef(false);
 
   const load = useCallback(async (p = 0) => {
     if (p === 0) setLoading(true);
@@ -103,7 +100,7 @@ export default function ChatConversationScreen({ route }: Props) {
       setMessages((prev) => (p === 0 ? content : [...content, ...prev]));
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
-      if (p === 0) scrollToBottom(false);
+      if (p === 0) initialScrollDone.current = false;
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Failed to load messages");
     } finally {
@@ -131,7 +128,7 @@ export default function ChatConversationScreen({ route }: Props) {
     // Append so it appears at the bottom
     setMessages((prev) => [...prev, optimistic]);
     setText("");
-    scrollToBottom();
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
     try {
       await sendTextMessage(inbox.contactId, trimmed);
     } catch (err: any) {
@@ -172,6 +169,12 @@ export default function ChatConversationScreen({ route }: Props) {
           onStartReachedThreshold={0.2}
           contentContainerStyle={styles.messageList}
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          onContentSizeChange={() => {
+            if (!initialScrollDone.current) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+              initialScrollDone.current = true;
+            }
+          }}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
