@@ -66,8 +66,8 @@ export default function ContactDetailScreen({ route }: Props) {
           <Text style={styles.name}>{contact.name}</Text>
           {!!contact.tags?.length && (
             <View style={styles.tagsRow}>
-              {contact.tags.map((tag) => (
-                <View key={tag} style={styles.tag}>
+              {contact.tags.map((tag, i) => (
+                <View key={`tag-${tag ?? i}`} style={styles.tag}>
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
               ))}
@@ -129,7 +129,7 @@ export default function ContactDetailScreen({ route }: Props) {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Recent Activity</Text>
             {timeline.slice(0, 10).map((item, i) => (
-              <View key={i} style={styles.timelineItem}>
+              <View key={`tl-${item.id ?? item.createdAt ?? i}`} style={styles.timelineItem}>
                 <View style={styles.timelineDot} />
                 <View style={styles.timelineContent}>
                   <Text style={styles.timelineType}>{item.type || "Activity"}</Text>

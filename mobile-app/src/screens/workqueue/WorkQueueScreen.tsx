@@ -105,7 +105,7 @@ function SectionCard({ section }: { section: WorkSection }) {
       {section.items?.length > 0 ? (
         <View style={sectionStyles.items}>
           {section.items.map((item, i) => (
-            <WorkItemCard key={`${section.key}-${item.id ?? i}`} item={item} />
+            <WorkItemCard key={`${section.key}-item-${String(item.id ?? i)}`} item={item} />
           ))}
           {section.count > section.items.length && (
             <Text style={sectionStyles.moreText}>
@@ -175,8 +175,8 @@ export default function WorkQueueScreen() {
 
         {!!error && <ErrorBanner message={error} onRetry={() => load()} />}
 
-        {queue?.sections?.map((section) => (
-          <SectionCard key={section.key} section={section} />
+        {queue?.sections?.map((section, idx) => (
+          <SectionCard key={`section-${section.key ?? idx}`} section={section} />
         ))}
 
         {!error && !queue?.sections?.length && (
