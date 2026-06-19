@@ -110,7 +110,7 @@ export default function ContactsScreen({ navigation }: Props) {
 
       <FlatList
         data={contacts}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? item._id ?? item.phone ?? item.email ?? index)}
         renderItem={({ item }) => (
           <ContactRow
             contact={item}

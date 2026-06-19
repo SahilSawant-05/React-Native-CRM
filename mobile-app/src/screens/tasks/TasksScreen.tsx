@@ -40,7 +40,7 @@ function TaskCard({
       <View style={styles.cardRow}>
         <TouchableOpacity
           style={[styles.check, isDone && styles.checkDone]}
-          onPress={() => onToggle(task.id, isDone ? "PENDING" : "COMPLETED")}
+          onPress={() => onToggle(task.id ?? task._id ?? "", isDone ? "PENDING" : "COMPLETED")}
         >
           {isDone && <Text style={styles.checkMark}>✓</Text>}
         </TouchableOpacity>
@@ -92,16 +92,14 @@ export default function TasksScreen() {
   useEffect(() => { load(); }, [load]);
 
   async function handleToggle(id: string | number, newStatus: string) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
-    );
+    const matchId = (t: Task) => (t.id ?? t._id) === id;
+    setTasks((prev) => prev.map((t) => (matchId(t) ? { ...t, status: newStatus } : t)));
     try {
       await updateTaskStatus(id, newStatus);
     } catch {
-      // revert on failure
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === id ? { ...t, status: newStatus === "COMPLETED" ? "PENDING" : "COMPLETED" } : t
+          matchId(t) ? { ...t, status: newStatus === "COMPLETED" ? "PENDING" : "COMPLETED" } : t
         )
       );
     }
@@ -118,7 +116,7 @@ export default function TasksScreen() {
 
       <FlatList
         data={[...pending, ...done]}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? item._id ?? item.title ?? index)}
         renderItem={({ item }) => <TaskCard task={item} onToggle={handleToggle} />}
         ListHeaderComponent={
           <View style={styles.summary}>

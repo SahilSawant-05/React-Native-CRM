@@ -110,7 +110,7 @@ export default function OpportunitiesScreen() {
 
       <FlatList
         data={items}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id ?? item._id ?? item.title ?? index)}
         renderItem={({ item }) => <OpportunityCard item={item} />}
         onEndReached={() => { if (!loadingMore && page + 1 < totalPages) load(page + 1, stage); }}
         onEndReachedThreshold={0.4}

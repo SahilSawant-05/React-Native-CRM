@@ -154,7 +154,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
       <FlatList
         data={items}
-        keyExtractor={(item) => String(item.contactId)}
+        keyExtractor={(item, index) => String(item.contactId ?? item.contactPhone ?? index)}
         renderItem={({ item }) => (
           <InboxRow
             item={item}

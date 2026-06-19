@@ -12,7 +12,8 @@ export interface AuthState {
 }
 
 export interface Contact {
-  id: number | string;
+  id?: number | string;
+  _id?: number | string;
   name: string;
   email?: string;
   phone?: string;
@@ -22,7 +23,8 @@ export interface Contact {
 }
 
 export interface Opportunity {
-  id: number | string;
+  id?: number | string;
+  _id?: number | string;
   title: string;
   amount?: number;
   stage?: string;
@@ -35,7 +37,8 @@ export interface Opportunity {
 }
 
 export interface Task {
-  id: number | string;
+  id?: number | string;
+  _id?: number | string;
   title: string;
   description?: string;
   status: string;

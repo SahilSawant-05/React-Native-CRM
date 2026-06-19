@@ -29,9 +29,10 @@ export default function ContactDetailScreen({ route }: Props) {
   useEffect(() => {
     (async () => {
       try {
+        const contactId = initial.id ?? initial._id ?? "";
         const [full, tl] = await Promise.all([
-          fetchContactById(initial.id),
-          fetchContactTimeline(initial.id),
+          fetchContactById(contactId),
+          fetchContactTimeline(contactId),
         ]);
         setContact(full);
         setTimeline(tl ?? []);
