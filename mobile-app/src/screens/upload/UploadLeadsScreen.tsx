@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert,
+  RefreshControl, ActivityIndicator, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import * as DocumentPicker from "expo-document-picker";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -18,7 +19,7 @@ interface UploadRecord {
 
 interface PreviewRow {
   rowNumber: number;
-  status: "NEW" | "EXACT_DUPLICATE" | "INVALID";
+  status: "NEW" | "EXACT_DUPLICATE" | "DUPLICATE" | "INVALID";
   name?: string;
   phone?: string;
   email?: string;
@@ -39,6 +40,7 @@ function normalize(data: any): any[] {
 const ROW_COLORS: Record<string, { bg: string; text: string }> = {
   NEW:             { bg: "#dcfce7", text: "#16a34a" },
   EXACT_DUPLICATE: { bg: "#fef3c7", text: "#d97706" },
+  DUPLICATE:       { bg: "#fef3c7", text: "#d97706" },
   INVALID:         { bg: "#fee2e2", text: "#dc2626" },
 };
 
@@ -53,6 +55,7 @@ export default function UploadLeadsScreen() {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [updateExisting, setUpdateExisting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
@@ -74,6 +77,47 @@ export default function UploadLeadsScreen() {
     fetchHistory();
   }, [fetchHistory]));
 
+  const pickAndUpload = async () => {
+    setError(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "text/csv",
+          "text/comma-separated-values",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "*/*",
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const file = result.assets[0];
+      setUploading(true);
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri: Platform.OS === "ios" ? file.uri.replace("file://", "") : file.uri,
+        name: file.name ?? "upload.csv",
+        type: file.mimeType ?? "text/csv",
+      } as any);
+
+      const res = await api.post("/api/contacts/upload/preview", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const data: PreviewData = res.data;
+      setPreview(data);
+      // Auto-select all NEW rows
+      setSelected(new Set((data.rows ?? []).filter(r => r.status === "NEW").map(r => r.rowNumber)));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const toggleRow = (n: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -82,8 +126,9 @@ export default function UploadLeadsScreen() {
     });
   };
 
-  const selectNew  = () => preview && setSelected(new Set(preview.rows.filter(r => r.status === "NEW").map(r => r.rowNumber)));
+  const selectNew   = () => preview && setSelected(new Set(preview.rows.filter(r => r.status === "NEW").map(r => r.rowNumber)));
   const selectValid = () => preview && setSelected(new Set(preview.rows.filter(r => r.status !== "INVALID").map(r => r.rowNumber)));
+  const clearAll    = () => setSelected(new Set());
 
   const commit = async () => {
     if (!preview || selected.size === 0) return;
@@ -93,11 +138,11 @@ export default function UploadLeadsScreen() {
       const rows = preview.rows.filter((r) => selected.has(r.rowNumber));
       const res = await api.post("/api/contacts/upload/commit", { updateExisting, rows });
       const { created = 0, updated = 0, skipped = 0 } = res.data ?? {};
-      setSuccessMsg(`Done: ${created} created, ${updated} updated, ${skipped} skipped.`);
+      setSuccessMsg(`✅ Done: ${created} created, ${updated} updated, ${skipped} skipped.`);
       setPreview(null);
       setSelected(new Set());
       fetchHistory();
-      setTimeout(() => setSuccessMsg(""), 5000);
+      setTimeout(() => setSuccessMsg(""), 6000);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || "Import failed");
     } finally {
@@ -116,30 +161,28 @@ export default function UploadLeadsScreen() {
         {!!error && <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View>}
         {!!successMsg && <View style={styles.successBanner}><Text style={styles.successText}>{successMsg}</Text></View>}
 
-        {/* Info card */}
+        {/* Upload card */}
         <View style={styles.infoCard}>
           <Text style={styles.infoIcon}>📤</Text>
-          <Text style={styles.infoTitle}>Upload Leads via CSV</Text>
+          <Text style={styles.infoTitle}>Upload Leads via CSV / XLSX</Text>
           <Text style={styles.infoDesc}>
-            Import contacts from a CSV or XLSX file.{"\n"}Supported columns: name, phone, email, city, tags, leadSource, industryKey
+            Supported columns: name, phone, email, city, tags, leadSource, industryKey
           </Text>
           <TouchableOpacity
-            style={styles.uploadBtn}
-            onPress={() =>
-              Alert.alert(
-                "Mobile File Upload",
-                "To upload files directly from mobile, install expo-document-picker in this project.\n\nAlternatively, use the web dashboard for full upload support.",
-                [{ text: "OK" }]
-              )
-            }
+            style={[styles.uploadBtn, uploading && styles.btnDisabled]}
+            onPress={pickAndUpload}
+            disabled={uploading}
           >
-            <Text style={styles.uploadBtnText}>+ Upload CSV / XLSX</Text>
+            {uploading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.uploadBtnText}>+ Pick & Upload File</Text>}
           </TouchableOpacity>
         </View>
 
-        {/* Preview rows (populated when API preview is called) */}
+        {/* Preview section */}
         {preview && (
           <>
+            {/* Summary stats */}
             <View style={styles.summaryRow}>
               {[
                 { label: "Total",   val: preview.summary.total,      color: "#0f172a" },
@@ -154,15 +197,29 @@ export default function UploadLeadsScreen() {
               ))}
             </View>
 
+            {/* Bulk actions */}
             <View style={styles.actRow}>
-              <TouchableOpacity style={styles.actBtn} onPress={selectNew}><Text style={styles.actBtnText}>Select New</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.actBtn} onPress={selectValid}><Text style={styles.actBtnText}>Select Valid</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.actBtn, updateExisting && styles.actBtnOn]} onPress={() => setUpdateExisting(p => !p)}>
-                <Text style={[styles.actBtnText, updateExisting && styles.actBtnTextOn]}>Update Dupes</Text>
+              <TouchableOpacity style={styles.actBtn} onPress={selectNew}>
+                <Text style={styles.actBtnText}>New only</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actBtn} onPress={selectValid}>
+                <Text style={styles.actBtnText}>Select valid</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actBtn, updateExisting && styles.actBtnOn]}
+                onPress={() => setUpdateExisting(p => !p)}
+              >
+                <Text style={[styles.actBtnText, updateExisting && styles.actBtnTextOn]}>
+                  Update dupes
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actBtn} onPress={clearAll}>
+                <Text style={styles.actBtnText}>Clear</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.sectionHeader}>PREVIEW ({selected.size} selected)</Text>
+            <Text style={styles.sectionHeader}>PREVIEW ({selected.size} / {preview.rows.length} selected)</Text>
+
             {preview.rows.map((row) => {
               const cl = ROW_COLORS[row.status] || ROW_COLORS.NEW;
               const on = selected.has(row.rowNumber);
@@ -174,11 +231,13 @@ export default function UploadLeadsScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.pName}>{row.name || "—"}</Text>
-                      <Text style={styles.pMeta}>{row.phone}{row.email ? ` · ${row.email}` : ""}</Text>
+                      <Text style={styles.pMeta}>
+                        {[row.phone, row.email].filter(Boolean).join(" · ")}
+                      </Text>
                     </View>
                     <View style={[styles.pBadge, { backgroundColor: cl.bg }]}>
                       <Text style={[styles.pBadgeText, { color: cl.text }]}>
-                        {row.status === "EXACT_DUPLICATE" ? "DUPE" : row.status}
+                        {row.status === "EXACT_DUPLICATE" || row.status === "DUPLICATE" ? "DUPE" : row.status}
                       </Text>
                     </View>
                   </View>
@@ -198,23 +257,7 @@ export default function UploadLeadsScreen() {
           </>
         )}
 
-        {/* Steps */}
-        <Text style={styles.sectionHeader}>HOW IT WORKS</Text>
-        {[
-          { n: "1", label: "Prepare CSV", desc: "Headers: name, phone, email, city, tags, leadSource, industryKey" },
-          { n: "2", label: "Upload File",  desc: "Use the web dashboard (Leads → Import) or tap Upload above once expo-document-picker is installed." },
-          { n: "3", label: "Review & Commit", desc: "Preview rows, select which to import, then tap Import." },
-        ].map((s) => (
-          <View key={s.n} style={styles.stepCard}>
-            <View style={styles.stepBadge}><Text style={styles.stepNum}>{s.n}</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stepLabel}>{s.label}</Text>
-              <Text style={styles.stepDesc}>{s.desc}</Text>
-            </View>
-          </View>
-        ))}
-
-        {/* History */}
+        {/* Upload history */}
         <Text style={styles.sectionHeader}>UPLOAD HISTORY</Text>
         {history.length === 0 ? (
           <Text style={styles.emptyText}>No upload history yet</Text>
@@ -223,7 +266,9 @@ export default function UploadLeadsScreen() {
             <View style={styles.cardRow}>
               <Text style={styles.fileName} numberOfLines={1}>{item.fileName}</Text>
               <View style={[styles.badge, { backgroundColor: item.status === "COMPLETED" ? "#dcfce7" : "#fef3c7" }]}>
-                <Text style={[styles.badgeText, { color: item.status === "COMPLETED" ? "#22c55e" : "#f59e0b" }]}>{item.status}</Text>
+                <Text style={[styles.badgeText, { color: item.status === "COMPLETED" ? "#22c55e" : "#f59e0b" }]}>
+                  {item.status}
+                </Text>
               </View>
             </View>
             <Text style={styles.meta}>📋 {item.recordCount} records · {fmtDate(item.createdAt)}</Text>
@@ -243,16 +288,17 @@ const styles = StyleSheet.create({
   infoCard: { backgroundColor: "#fff", borderRadius: 14, padding: 24, margin: 16, alignItems: "center", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3 },
   infoIcon: { fontSize: 40, marginBottom: 12 },
   infoTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b", marginBottom: 8 },
-  infoDesc: { fontSize: 14, color: "#64748b", textAlign: "center", lineHeight: 20, marginBottom: 16 },
-  uploadBtn: { backgroundColor: "#0f766e", borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
+  infoDesc: { fontSize: 13, color: "#64748b", textAlign: "center", lineHeight: 19, marginBottom: 16 },
+  uploadBtn: { backgroundColor: "#0f766e", borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, minWidth: 180, alignItems: "center" },
   uploadBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  btnDisabled: { opacity: 0.5 },
   sectionHeader: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, paddingHorizontal: 16, paddingVertical: 8 },
   summaryRow: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 8 },
-  sumCard: { flex: 1, backgroundColor: "#fff", borderRadius: 10, padding: 10, alignItems: "center", elevation: 1 },
+  sumCard: { flex: 1, backgroundColor: "#fff", borderRadius: 10, padding: 10, alignItems: "center", elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2 },
   sumNum: { fontSize: 22, fontWeight: "800" },
   sumLabel: { fontSize: 11, color: "#64748b", marginTop: 2 },
-  actRow: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 4 },
-  actBtn: { flex: 1, backgroundColor: "#fff", borderRadius: 8, paddingVertical: 8, alignItems: "center", borderWidth: 1, borderColor: "#e2e8f0" },
+  actRow: { flexDirection: "row", paddingHorizontal: 16, gap: 6, marginBottom: 4, flexWrap: "wrap" },
+  actBtn: { backgroundColor: "#fff", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: "#e2e8f0" },
   actBtnOn: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
   actBtnText: { fontSize: 12, fontWeight: "600", color: "#475569" },
   actBtnTextOn: { color: "#fff" },
@@ -266,13 +312,7 @@ const styles = StyleSheet.create({
   pBadge: { borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2 },
   pBadgeText: { fontSize: 10, fontWeight: "700" },
   commitBtn: { margin: 16, backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  btnDisabled: { opacity: 0.5 },
   commitBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  stepCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 12, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3 },
-  stepBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center" },
-  stepNum: { fontSize: 13, fontWeight: "700", color: "#fff" },
-  stepLabel: { fontSize: 14, fontWeight: "600", color: "#1e293b", marginBottom: 2 },
-  stepDesc: { fontSize: 13, color: "#64748b" },
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 10, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3 },
   cardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   fileName: { fontSize: 14, fontWeight: "600", color: "#1e293b", flex: 1, marginRight: 8 },

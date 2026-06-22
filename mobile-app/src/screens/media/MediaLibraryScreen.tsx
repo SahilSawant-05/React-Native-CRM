@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   StyleSheet,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../../api/client";
@@ -13,9 +14,13 @@ import { useFocusEffect } from "@react-navigation/native";
 
 interface MediaAsset {
   id: string;
-  name: string;
-  mediaType: "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO";
-  fileSize: number;
+  name?: string;
+  originalFileName?: string;
+  mediaType?: string;
+  fileSize?: number;
+  publicUrl?: string;
+  category?: string;
+  description?: string;
 }
 
 const MEDIA_COLORS: Record<string, { bg: string; text: string }> = {
@@ -65,10 +70,15 @@ export default function MediaLibraryScreen() {
     fetchAssets();
   };
 
-  const formatSize = (bytes: number) => {
+  const formatSize = (bytes?: number) => {
+    if (!bytes) return "";
     if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
     return (bytes / 1024).toFixed(1) + " KB";
   };
+
+  const isImage = (asset: MediaAsset) =>
+    asset.mediaType === "IMAGE" ||
+    (asset.publicUrl ? /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(asset.publicUrl) : false);
 
   if (loading) return <LoadingSpinner message="Loading media..." />;
 
@@ -85,18 +95,29 @@ export default function MediaLibraryScreen() {
         columnWrapperStyle={{ justifyContent: "space-between" }}
         ListEmptyComponent={<Text style={styles.emptyText}>No media files yet</Text>}
         renderItem={({ item }) => {
-          const colors = MEDIA_COLORS[item.mediaType] || { bg: "#f1f5f9", text: "#64748b" };
-          const emoji = MEDIA_EMOJI[item.mediaType] || "📁";
+          const type = item.mediaType ?? "DOCUMENT";
+          const colors = MEDIA_COLORS[type] || { bg: "#f1f5f9", text: "#64748b" };
+          const emoji = MEDIA_EMOJI[type] || "📁";
+          const displayName = item.name || item.originalFileName || "Untitled";
+          const showImage = isImage(item) && !!item.publicUrl;
           return (
             <View style={styles.card}>
-              <Text style={styles.emoji}>{emoji}</Text>
-              <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
+              {showImage ? (
+                <Image
+                  source={{ uri: item.publicUrl }}
+                  style={styles.thumbnail}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.emoji}>{emoji}</Text>
+              )}
+              <Text style={styles.name} numberOfLines={2}>{displayName}</Text>
               <View style={styles.row}>
                 <View style={[styles.badge, { backgroundColor: colors.bg }]}>
-                  <Text style={[styles.badgeText, { color: colors.text }]}>{item.mediaType}</Text>
+                  <Text style={[styles.badgeText, { color: colors.text }]}>{type}</Text>
                 </View>
               </View>
-              <Text style={styles.size}>{formatSize(item.fileSize)}</Text>
+              {!!item.fileSize && <Text style={styles.size}>{formatSize(item.fileSize)}</Text>}
             </View>
           );
         }}
@@ -121,6 +142,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  thumbnail: { width: "100%", height: 100, borderRadius: 8, marginBottom: 8 },
   emoji: { fontSize: 28, marginBottom: 8 },
   name: { fontSize: 13, fontWeight: "600", color: "#1e293b", marginBottom: 8 },
   row: { flexDirection: "row", marginBottom: 6 },

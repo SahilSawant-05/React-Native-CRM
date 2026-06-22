@@ -13,10 +13,12 @@ import { useFocusEffect } from "@react-navigation/native";
 
 interface Template {
   id: string;
-  name: string;
-  category: string;
-  status: "APPROVED" | "PENDING" | "REJECTED";
-  languageCode: string;
+  name?: string;
+  metaTemplateName?: string;
+  category?: string;
+  status?: string;
+  languageCode?: string;
+  body?: string;
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -72,20 +74,28 @@ export default function TemplatesScreen() {
         contentContainerStyle={templates.length === 0 ? styles.emptyContainer : { paddingBottom: 16 }}
         ListEmptyComponent={<Text style={styles.emptyText}>No templates found</Text>}
         renderItem={({ item }) => {
-          const statusStyle = STATUS_COLORS[item.status] || STATUS_COLORS.PENDING;
+          const displayName = item.metaTemplateName || item.name || "(unnamed)";
+          const statusStyle = STATUS_COLORS[item.status ?? "PENDING"] || STATUS_COLORS.PENDING;
           return (
             <View style={styles.card}>
               <View style={styles.row}>
-                <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
-                  <Text style={[styles.badgeText, { color: statusStyle.text }]}>{item.status}</Text>
-                </View>
+                <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+                {item.status ? (
+                  <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                    <Text style={[styles.badgeText, { color: statusStyle.text }]}>{item.status}</Text>
+                  </View>
+                ) : null}
               </View>
+              {!!item.body && (
+                <Text style={styles.body} numberOfLines={3}>{item.body}</Text>
+              )}
               <View style={styles.metaRow}>
-                <View style={[styles.badge, { backgroundColor: "#e0f2fe" }]}>
-                  <Text style={[styles.badgeText, { color: "#0ea5e9" }]}>{item.category}</Text>
-                </View>
-                <Text style={styles.lang}>🌐 {item.languageCode}</Text>
+                {!!item.category && (
+                  <View style={[styles.badge, { backgroundColor: "#e0f2fe" }]}>
+                    <Text style={[styles.badgeText, { color: "#0ea5e9" }]}>{item.category}</Text>
+                  </View>
+                )}
+                {!!item.languageCode && <Text style={styles.lang}>🌐 {item.languageCode}</Text>}
               </View>
             </View>
           );
@@ -116,6 +126,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: "600", color: "#1e293b", flex: 1, marginRight: 8 },
   badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText: { fontSize: 11, fontWeight: "700" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  body: { fontSize: 13, color: "#475569", lineHeight: 18, marginBottom: 8 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   lang: { fontSize: 12, color: "#64748b", marginLeft: 8 },
 });

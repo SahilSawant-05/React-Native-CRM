@@ -88,21 +88,39 @@ export default function MailDetailScreen({ route, navigation }: any) {
   const fetchEmail = useCallback(async () => {
     try {
       setError(null);
-      console.log("[MailDetail] GET /api/email/logs/" + emailId);
-      const res = await api.get(`/api/email/logs/${emailId}`);
-      console.log("[MailDetail] Response status:", res.status);
-      console.log("[MailDetail] Response data:", JSON.stringify(res.data).slice(0, 200));
+      // Try single-item endpoint first; fall back to scanning the paged list
+      let found: EmailLog | null = null;
+      try {
+        const res = await api.get(`/api/email/logs/${emailId}`);
+        found = res.data;
+      } catch (e1: any) {
+        if (e1?.response?.status !== 404 && e1?.response?.status !== 405 && e1?.response?.status !== 500) throw e1;
+        // Fall back: search in the paged log
+        const res = await api.get("/api/email/logs/page", { params: { page: 0, size: 50 } });
+        const data = res.data ?? {};
+        const list: EmailLog[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+        found = list.find((e) => Number(e.id) === emailId) ?? null;
+        if (!found) {
+          // Try next pages if not found on first
+          const total = data.totalPages ?? 1;
+          for (let p = 1; p < Math.min(total, 5) && !found; p++) {
+            const r2 = await api.get("/api/email/logs/page", { params: { page: p, size: 50 } });
+            const d2 = r2.data ?? {};
+            const l2: EmailLog[] = Array.isArray(d2) ? d2 : Array.isArray(d2.items) ? d2.items : Array.isArray(d2.content) ? d2.content : [];
+            found = l2.find((e) => Number(e.id) === emailId) ?? null;
+          }
+        }
+      }
       if (!isMountedRef.current) return;
-      setEmail(res.data);
+      if (found) {
+        setEmail(found);
+      } else {
+        setError("Email not found.");
+      }
     } catch (e: any) {
-      console.log("[MailDetail] Error:", e?.response?.status, e?.response?.data, e?.message);
       if (!isMountedRef.current) return;
-      // Show the actual backend error message if available
       const serverMsg =
-        e?.response?.data?.message ||
-        e?.response?.data?.error ||
-        e?.message ||
-        "Failed to load email";
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to load email";
       setError(`${e?.response?.status ?? ""} ${serverMsg}`.trim());
     } finally {
       if (isMountedRef.current) setLoading(false);
