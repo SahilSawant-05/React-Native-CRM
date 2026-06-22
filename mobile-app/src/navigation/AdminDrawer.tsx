@@ -1,15 +1,16 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import {
+  Animated,
+  Dimensions,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { createDrawerNavigator } from "@react-navigation/drawer";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 
@@ -22,9 +23,10 @@ import OpportunitiesScreen from "../screens/opportunities/OpportunitiesScreen";
 import TasksScreen from "../screens/tasks/TasksScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 
-const Drawer = createDrawerNavigator();
 const ChatStack = createNativeStackNavigator();
 const ContactsStack = createNativeStackNavigator();
+
+const DRAWER_WIDTH = Math.min(Dimensions.get("window").width * 0.78, 300);
 
 const HEADER_OPTS = {
   headerStyle: { backgroundColor: "#fff" },
@@ -33,10 +35,140 @@ const HEADER_OPTS = {
   headerShadowVisible: false,
 };
 
+const NAV_ITEMS = [
+  { name: "Queue",    label: "Work Queue", emoji: "📋" },
+  { name: "Chat",     label: "Messages",   emoji: "💬" },
+  { name: "Contacts", label: "Contacts",   emoji: "👥" },
+  { name: "Tasks",    label: "Tasks",      emoji: "✅" },
+  { name: "Profile",  label: "Profile",    emoji: "👤" },
+];
+
+/* Context to let child screens open the drawer */
+export const DrawerCtx = React.createContext<{ open: () => void }>({ open: () => {} });
+
+/* Hamburger button placed in each screen's header */
+export function HamburgerBtn() {
+  const { open } = React.useContext(DrawerCtx);
+  return (
+    <TouchableOpacity
+      onPress={open}
+      style={styles.hamburger}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <View style={styles.line} />
+      <View style={styles.line} />
+      <View style={styles.line} />
+    </TouchableOpacity>
+  );
+}
+
+/* Slide-in drawer panel */
+function DrawerPanel({
+  visible,
+  onClose,
+  activeTab,
+  onNavigate,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  activeTab: string;
+  onNavigate: (name: string) => void;
+}) {
+  const slideX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const bgOpacity = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { logout, user } = useAuth();
+
+  React.useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.parallel([
+        Animated.timing(slideX, { toValue: 0, duration: 260, useNativeDriver: true }),
+        Animated.timing(bgOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideX, { toValue: -DRAWER_WIDTH, duration: 220, useNativeDriver: true }),
+        Animated.timing(bgOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+      ]).start(() => setMounted(false));
+    }
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* Scrim */}
+      <Animated.View style={[styles.scrim, { opacity: bgOpacity }]} pointerEvents="auto">
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+
+      {/* Sliding panel */}
+      <Animated.View
+        style={[styles.panel, { width: DRAWER_WIDTH, transform: [{ translateX: slideX }] }]}
+        pointerEvents="auto"
+      >
+        {/* User info */}
+        <View style={[styles.drawerHeader, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {(user?.email?.[0] ?? "A").toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.roleText}>{user?.role ?? "ADMIN"}</Text>
+            <Text style={styles.emailText} numberOfLines={1}>{user?.email ?? ""}</Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* Nav items */}
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          {NAV_ITEMS.map((item) => {
+            const focused = activeTab === item.name;
+            return (
+              <TouchableOpacity
+                key={item.name}
+                style={[styles.navItem, focused && styles.navItemActive]}
+                onPress={() => { onNavigate(item.name); onClose(); }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navEmoji}>{item.emoji}</Text>
+                <Text style={[styles.navLabel, focused && styles.navLabelActive]}>
+                  {item.label}
+                </Text>
+                {focused && <View style={styles.activeDot} />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.divider} />
+
+        <TouchableOpacity
+          style={[styles.signOutRow, { paddingBottom: insets.bottom + 16 }]}
+          onPress={() => { onClose(); logout(); }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signOutEmoji}>🚪</Text>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+/* Sub-navigators that each show a hamburger in their top header */
 function ChatNavigator() {
   return (
     <ChatStack.Navigator screenOptions={HEADER_OPTS}>
-      <ChatStack.Screen name="ChatInbox" component={ChatInboxScreen} options={{ title: "Messages" }} />
+      <ChatStack.Screen
+        name="ChatInbox"
+        component={ChatInboxScreen}
+        options={{ title: "Messages", headerLeft: () => <HamburgerBtn /> }}
+      />
       <ChatStack.Screen
         name="ChatConversation"
         component={ChatConversationScreen as any}
@@ -49,125 +181,122 @@ function ChatNavigator() {
 function ContactsNavigator() {
   return (
     <ContactsStack.Navigator screenOptions={HEADER_OPTS}>
-      <ContactsStack.Screen name="ContactsList" component={ContactsScreen} options={{ title: "Contacts" }} />
+      <ContactsStack.Screen
+        name="ContactsList"
+        component={ContactsScreen}
+        options={{ title: "Contacts", headerLeft: () => <HamburgerBtn /> }}
+      />
       <ContactsStack.Screen
         name="ContactDetail"
         component={ContactDetailScreen as any}
         options={({ route }: any) => ({ title: route.params?.contact?.name || "Contact" })}
       />
-      <ContactsStack.Screen name="Opportunities" component={OpportunitiesScreen} options={{ title: "Deals" }} />
+      <ContactsStack.Screen
+        name="Opportunities"
+        component={OpportunitiesScreen}
+        options={{ title: "Deals" }}
+      />
     </ContactsStack.Navigator>
   );
 }
 
-const NAV_ITEMS = [
-  { name: "Queue",    label: "Work Queue", emoji: "📋" },
-  { name: "Chat",     label: "Messages",   emoji: "💬" },
-  { name: "Contacts", label: "Contacts",   emoji: "👥" },
-  { name: "Tasks",    label: "Tasks",      emoji: "✅" },
-  { name: "Profile",  label: "Profile",    emoji: "👤" },
-];
+/* Screens rendered per active tab */
+function ScreenForTab({ tab }: { tab: string }) {
+  switch (tab) {
+    case "Chat":     return <ChatNavigator />;
+    case "Contacts": return <ContactsNavigator />;
+    case "Tasks":
+      return (
+        <TasksScreen
+          // TasksScreen is a plain component — wrap it with a header via a mini stack
+          {...({} as any)}
+        />
+      );
+    case "Profile":
+      return <ProfileScreen {...({} as any)} />;
+    default:
+      return <WorkQueueScreen {...({} as any)} />;
+  }
+}
 
-function CustomDrawer({ navigation, state }: DrawerContentComponentProps) {
-  const { logout, user } = useAuth();
-  const insets = useSafeAreaInsets();
-  const activeRouteName = state.routes[state.index]?.name;
+/* Mini stack that adds the header+hamburger to flat screens */
+const FlatStack = createNativeStackNavigator();
 
+function FlatScreenWithHeader({ component: Comp, title }: { component: React.ComponentType<any>; title: string }) {
   return (
-    <View style={[drawerStyles.root, { paddingTop: insets.top }]}>
-      {/* User header */}
-      <View style={drawerStyles.header}>
-        <View style={drawerStyles.avatar}>
-          <Text style={drawerStyles.avatarText}>
-            {(user?.email?.[0] ?? "A").toUpperCase()}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={drawerStyles.roleText}>{user?.role ?? "ADMIN"}</Text>
-          <Text style={drawerStyles.emailText} numberOfLines={1}>{user?.email ?? ""}</Text>
-        </View>
-      </View>
-
-      <View style={drawerStyles.divider} />
-
-      {/* Nav items */}
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {NAV_ITEMS.map((item) => {
-          const focused = activeRouteName === item.name;
-          return (
-            <TouchableOpacity
-              key={item.name}
-              style={[drawerStyles.navItem, focused && drawerStyles.navItemActive]}
-              onPress={() => navigation.navigate(item.name)}
-              activeOpacity={0.7}
-            >
-              <Text style={drawerStyles.navEmoji}>{item.emoji}</Text>
-              <Text style={[drawerStyles.navLabel, focused && drawerStyles.navLabelActive]}>
-                {item.label}
-              </Text>
-              {focused && <View style={drawerStyles.activePill} />}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <View style={drawerStyles.divider} />
-
-      {/* Sign out */}
-      <TouchableOpacity
-        style={[drawerStyles.signOut, { paddingBottom: insets.bottom + 12 }]}
-        onPress={logout}
-        activeOpacity={0.7}
-      >
-        <Text style={drawerStyles.signOutEmoji}>🚪</Text>
-        <Text style={drawerStyles.signOutText}>Sign out</Text>
-      </TouchableOpacity>
-    </View>
+    <FlatStack.Navigator screenOptions={HEADER_OPTS}>
+      <FlatStack.Screen
+        name="__screen"
+        component={Comp}
+        options={{ title, headerLeft: () => <HamburgerBtn /> }}
+      />
+    </FlatStack.Navigator>
   );
 }
 
-/* Hamburger icon rendered in the header */
-function HamburgerButton({ onPress }: { onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={drawerStyles.hamburger} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <View style={drawerStyles.line} />
-      <View style={drawerStyles.line} />
-      <View style={drawerStyles.line} />
-    </TouchableOpacity>
-  );
-}
-
+/* Main export */
 export default function AdminDrawer() {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("Queue");
+
+  function navigate(name: string) {
+    setActiveTab(name);
+    setDrawerOpen(false);
+  }
+
+  function renderContent() {
+    switch (activeTab) {
+      case "Chat":
+        return <ChatNavigator />;
+      case "Contacts":
+        return <ContactsNavigator />;
+      case "Tasks":
+        return <FlatScreenWithHeader component={TasksScreen} title="My Tasks" />;
+      case "Profile":
+        return <FlatScreenWithHeader component={ProfileScreen} title="Profile" />;
+      default:
+        return <FlatScreenWithHeader component={WorkQueueScreen} title="Work Queue" />;
+    }
+  }
+
   return (
-    <Drawer.Navigator
-      drawerContent={(props: DrawerContentComponentProps) => <CustomDrawer {...props} />}
-      screenOptions={({ navigation }: any) => ({
-        ...HEADER_OPTS,
-        headerShown: true,
-        drawerStyle: { width: 280 },
-        headerLeft: () => <HamburgerButton onPress={() => navigation.toggleDrawer()} />,
-      })}
-    >
-      <Drawer.Screen name="Queue"    component={WorkQueueScreen}  options={{ title: "Work Queue" }} />
-      <Drawer.Screen name="Chat"     component={ChatNavigator}    options={{ title: "Messages", headerShown: false }} />
-      <Drawer.Screen name="Contacts" component={ContactsNavigator} options={{ title: "Contacts", headerShown: false }} />
-      <Drawer.Screen name="Tasks"    component={TasksScreen}      options={{ title: "My Tasks" }} />
-      <Drawer.Screen name="Profile"  component={ProfileScreen}    options={{ title: "Profile" }} />
-    </Drawer.Navigator>
+    <DrawerCtx.Provider value={{ open: () => setDrawerOpen(true) }}>
+      <View style={{ flex: 1 }}>
+        {renderContent()}
+        <DrawerPanel
+          visible={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          activeTab={activeTab}
+          onNavigate={navigate}
+        />
+      </View>
+    </DrawerCtx.Provider>
   );
 }
 
-const drawerStyles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#fff",
+const styles = StyleSheet.create({
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
-  header: {
+  panel: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 24,
+  },
+  drawerHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingBottom: 16,
   },
   avatar: {
     width: 46,
@@ -186,7 +315,7 @@ const drawerStyles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   emailText: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  divider: { height: 1, backgroundColor: "#f1f5f9", marginHorizontal: 0 },
+  divider: { height: 1, backgroundColor: "#f1f5f9" },
   navItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -201,13 +330,13 @@ const drawerStyles = StyleSheet.create({
   navEmoji: { fontSize: 20, width: 26, textAlign: "center" },
   navLabel: { flex: 1, fontSize: 15, fontWeight: "600", color: "#475569" },
   navLabelActive: { color: "#0f766e", fontWeight: "700" },
-  activePill: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: "#0f766e",
   },
-  signOut: {
+  signOutRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
