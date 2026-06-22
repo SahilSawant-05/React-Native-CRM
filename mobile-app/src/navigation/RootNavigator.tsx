@@ -4,10 +4,11 @@ import { useAuth } from "../auth/AuthContext";
 import { setSessionExpiredCallback } from "../api/client";
 import AuthStack from "./AuthStack";
 import AppTabs from "./AppTabs";
+import AdminDrawer from "./AdminDrawer";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 
 export default function RootNavigator() {
-  const { token, loading, logout } = useAuth();
+  const { token, user, loading, logout } = useAuth();
 
   useEffect(() => {
     setSessionExpiredCallback(logout);
@@ -15,9 +16,11 @@ export default function RootNavigator() {
 
   if (loading) return <LoadingSpinner message="Starting…" />;
 
+  const isAdmin = user?.role === "ADMIN" || user?.role === "OWNER";
+
   return (
     <NavigationContainer>
-      {token ? <AppTabs /> : <AuthStack />}
+      {token ? (isAdmin ? <AdminDrawer /> : <AppTabs />) : <AuthStack />}
     </NavigationContainer>
   );
 }
