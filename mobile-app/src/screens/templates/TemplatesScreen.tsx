@@ -34,7 +34,7 @@ export default function TemplatesScreen() {
   const fetchTemplates = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get("/api/communication-templates?channel=WHATSAPP");
+      const res = await api.get("/api/templates");
       const data = res.data ?? {};
       const items: Template[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
       setTemplates(items);

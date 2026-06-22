@@ -30,7 +30,7 @@ export default function DomainCatalogScreen() {
   const fetchItems = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get("/api/domain-catalog");
+      const res = await api.get("/api/domain-items");
       const data = res.data ?? {};
       const list: DomainItem[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
       setItems(list);

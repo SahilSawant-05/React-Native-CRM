@@ -9,17 +9,19 @@ function normalizeTaskList(data: any): Task[] {
 }
 
 export async function fetchMyTasks(): Promise<Task[]> {
-  try {
-    const res = await api.get("/api/tasks", { params: { assignedToMe: true } });
-    return normalizeTaskList(res.data);
-  } catch (err: any) {
-    // fallback: try without the assignedToMe param
-    if (err?.response?.status === 400 || err?.response?.status === 404) {
-      const res = await api.get("/api/tasks");
+  const endpoints = ["/api/tasks/my-tasks", "/api/tasks?assignedToMe=true", "/api/tasks"];
+  let lastErr: any;
+  for (const url of endpoints) {
+    try {
+      const res = await api.get(url);
       return normalizeTaskList(res.data);
+    } catch (err: any) {
+      lastErr = err;
+      const status = err?.response?.status;
+      if (status !== 404 && status !== 400 && status !== 405 && status !== 500) throw err;
     }
-    throw err;
   }
+  throw lastErr;
 }
 
 export async function updateTaskStatus(id: string | number, status: string): Promise<Task> {
