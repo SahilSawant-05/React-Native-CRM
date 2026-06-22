@@ -26,6 +26,7 @@ import ProfileScreen from "../screens/profile/ProfileScreen";
 
 // New admin screens
 import MailScreen from "../screens/mail/MailScreen";
+import MailDetailScreen from "../screens/mail/Maildetailscreen";
 import NotificationsScreen from "../screens/notifications/NotificationsScreen";
 import PipelineScreen from "../screens/pipeline/PipelineScreen";
 import MediaLibraryScreen from "../screens/media/MediaLibraryScreen";
@@ -37,8 +38,11 @@ import WhatsAppSetupScreen from "../screens/whatsapp/WhatsAppSetupScreen";
 import UploadLeadsScreen from "../screens/upload/UploadLeadsScreen";
 import BillingScreen from "../screens/billing/BillingScreen";
 
+// ─── Stacks ───────────────────────────────────────────────────────────────────
+
 const ChatStack = createNativeStackNavigator();
 const ContactsStack = createNativeStackNavigator();
+const MailStack = createNativeStackNavigator(); // ← added
 const FlatStack = createNativeStackNavigator();
 
 const DRAWER_WIDTH = Math.min(Dimensions.get("window").width * 0.82, 310);
@@ -57,37 +61,37 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Workspace",
     items: [
-      { name: "Queue",         label: "Work Queue",     emoji: "📋" },
-      { name: "Chat",          label: "Messages",        emoji: "💬" },
-      { name: "Mail",          label: "Mail",            emoji: "✉️" },
-      { name: "Tasks",         label: "Tasks",           emoji: "✅" },
-      { name: "Notifications", label: "Notifications",   emoji: "🔔" },
+      { name: "Queue",         label: "Work Queue",      emoji: "📋" },
+      { name: "Chat",          label: "Messages",         emoji: "💬" },
+      { name: "Mail",          label: "Mail",             emoji: "✉️" },
+      { name: "Tasks",         label: "Tasks",            emoji: "✅" },
+      { name: "Notifications", label: "Notifications",    emoji: "🔔" },
     ],
   },
   {
     title: "CRM",
     items: [
-      { name: "Contacts",      label: "Contacts",        emoji: "👥" },
-      { name: "Pipeline",      label: "Pipeline",        emoji: "🔀" },
-      { name: "DomainCatalog", label: "Domain Catalog",  emoji: "🗂️" },
-      { name: "MediaLibrary",  label: "Media Library",   emoji: "🖼️" },
+      { name: "Contacts",      label: "Contacts",         emoji: "👥" },
+      { name: "Pipeline",      label: "Pipeline",         emoji: "🔀" },
+      { name: "DomainCatalog", label: "Domain Catalog",   emoji: "🗂️" },
+      { name: "MediaLibrary",  label: "Media Library",    emoji: "🖼️" },
     ],
   },
   {
     title: "Marketing",
     items: [
-      { name: "Templates",     label: "Templates",       emoji: "📝" },
+      { name: "Templates",     label: "Templates",        emoji: "📝" },
       { name: "Campaigns",     label: "Campaign Builder", emoji: "📣" },
     ],
   },
   {
     title: "Admin",
     items: [
-      { name: "CrmSettings",   label: "CRM Settings",    emoji: "⚙️" },
-      { name: "WhatsAppSetup", label: "WhatsApp Setup",  emoji: "📱" },
-      { name: "UploadLeads",   label: "Upload Leads",    emoji: "⬆️" },
-      { name: "Billing",       label: "Billing",         emoji: "💳" },
-      { name: "Profile",       label: "Profile",         emoji: "👤" },
+      { name: "CrmSettings",   label: "CRM Settings",     emoji: "⚙️" },
+      { name: "WhatsAppSetup", label: "WhatsApp Setup",   emoji: "📱" },
+      { name: "UploadLeads",   label: "Upload Leads",     emoji: "⬆️" },
+      { name: "Billing",       label: "Billing",          emoji: "💳" },
+      { name: "Profile",       label: "Profile",          emoji: "👤" },
     ],
   },
 ];
@@ -201,14 +205,21 @@ function DrawerPanel({
   );
 }
 
-/* Sub-navigators */
+// ─── Sub-navigators ───────────────────────────────────────────────────────────
+
 function ChatNavigator() {
   return (
     <ChatStack.Navigator screenOptions={HEADER_OPTS}>
-      <ChatStack.Screen name="ChatInbox" component={ChatInboxScreen}
-        options={{ title: "Messages", headerLeft: () => <HamburgerBtn /> }} />
-      <ChatStack.Screen name="ChatConversation" component={ChatConversationScreen as any}
-        options={({ route }: any) => ({ title: route.params?.inbox?.contactName || "Chat" })} />
+      <ChatStack.Screen
+        name="ChatInbox"
+        component={ChatInboxScreen}
+        options={{ title: "Messages", headerLeft: () => <HamburgerBtn /> }}
+      />
+      <ChatStack.Screen
+        name="ChatConversation"
+        component={ChatConversationScreen as any}
+        options={({ route }: any) => ({ title: route.params?.inbox?.contactName || "Chat" })}
+      />
     </ChatStack.Navigator>
   );
 }
@@ -216,13 +227,42 @@ function ChatNavigator() {
 function ContactsNavigator() {
   return (
     <ContactsStack.Navigator screenOptions={HEADER_OPTS}>
-      <ContactsStack.Screen name="ContactsList" component={ContactsScreen}
-        options={{ title: "Contacts", headerLeft: () => <HamburgerBtn /> }} />
-      <ContactsStack.Screen name="ContactDetail" component={ContactDetailScreen as any}
-        options={({ route }: any) => ({ title: route.params?.contact?.name || "Contact" })} />
-      <ContactsStack.Screen name="Opportunities" component={OpportunitiesScreen}
-        options={{ title: "Deals" }} />
+      <ContactsStack.Screen
+        name="ContactsList"
+        component={ContactsScreen}
+        options={{ title: "Contacts", headerLeft: () => <HamburgerBtn /> }}
+      />
+      <ContactsStack.Screen
+        name="ContactDetail"
+        component={ContactDetailScreen as any}
+        options={({ route }: any) => ({ title: route.params?.contact?.name || "Contact" })}
+      />
+      <ContactsStack.Screen
+        name="Opportunities"
+        component={OpportunitiesScreen}
+        options={{ title: "Deals" }}
+      />
     </ContactsStack.Navigator>
+  );
+}
+
+// ─── MailNavigator (NEW) ──────────────────────────────────────────────────────
+// Gives MailScreen its own stack so it can push MailDetail.
+
+function MailNavigator() {
+  return (
+    <MailStack.Navigator screenOptions={HEADER_OPTS}>
+      <MailStack.Screen
+        name="MailList"
+        component={MailScreen}
+        options={{ title: "Mail", headerLeft: () => <HamburgerBtn /> }}
+      />
+      <MailStack.Screen
+        name="MailDetail"
+        component={MailDetailScreen}
+        options={{ title: "Email", headerShown: false }}
+      />
+    </MailStack.Navigator>
   );
 }
 
@@ -231,17 +271,22 @@ function withHeader(Comp: React.ComponentType<any>, title: string) {
   return function WrappedScreen() {
     return (
       <FlatStack.Navigator screenOptions={HEADER_OPTS}>
-        <FlatStack.Screen name="__flat" component={Comp}
-          options={{ title, headerLeft: () => <HamburgerBtn /> }} />
+        <FlatStack.Screen
+          name="__flat"
+          component={Comp}
+          options={{ title, headerLeft: () => <HamburgerBtn /> }}
+        />
       </FlatStack.Navigator>
     );
   };
 }
 
+// ─── Screen map ───────────────────────────────────────────────────────────────
+
 const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Queue:         withHeader(WorkQueueScreen,    "Work Queue"),
   Chat:          ChatNavigator,
-  Mail:          withHeader(MailScreen,          "Mail"),
+  Mail:          MailNavigator,           // ← was withHeader(MailScreen, "Mail")
   Tasks:         withHeader(TasksScreen,         "My Tasks"),
   Notifications: withHeader(NotificationsScreen, "Notifications"),
   Contacts:      ContactsNavigator,
@@ -257,7 +302,8 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Profile:       withHeader(ProfileScreen,       "Profile"),
 };
 
-/* Main export */
+// ─── Main export ──────────────────────────────────────────────────────────────
+
 export default function AdminDrawer() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Queue");
@@ -284,23 +330,52 @@ export default function AdminDrawer() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-  panel: { position: "absolute", top: 0, bottom: 0, left: 0, backgroundColor: "#fff", shadowColor: "#000", shadowOffset: { width: 4, height: 0 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 24 },
-  drawerHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingBottom: 16 },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#ccfbf1", alignItems: "center", justifyContent: "center" },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  panel: {
+    position: "absolute", top: 0, bottom: 0, left: 0,
+    backgroundColor: "#fff",
+    shadowColor: "#000", shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.18, shadowRadius: 12, elevation: 24,
+  },
+  drawerHeader: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 20, paddingBottom: 16,
+  },
+  avatar: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "#ccfbf1", alignItems: "center", justifyContent: "center",
+  },
   avatarText: { fontSize: 18, fontWeight: "800", color: "#0f766e" },
-  roleText: { fontSize: 11, fontWeight: "700", color: "#0f766e", textTransform: "uppercase", letterSpacing: 1.2 },
+  roleText: {
+    fontSize: 11, fontWeight: "700", color: "#0f766e",
+    textTransform: "uppercase", letterSpacing: 1.2,
+  },
   emailText: { fontSize: 12, color: "#64748b", marginTop: 2 },
   divider: { height: 1, backgroundColor: "#f1f5f9" },
-  sectionTitle: { fontSize: 10, fontWeight: "700", color: "#94a3b8", letterSpacing: 1.5, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 },
-  navItem: { flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: 10, marginVertical: 1, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10 },
+  sectionTitle: {
+    fontSize: 10, fontWeight: "700", color: "#94a3b8",
+    letterSpacing: 1.5, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4,
+  },
+  navItem: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    marginHorizontal: 10, marginVertical: 1,
+    paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10,
+  },
   navItemActive: { backgroundColor: "#f0fdfa" },
   navEmoji: { fontSize: 18, width: 24, textAlign: "center" },
   navLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#475569" },
   navLabelActive: { color: "#0f766e", fontWeight: "700" },
   activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0f766e" },
-  signOutRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 22, paddingVertical: 14 },
+  signOutRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 22, paddingVertical: 14,
+  },
   signOutEmoji: { fontSize: 18 },
   signOutText: { fontSize: 14, fontWeight: "600", color: "#ef4444" },
   hamburger: { marginLeft: Platform.OS === "ios" ? 16 : 14, gap: 5, paddingVertical: 4 },

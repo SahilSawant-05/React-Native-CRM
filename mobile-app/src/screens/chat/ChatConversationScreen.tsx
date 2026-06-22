@@ -165,7 +165,9 @@ export default function ChatConversationScreen({ route }: Props) {
             <MessageBubble message={item} prevMessage={messages[index - 1]} />
           )}
           // Scroll to top loads older messages
-          onStartReached={() => { if (!loadingMore && page + 1 < totalPages) load(page + 1); }}
+          onStartReached={() => {
+            if (!loadingMore && page + 1 < totalPages) load(page + 1);
+          }}
           onStartReachedThreshold={0.2}
           contentContainerStyle={styles.messageList}
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
