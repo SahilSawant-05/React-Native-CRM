@@ -41,8 +41,10 @@ export default function MediaLibraryScreen() {
   const fetchAssets = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get<{ content: MediaAsset[] }>("/api/media-assets?page=0&size=20");
-      setAssets(res.data.content);
+      const res = await api.get("/api/media-assets?page=0&size=20");
+      const data = res.data ?? {};
+      const items: MediaAsset[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+      setAssets(items);
     } catch (e: any) {
       setError(e?.message || "Failed to load media assets");
     } finally {

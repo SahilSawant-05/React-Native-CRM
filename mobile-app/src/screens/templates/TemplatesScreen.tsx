@@ -34,8 +34,10 @@ export default function TemplatesScreen() {
   const fetchTemplates = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get<Template[]>("/api/communication-templates?channel=WHATSAPP");
-      setTemplates(res.data);
+      const res = await api.get("/api/communication-templates?channel=WHATSAPP");
+      const data = res.data ?? {};
+      const items: Template[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+      setTemplates(items);
     } catch (e: any) {
       setError(e?.message || "Failed to load templates");
     } finally {

@@ -37,8 +37,10 @@ export default function CampaignsScreen() {
   const fetchCampaigns = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get<{ content: Campaign[] }>("/api/campaigns?page=0&size=20");
-      setCampaigns(res.data.content);
+      const res = await api.get("/api/campaigns?page=0&size=20");
+      const data = res.data ?? {};
+      const items: Campaign[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+      setCampaigns(items);
     } catch (e: any) {
       setError(e?.message || "Failed to load campaigns");
     } finally {

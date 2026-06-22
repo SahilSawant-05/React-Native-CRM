@@ -30,8 +30,10 @@ export default function DomainCatalogScreen() {
   const fetchItems = useCallback(async () => {
     try {
       setError(null);
-      const res = await api.get<DomainItem[]>("/api/domain-catalog");
-      setItems(res.data);
+      const res = await api.get("/api/domain-catalog");
+      const data = res.data ?? {};
+      const list: DomainItem[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+      setItems(list);
     } catch (e: any) {
       setError(e?.message || "Failed to load catalog");
     } finally {
