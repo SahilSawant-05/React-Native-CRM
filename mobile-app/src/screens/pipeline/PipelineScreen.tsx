@@ -46,8 +46,9 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
 
 function normalize(data: any): Opportunity[] {
   if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.content)) return data.content;
   if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.content)) return data.content;
+  if (Array.isArray(data?.data)) return data.data;
   return [];
 }
 
@@ -238,22 +239,27 @@ export default function PipelineScreen() {
   const [search, setSearch] = useState("");
 
   const fetchOpps = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await api.get("/api/opportunities/page", { params: { page: 0, size: 100 } });
-      setOpps(normalize(res.data));
-    } catch (e1: any) {
-      // fallback endpoints
+    setError(null);
+    const endpoints = [
+      "/api/opportunities/page",
+      "/api/opportunities",
+    ];
+    let lastErr: any;
+    for (const ep of endpoints) {
       try {
-        const res2 = await api.get("/api/opportunities", { params: { page: 0, size: 100 } });
-        setOpps(normalize(res2.data));
-      } catch (e2: any) {
-        setError(e2?.response?.data?.message || e2?.message || "Failed to load pipeline");
+        const res = await api.get(ep, { params: { page: 0, size: 200 } });
+        const data = normalize(res.data);
+        setOpps(data);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      } catch (e: any) {
+        lastErr = e;
       }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
     }
+    setError(lastErr?.response?.data?.message || lastErr?.message || "Failed to load pipeline");
+    setLoading(false);
+    setRefreshing(false);
   }, []);
 
   useFocusEffect(useCallback(() => {

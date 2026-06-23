@@ -89,5 +89,5 @@ export async function markAsRead(contactId: string | number): Promise<void> {
 }
 
 export async function sendTextMessage(contactId: string | number, body: string): Promise<void> {
-  await api.post("/api/messages/send-whatsapp", { contactId, body });
+  await api.post("/api/messages/send-whatsapp", { contactId, text: body });
 }

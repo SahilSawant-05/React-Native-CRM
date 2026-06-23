@@ -98,13 +98,14 @@ export default function UploadLeadsScreen() {
 
       const formData = new FormData();
       formData.append("file", {
-        uri: Platform.OS === "ios" ? file.uri.replace("file://", "") : file.uri,
+        uri: file.uri,
         name: file.name ?? "upload.csv",
         type: file.mimeType ?? "text/csv",
       } as any);
 
       const res = await api.post("/api/contacts/upload/preview", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        transformRequest: (data: any) => data,
       });
 
       const data: PreviewData = res.data;

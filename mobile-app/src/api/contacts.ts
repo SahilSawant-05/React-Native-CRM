@@ -47,7 +47,7 @@ export async function fetchContacts(params: {
       params: {
         page: params.page ?? 0,
         size: params.size ?? 20,
-        ...(params.search ? { search: params.search } : {}),
+        ...(params.search ? { query: params.search } : {}),
       },
     });
     return normalizePage(res.data);
