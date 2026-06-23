@@ -4,10 +4,8 @@
     "slug": "crm-agent-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-   
     "userInterfaceStyle": "light",
     "splash": {
-     
       "resizeMode": "contain",
       "backgroundColor": "#0f766e"
     },
@@ -17,14 +15,16 @@
     },
     "android": {
       "adaptiveIcon": {
-      
         "backgroundColor": "#0f766e"
       },
       "package": "com.techoceanhub.crmagent"
     },
-    "web": {
-      
-    },
-    "plugins": []
+    "web": {},
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "b76117df-ae59-42ab-a8f1-ad119b9ff181"
+      }
+    }
   }
 }
