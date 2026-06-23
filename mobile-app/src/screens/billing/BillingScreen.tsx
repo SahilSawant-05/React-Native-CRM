@@ -93,43 +93,47 @@ export default function BillingScreen() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
-    setError(null);
-    try {
-      const res = await api.get("/api/tenant/billing");
-      setBilling(res.data ?? null);
-    } catch (e: any) {
-      // Try alternate endpoint
-      try {
-        const res2 = await api.get("/api/tenant/subscription");
-        setBilling(res2.data ?? null);
-      } catch {
-        setError("Billing info not available");
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  setError(null);
 
-    // Fetch invoices separately (non-blocking)
-    setInvoicesLoading(true);
-    try {
-      const endpoints = ["/api/invoices", "/api/tenant/invoices", "/api/billing/invoices"];
-      for (const ep of endpoints) {
-        try {
-          const r = await api.get(ep, { params: { page: 0, size: 20 } });
-          const data = r.data;
-          const items: Invoice[] = Array.isArray(data) ? data
-            : Array.isArray(data?.items) ? data.items
-            : Array.isArray(data?.content) ? data.content
-            : [];
-          setInvoices(items);
-          break;
-        } catch { /* try next */ }
-      }
-    } catch { /* no invoices */ } finally {
-      setInvoicesLoading(false);
-    }
-  }, []);
+  try {
+    const [summaryRes, paymentsRes, profileRes] = await Promise.all([
+      api.get("/api/billing/summary"),
+      api.get("/api/billing/payments"),
+      api.get("/api/tenant/billing-profile"),
+    ]);
+
+    const summary = summaryRes.data;
+
+    setBilling({
+      planName: summary?.planKey,
+      status: summary?.subscriptionStatus,
+      billingCycle: summary?.subscription?.billingCycle,
+      nextBillingDate: summary?.subscription?.currentPeriodEnd,
+
+      maxContacts: summary?.usage?.contactsLimit,
+      currentContacts: summary?.usage?.contactsUsed,
+
+      maxUsers: summary?.usage?.seatsLimit,
+      currentUsers: summary?.usage?.seatsUsed,
+
+      tenantName: profileRes.data?.billingCompanyName,
+      email: profileRes.data?.billingEmail,
+    });
+
+    setInvoices(
+      Array.isArray(paymentsRes.data)
+        ? paymentsRes.data
+        : []
+    );
+  } catch (err) {
+    console.error(err);
+    setError("Billing information not available");
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+    setInvoicesLoading(false);
+  }
+}, []);
 
   useFocusEffect(useCallback(() => {
     setLoading(true);

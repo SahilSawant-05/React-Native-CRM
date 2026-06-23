@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { RouteProp } from "@react-navigation/native";
-import * as DocumentPicker from "expo-document-picker";
 import { fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "../../api/chat";
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -31,6 +30,16 @@ interface Template {
   metaTemplateName?: string;
   category?: string;
   body?: string;
+}
+
+// Media asset returned by the /api/media-assets endpoint (same shape the web app uses)
+interface MediaAsset {
+  id: string | number;
+  publicUrl: string;
+  mediaType: string;        // "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO"
+  originalFileName?: string;
+  name?: string;
+  createdAt?: string;
 }
 
 function formatTime(dateStr?: string) {
@@ -57,18 +66,17 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
 
   if (mt === "IMAGE" || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) {
     return (
-      <Image
-        source={{ uri: url }}
-        style={styles.mediaImage}
-        resizeMode="cover"
-      />
+      <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
     );
   }
   const emoji = mt === "VIDEO" ? "🎬" : mt === "AUDIO" ? "🎵" : "📎";
   return (
     <View style={styles.mediaFile}>
       <Text style={{ fontSize: 22 }}>{emoji}</Text>
-      <Text style={[styles.mediaFileName, isOut && { color: "rgba(255,255,255,0.85)" }]} numberOfLines={1}>
+      <Text
+        style={[styles.mediaFileName, isOut && { color: "rgba(255,255,255,0.85)" }]}
+        numberOfLines={1}
+      >
         {message.mediaFileName || "Attachment"}
       </Text>
     </View>
@@ -80,9 +88,12 @@ function MessageBubble({ message, prevMessage }: { message: Message; prevMessage
   const text = message.textBody || message.body || message.text || "";
   const time = message.createdAt || message.timestamp;
 
+  // In an inverted list prevMessage is the older message just above this one.
+  // Show the date separator BELOW this bubble (rendered above in inverted list)
+  // when it belongs to a different day than the older neighbour.
   const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
   const thisDate = formatDate(time);
-  const showDateSep = prevDate !== thisDate;
+  const showDateSep = prevDate !== null && prevDate !== thisDate;
 
   return (
     <>
@@ -114,7 +125,8 @@ function MessageBubble({ message, prevMessage }: { message: Message; prevMessage
 function TemplatePicker({
   visible, onClose, onSelect,
 }: {
-  visible: boolean; onClose: () => void;
+  visible: boolean;
+  onClose: () => void;
   onSelect: (t: Template) => void;
 }) {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -123,18 +135,32 @@ function TemplatePicker({
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    api.get("/api/templates")
-      .then(r => {
+    api
+      .get("/api/templates")
+      .then((r) => {
         const d = r.data ?? {};
-        const items: Template[] = Array.isArray(d) ? d : Array.isArray(d.items) ? d.items : Array.isArray(d.content) ? d.content : [];
-        setTemplates(items.filter(t => (t as any).status === "APPROVED" || !(t as any).status));
+        const items: Template[] = Array.isArray(d)
+          ? d
+          : Array.isArray(d.items)
+          ? d.items
+          : Array.isArray(d.content)
+          ? d.content
+          : [];
+        setTemplates(
+          items.filter((t) => (t as any).status === "APPROVED" || !(t as any).status)
+        );
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [visible]);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
         <View style={tpStyles.header}>
           <Text style={tpStyles.title}>Send Template</Text>
@@ -147,14 +173,28 @@ function TemplatePicker({
         ) : (
           <FlatList
             data={templates}
-            keyExtractor={t => String(t.id)}
+            keyExtractor={(t) => String(t.id)}
             contentContainerStyle={{ padding: 16 }}
-            ListEmptyComponent={<Text style={{ color: "#94a3b8", textAlign: "center", marginTop: 40 }}>No approved templates</Text>}
+            ListEmptyComponent={
+              <Text style={{ color: "#94a3b8", textAlign: "center", marginTop: 40 }}>
+                No approved templates
+              </Text>
+            }
             renderItem={({ item }) => (
-              <TouchableOpacity style={tpStyles.row} onPress={() => onSelect(item)} activeOpacity={0.7}>
-                <Text style={tpStyles.name}>{item.metaTemplateName || item.name || "(unnamed)"}</Text>
+              <TouchableOpacity
+                style={tpStyles.row}
+                onPress={() => onSelect(item)}
+                activeOpacity={0.7}
+              >
+                <Text style={tpStyles.name}>
+                  {item.metaTemplateName || item.name || "(unnamed)"}
+                </Text>
                 {!!item.category && <Text style={tpStyles.cat}>{item.category}</Text>}
-                {!!item.body && <Text style={tpStyles.body} numberOfLines={2}>{item.body}</Text>}
+                {!!item.body && (
+                  <Text style={tpStyles.body} numberOfLines={2}>
+                    {item.body}
+                  </Text>
+                )}
               </TouchableOpacity>
             )}
           />
@@ -165,36 +205,290 @@ function TemplatePicker({
 }
 
 const tpStyles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 20, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
   title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
   closeBtn: { backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   closeBtnText: { color: "#475569", fontWeight: "600" },
-  row: { backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#e2e8f0" },
+  row: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
   name: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
   cat: { fontSize: 11, color: "#0f766e", marginTop: 3, fontWeight: "600" },
   body: { fontSize: 12, color: "#64748b", marginTop: 6, lineHeight: 17 },
 });
 
+// ─── Media Library Picker Modal ───────────────────────────────────────────────
+// Mirrors web's MediaLibraryDialog: fetches already-hosted assets from the CRM
+// and returns a publicUrl — no file upload needed.
+
+function MediaLibraryPicker({
+  visible,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (asset: MediaAsset) => void;
+}) {
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"ALL" | "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO">("ALL");
+
+  useEffect(() => {
+    if (!visible) return;
+    setLoading(true);
+    setError("");
+    api
+      .get("/api/media-assets")
+      .then((r) => {
+        const d = r.data ?? {};
+        const items: MediaAsset[] = Array.isArray(d)
+          ? d
+          : Array.isArray(d.items)
+          ? d.items
+          : Array.isArray(d.content)
+          ? d.content
+          : [];
+        setAssets(items);
+      })
+      .catch((err) => {
+        setError(err?.response?.data?.message || err?.message || "Failed to load media");
+      })
+      .finally(() => setLoading(false));
+  }, [visible]);
+
+  const filtered =
+    filter === "ALL" ? assets : assets.filter((a) => a.mediaType === filter);
+
+  const filterTypes: Array<"ALL" | "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO"> = [
+    "ALL", "IMAGE", "VIDEO", "DOCUMENT", "AUDIO",
+  ];
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+        {/* Header */}
+        <View style={mlStyles.header}>
+          <Text style={mlStyles.title}>Media Library</Text>
+          <TouchableOpacity onPress={onClose} style={mlStyles.closeBtn}>
+            <Text style={mlStyles.closeBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={mlStyles.hint}>
+          Tap any asset to send it. These are already-hosted public URLs — no upload needed.
+        </Text>
+
+        {/* Type filter tabs */}
+        <View style={mlStyles.filterRow}>
+          {filterTypes.map((type) => (
+            <TouchableOpacity
+              key={type}
+              onPress={() => setFilter(type)}
+              style={[mlStyles.filterBtn, filter === type && mlStyles.filterBtnActive]}
+            >
+              <Text style={[mlStyles.filterText, filter === type && mlStyles.filterTextActive]}>
+                {type}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 40 }} color="#0f766e" />
+        ) : error ? (
+          <Text style={mlStyles.errorText}>{error}</Text>
+        ) : filtered.length === 0 ? (
+          <Text style={mlStyles.emptyText}>
+            No {filter === "ALL" ? "" : filter.toLowerCase() + " "}assets found.{"\n"}
+            Upload files from the web CRM → Media Library first.
+          </Text>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={{ padding: 12, gap: 10 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={mlStyles.assetRow}
+                onPress={() => onSelect(item)}
+                activeOpacity={0.7}
+              >
+                {item.mediaType === "IMAGE" && item.publicUrl ? (
+                  <Image
+                    source={{ uri: item.publicUrl }}
+                    style={mlStyles.thumb}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[mlStyles.thumb, mlStyles.thumbPlaceholder]}>
+                    <Text style={{ fontSize: 28 }}>
+                      {item.mediaType === "VIDEO"
+                        ? "🎬"
+                        : item.mediaType === "AUDIO"
+                        ? "🎵"
+                        : "📄"}
+                    </Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={mlStyles.assetName} numberOfLines={1}>
+                    {item.originalFileName || item.name || "Untitled"}
+                  </Text>
+                  <Text style={mlStyles.assetType}>{item.mediaType}</Text>
+                  {!!item.createdAt && (
+                    <Text style={mlStyles.assetDate}>
+                      {new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(
+                        new Date(item.createdAt)
+                      )}
+                    </Text>
+                  )}
+                </View>
+                <Text style={mlStyles.selectArrow}>›</Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const mlStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  closeBtn: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  closeBtnText: { color: "#475569", fontWeight: "600" },
+  hint: {
+    fontSize: 12,
+    color: "#64748b",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#f0fdf4",
+    borderBottomWidth: 1,
+    borderBottomColor: "#d1fae5",
+  },
+  filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  filterBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+  },
+  filterBtnActive: { backgroundColor: "#0f766e" },
+  filterText: { fontSize: 11, fontWeight: "600", color: "#64748b" },
+  filterTextActive: { color: "#fff" },
+  assetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  thumb: { width: 56, height: 56, borderRadius: 8 },
+  thumbPlaceholder: {
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assetName: { fontSize: 13, fontWeight: "600", color: "#0f172a" },
+  assetType: { fontSize: 11, color: "#0f766e", marginTop: 2, fontWeight: "600" },
+  assetDate: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
+  selectArrow: { fontSize: 22, color: "#94a3b8" },
+  errorText: { color: "#ef4444", textAlign: "center", marginTop: 40, paddingHorizontal: 20 },
+  emptyText: {
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 40,
+    paddingHorizontal: 24,
+    lineHeight: 22,
+  },
+});
+
 // ─── Attachment action sheet ──────────────────────────────────────────────────
 
 function AttachMenu({
-  visible, onClose,
-  onTemplate, onDocument,
+  visible,
+  onClose,
+  onTemplate,
+  onMediaLibrary,
 }: {
-  visible: boolean; onClose: () => void;
-  onTemplate: () => void; onDocument: () => void;
+  visible: boolean;
+  onClose: () => void;
+  onTemplate: () => void;
+  onMediaLibrary: () => void;
 }) {
   if (!visible) return null;
   return (
     <TouchableOpacity style={amStyles.overlay} activeOpacity={1} onPress={onClose}>
       <View style={amStyles.sheet}>
-        <TouchableOpacity style={amStyles.item} onPress={() => { onClose(); onTemplate(); }}>
+        <TouchableOpacity
+          style={amStyles.item}
+          onPress={() => {
+            onClose();
+            onTemplate();
+          }}
+        >
           <Text style={amStyles.emoji}>📝</Text>
-          <Text style={amStyles.label}>Send Template</Text>
+          <View>
+            <Text style={amStyles.label}>Send Template</Text>
+            <Text style={amStyles.sublabel}>WhatsApp approved templates</Text>
+          </View>
         </TouchableOpacity>
-        <TouchableOpacity style={amStyles.item} onPress={() => { onClose(); onDocument(); }}>
-          <Text style={amStyles.emoji}>📎</Text>
-          <Text style={amStyles.label}>Send Document / Image</Text>
+        <TouchableOpacity
+          style={amStyles.item}
+          onPress={() => {
+            onClose();
+            onMediaLibrary();
+          }}
+        >
+          <Text style={amStyles.emoji}>🖼️</Text>
+          <View>
+            <Text style={amStyles.label}>Send Media</Text>
+            <Text style={amStyles.sublabel}>Images, videos, documents from CRM library</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity style={amStyles.cancel} onPress={onClose}>
           <Text style={amStyles.cancelText}>Cancel</Text>
@@ -205,11 +499,30 @@ function AttachMenu({
 }
 
 const amStyles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end", zIndex: 99 },
-  sheet: { backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, paddingBottom: 30 },
-  item: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+    zIndex: 99,
+  },
+  sheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    paddingBottom: 30,
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
   emoji: { fontSize: 24 },
   label: { fontSize: 15, fontWeight: "600", color: "#1e293b" },
+  sublabel: { fontSize: 11, color: "#94a3b8", marginTop: 2 },
   cancel: { marginTop: 10, alignItems: "center", paddingVertical: 12 },
   cancelText: { fontSize: 15, color: "#ef4444", fontWeight: "600" },
 });
@@ -228,36 +541,42 @@ export default function ChatConversationScreen({ route }: Props) {
   const [totalPages, setTotalPages] = useState(1);
   const [attachOpen, setAttachOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const initialScrollDone = useRef(false);
 
-  const load = useCallback(async (p = 0) => {
-    if (p === 0) setLoading(true);
-    else setLoadingMore(true);
-    setError("");
-    try {
-      const data = await fetchMessages(inbox.contactId, p);
-      const content = [...(data.content ?? [])].reverse();
-      setMessages((prev) => (p === 0 ? content : [...content, ...prev]));
-      setTotalPages(data.totalPages ?? 1);
-      setPage(p);
-      if (p === 0) initialScrollDone.current = false;
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || "Failed to load messages");
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [inbox.contactId]);
+  const load = useCallback(
+    async (p = 0) => {
+      if (p === 0) setLoading(true);
+      else setLoadingMore(true);
+      setError("");
+      try {
+        const data = await fetchMessages(inbox.contactId, p);
+        // Newest-first order for the inverted FlatList (index 0 = bottom of screen).
+        // Page 0 has the most recent messages; older pages are appended further down.
+        const content = [...(data.content ?? [])];
+        setMessages((prev) => (p === 0 ? content : [...prev, ...content]));
+        setTotalPages(data.totalPages ?? 1);
+        setPage(p);
+      } catch (err: any) {
+        setError(
+          err?.response?.data?.message || err.message || "Failed to load messages"
+        );
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [inbox.contactId]
+  );
 
   useEffect(() => {
     load(0);
     markAsRead(inbox.contactId).catch(() => {});
   }, []);
 
+  // Inverted list: prepending puts the new message at the bottom instantly.
   const appendOptimistic = (msg: Message) => {
-    setMessages((prev) => [...prev, msg]);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    setMessages((prev) => [msg, ...prev]);
   };
 
   async function handleSend() {
@@ -303,63 +622,47 @@ export default function ChatConversationScreen({ route }: Props) {
       });
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      setError(err?.response?.data?.message || err?.message || "Failed to send template");
+      setError(
+        err?.response?.data?.message || err?.message || "Failed to send template"
+      );
     } finally {
       setSending(false);
     }
   }
 
-  async function handleSendDocument() {
+  // ── Send media from CRM library (no upload — uses already-hosted publicUrl) ─
+  async function handleSendMediaAsset(asset: MediaAsset) {
+    setMediaLibraryOpen(false);
+    if (!asset.publicUrl) {
+      setError("Selected asset has no public URL. Re-upload it from the web CRM.");
+      return;
+    }
+
+    setSending(true);
+    const optimistic: Message = {
+      id: `temp-${Date.now()}`,
+      mediaUrl: asset.publicUrl,
+      mediaType: asset.mediaType,
+      mediaFileName: asset.originalFileName || asset.name || "Attachment",
+      direction: "OUTBOUND",
+      createdAt: new Date().toISOString(),
+      status: "SENT",
+    };
+    appendOptimistic(optimistic);
+
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
+      // Identical to what the web app does in sendMediaMessage()
+      await api.post("/api/messages/send-whatsapp/media", {
+        contactId: inbox.contactId,
+        mediaType: asset.mediaType,
+        mediaUrl: asset.publicUrl,
+        fileName: asset.originalFileName || asset.name || null,
       });
-      if (result.canceled || !result.assets?.length) return;
-      const file = result.assets[0];
-
-      const mt = file.mimeType ?? "";
-      const mediaType = mt.startsWith("image/") ? "IMAGE"
-        : mt.startsWith("video/") ? "VIDEO"
-        : mt.startsWith("audio/") ? "AUDIO"
-        : "DOCUMENT";
-
-      setSending(true);
-      const optimistic: Message = {
-        id: `temp-${Date.now()}`,
-        mediaUrl: file.uri,
-        mediaType,
-        mediaFileName: file.name,
-        direction: "OUTBOUND",
-        createdAt: new Date().toISOString(),
-        status: "SENT",
-      };
-      appendOptimistic(optimistic);
-
-      const formData = new FormData();
-      formData.append("file", {
-        uri: Platform.OS === "ios" ? file.uri.replace("file://", "") : file.uri,
-        name: file.name ?? "attachment",
-        type: mt || "application/octet-stream",
-      } as any);
-      formData.append("contactId", String(inbox.contactId));
-      formData.append("mediaType", mediaType);
-
-      const uploadRes = await api.post("/api/media-assets/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const mediaUrl = uploadRes.data?.publicUrl || uploadRes.data?.url || uploadRes.data?.mediaUrl;
-
-      if (mediaUrl) {
-        await api.post("/api/messages/send-whatsapp/media", {
-          contactId: inbox.contactId,
-          mediaType,
-          mediaUrl,
-          fileName: file.name,
-        });
-      }
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || "Failed to send file");
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      setError(
+        err?.response?.data?.message || err?.message || "Failed to send media"
+      );
     } finally {
       setSending(false);
     }
@@ -376,41 +679,47 @@ export default function ChatConversationScreen({ route }: Props) {
       >
         {!!error && <ErrorBanner message={error} />}
 
-        {loadingMore && (
-          <ActivityIndicator color="#0f766e" style={{ marginVertical: 8 }} />
-        )}
-
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item, index) =>
-            String(item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index)
+            String(
+              item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index
+            )
           }
+          // inverted=true flips the list so index-0 sits at the bottom, exactly
+          // like WhatsApp. Newest messages (prepended) appear at the bottom.
+          inverted
           renderItem={({ item, index }) => (
-            <MessageBubble message={item} prevMessage={messages[index - 1]} />
+            // In an inverted list index 0 is the newest message (bottom).
+            // The "previous" message in time is at index+1 (above it).
+            <MessageBubble message={item} prevMessage={messages[index + 1]} />
           )}
-          onStartReached={() => {
+          // onEndReached fires when the user scrolls UP to the top (inverted).
+          onEndReached={() => {
             if (!loadingMore && page + 1 < totalPages) load(page + 1);
           }}
-          onStartReachedThreshold={0.2}
+          onEndReachedThreshold={0.2}
           contentContainerStyle={styles.messageList}
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          onContentSizeChange={() => {
-            if (!initialScrollDone.current) {
-              flatListRef.current?.scrollToEnd({ animated: false });
-              initialScrollDone.current = true;
-            }
-          }}
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
             </View>
           }
+          // Show a loading indicator at the top (rendered at bottom in inverted)
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color="#0f766e" style={{ marginVertical: 8 }} />
+            ) : null
+          }
         />
 
         {/* Input bar */}
         <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.attachBtn} onPress={() => setAttachOpen(true)}>
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={() => setAttachOpen(true)}
+          >
             <Text style={styles.attachIcon}>＋</Text>
           </TouchableOpacity>
           <TextInput
@@ -423,7 +732,10 @@ export default function ChatConversationScreen({ route }: Props) {
             maxLength={4096}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+            style={[
+              styles.sendBtn,
+              (!text.trim() || sending) && styles.sendBtnDisabled,
+            ]}
             onPress={handleSend}
             disabled={!text.trim() || sending}
           >
@@ -440,13 +752,19 @@ export default function ChatConversationScreen({ route }: Props) {
         visible={attachOpen}
         onClose={() => setAttachOpen(false)}
         onTemplate={() => setTemplatePickerOpen(true)}
-        onDocument={handleSendDocument}
+        onMediaLibrary={() => setMediaLibraryOpen(true)}
       />
 
       <TemplatePicker
         visible={templatePickerOpen}
         onClose={() => setTemplatePickerOpen(false)}
         onSelect={handleSendTemplate}
+      />
+
+      <MediaLibraryPicker
+        visible={mediaLibraryOpen}
+        onClose={() => setMediaLibraryOpen(false)}
+        onSelect={handleSendMediaAsset}
       />
     </SafeAreaView>
   );
@@ -489,14 +807,28 @@ const styles = StyleSheet.create({
   },
   bubbleText: { fontSize: 15, color: "#0f172a", lineHeight: 20 },
   bubbleTextOut: { color: "#fff" },
-  bubbleMeta: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end" },
+  bubbleMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+  },
   bubbleTime: { fontSize: 10, color: "#94a3b8" },
   bubbleTimeOut: { color: "rgba(255,255,255,0.65)" },
   statusIcon: { fontSize: 10 },
   mediaImage: { width: 200, height: 150, borderRadius: 8, marginBottom: 4 },
-  mediaFile: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
+  mediaFile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
   mediaFileName: { fontSize: 13, color: "#1e293b", flex: 1 },
-  emptyChat: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
+  emptyChat: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 80,
+  },
   emptyChatText: { color: "#94a3b8", fontSize: 14 },
   inputBar: {
     flexDirection: "row",

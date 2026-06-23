@@ -9,9 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import RenderHtml from "react-native-render-html";
 import api from "../../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,29 +49,63 @@ function initials(email: string) {
   return email.split("@")[0].slice(0, 2).toUpperCase();
 }
 
+function isHtml(str: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(str);
+}
+
+function sanitizeEmailHtml(raw: string): string {
+  let html = raw;
+  html = html.replace(/<!--\[if[\s\S]*?<!\[endif\]-->/gi, "");
+  html = html.replace(/<!--[\s\S]*?-->/g, "");
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) html = bodyMatch[1];
+  html = html.replace(/<\?xml[\s\S]*?\?>/gi, "");
+  html = html.replace(/<\/?[a-z]+:[a-z]+[^>]*>/gi, "");
+  html = html.replace(/<style[\s\S]*?<\/style>/gi, "");
+  html = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+  html = html.replace(/<head[\s\S]*?<\/head>/gi, "");
+  html = html.replace(/<meta[^>]*>/gi, "");
+  html = html.replace(/<link[^>]*>/gi, "");
+  html = html.replace(/\s+on\w+="[^"]*"/gi, "");
+  html = html.replace(/\s+on\w+='[^']*'/gi, "");
+  html = html.replace(/(\s*\n){3,}/g, "\n\n");
+  return html.trim();
+}
+
+/**
+ * Normalize whatever the list endpoint returns into EmailLog[].
+ */
+function extractList(data: any): EmailLog[] {
+  if (Array.isArray(data))          return data;
+  if (Array.isArray(data?.content)) return data.content;
+  if (Array.isArray(data?.items))   return data.items;
+  if (Array.isArray(data?.data))    return data.data;
+  return [];
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MailDetailScreen({ route, navigation }: any) {
-  // ── Safely extract and coerce emailId ──────────────────────────────────────
-  // route.params may be undefined if the screen is somehow mounted without params.
-  // Coerce to number so the URL is always /api/email/logs/384, never /api/email/logs/undefined.
+  const { width } = useWindowDimensions();
+
   const rawId = route?.params?.emailId;
   const emailId: number | undefined =
-    rawId !== undefined && rawId !== null && rawId !== "" ? Number(rawId) : undefined;
+    rawId !== undefined && rawId !== null && rawId !== ""
+      ? Number(rawId)
+      : undefined;
 
-  // ── Debug: log what we received ────────────────────────────────────────────
   console.log("[MailDetail] route.params:", route?.params);
   console.log("[MailDetail] emailId (coerced):", emailId, "| type:", typeof emailId);
 
-  const [email, setEmail] = useState<EmailLog | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [replyBody, setReplyBody] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [email,      setEmail]      = useState<EmailLog | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+  const [replyBody,  setReplyBody]  = useState("");
+  const [saving,     setSaving]     = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const isMountedRef = useRef(true);
 
-  // Guard: if emailId is missing, show an error immediately without hitting the API
+  // ── Guard: invalid emailId ─────────────────────────────────────────────────
   if (emailId === undefined || isNaN(emailId)) {
     return (
       <SafeAreaView style={styles.container}>
@@ -85,46 +121,84 @@ export default function MailDetailScreen({ route, navigation }: any) {
     );
   }
 
+  // ── Fetch email ────────────────────────────────────────────────────────────
   const fetchEmail = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    setError(null);
+
+    // ── Strategy 1: single-item endpoint ──────────────────────────────────
+    // The server returns 500 for this endpoint (likely a backend bug with lazy
+    // loading or missing join). We catch ALL errors and fall through to the
+    // paginated fallback rather than re-throwing.
+    let found: EmailLog | null = null;
+
     try {
-      setError(null);
-      // Try single-item endpoint first; fall back to scanning the paged list
-      let found: EmailLog | null = null;
-      try {
-        const res = await api.get(`/api/email/logs/${emailId}`);
-        found = res.data;
-      } catch (e1: any) {
-        if (e1?.response?.status !== 404 && e1?.response?.status !== 405 && e1?.response?.status !== 500) throw e1;
-        // Fall back: search in the paged log
-        const res = await api.get("/api/email/logs/page", { params: { page: 0, size: 50 } });
-        const data = res.data ?? {};
-        const list: EmailLog[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
-        found = list.find((e) => Number(e.id) === emailId) ?? null;
-        if (!found) {
-          // Try next pages if not found on first
-          const total = data.totalPages ?? 1;
-          for (let p = 1; p < Math.min(total, 5) && !found; p++) {
-            const r2 = await api.get("/api/email/logs/page", { params: { page: p, size: 50 } });
-            const d2 = r2.data ?? {};
-            const l2: EmailLog[] = Array.isArray(d2) ? d2 : Array.isArray(d2.items) ? d2.items : Array.isArray(d2.content) ? d2.content : [];
-            found = l2.find((e) => Number(e.id) === emailId) ?? null;
+      const res = await api.get(`/api/email/logs/${emailId}`);
+      found = res.data ?? null;
+      console.log("[MailDetail] single-item ok:", found?.id);
+    } catch (e1: any) {
+      // Log for debugging but always fall through — the server 500s here.
+      console.log(
+        "[MailDetail] single-item failed:",
+        e1?.response?.status,
+        e1?.response?.data?.message ?? e1?.message
+      );
+    }
+
+    // ── Strategy 2: search paginated list ─────────────────────────────────
+    if (!found) {
+      console.log("[MailDetail] falling back to paginated list search...");
+
+      // Try several possible list endpoints — backend may expose different paths.
+      const LIST_ENDPOINTS = [
+        "/api/email/logs/page",
+        "/api/email/logs",
+      ];
+
+      for (const ep of LIST_ENDPOINTS) {
+        if (found) break;
+        try {
+          // Fetch first page — most recent emails are here, so email 412 is
+          // likely in the first 100 results.
+          const res = await api.get(ep, { params: { page: 0, size: 100 } });
+          const list = extractList(res.data);
+          console.log(`[MailDetail] ${ep} → ${list.length} items`);
+
+          found = list.find(e => Number(e.id) === emailId) ?? null;
+
+          // If not in page 0, scan further pages (up to 5 total).
+          if (!found) {
+            const totalPages: number = res.data?.totalPages ?? res.data?.total_pages ?? 1;
+            for (let p = 1; p < Math.min(totalPages, 5) && !found; p++) {
+              const r2 = await api.get(ep, { params: { page: p, size: 100 } });
+              const l2 = extractList(r2.data);
+              found = l2.find(e => Number(e.id) === emailId) ?? null;
+            }
           }
+        } catch (e2: any) {
+          console.log(
+            `[MailDetail] ${ep} failed:`,
+            e2?.response?.status,
+            e2?.response?.data?.message ?? e2?.message
+          );
         }
       }
-      if (!isMountedRef.current) return;
-      if (found) {
-        setEmail(found);
-      } else {
-        setError("Email not found.");
-      }
-    } catch (e: any) {
-      if (!isMountedRef.current) return;
-      const serverMsg =
-        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to load email";
-      setError(`${e?.response?.status ?? ""} ${serverMsg}`.trim());
-    } finally {
-      if (isMountedRef.current) setLoading(false);
     }
+
+    if (!isMountedRef.current) return;
+
+    if (found) {
+      setEmail(found);
+      setError(null);
+    } else {
+      setError(
+        "Could not load this email. The server returned an error for the " +
+        "direct lookup (500) and it was not found in recent emails. " +
+        "Try refreshing or contact support."
+      );
+    }
+
+    setLoading(false);
   }, [emailId]);
 
   useFocusEffect(
@@ -132,37 +206,38 @@ export default function MailDetailScreen({ route, navigation }: any) {
       isMountedRef.current = true;
       setLoading(true);
       fetchEmail();
-      return () => {
-        isMountedRef.current = false;
-      };
+      return () => { isMountedRef.current = false; };
     }, [fetchEmail])
   );
 
-  // Mark as read
+  // ── Mark as read ───────────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       if (!email || email.direction !== "INBOUND" || email.readAt) return;
       api
         .post(`/api/email/${email.id}/read`)
-        .then((res) => {
-          if (isMountedRef.current) setEmail(res.data);
-        })
+        .then(res => { if (isMountedRef.current) setEmail(res.data); })
         .catch(() => undefined);
     }, [email])
   );
 
+  // ── Send reply ─────────────────────────────────────────────────────────────
   const sendReply = async () => {
     if (!email || !replyBody.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      await api.post(`/api/email/${email.id}/reply`, { bodyText: replyBody.trim() });
+      await api.post(`/api/email/${email.id}/reply`, {
+        bodyText: replyBody.trim(),
+      });
       setReplyBody("");
       setSuccessMsg("Reply sent.");
       setTimeout(() => setSuccessMsg(""), 3000);
       fetchEmail();
     } catch (e: any) {
-      setError(e?.message || "Reply failed");
+      setError(
+        e?.response?.data?.message || e?.message || "Reply failed"
+      );
     } finally {
       setSaving(false);
     }
@@ -174,6 +249,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#0f766e" />
+          <Text style={styles.loadingText}>Loading email...</Text>
         </View>
       </SafeAreaView>
     );
@@ -188,7 +264,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
         </TouchableOpacity>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error || "Email not found."}</Text>
-          <TouchableOpacity onPress={fetchEmail} style={styles.retryBtn}>
+          <TouchableOpacity onPress={() => { setLoading(true); fetchEmail(); }} style={styles.retryBtn}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -196,33 +272,31 @@ export default function MailDetailScreen({ route, navigation }: any) {
     );
   }
 
-  // ── Render: email ──────────────────────────────────────────────────────────
+  // ── Derived values ─────────────────────────────────────────────────────────
   const isInbound = email.direction === "INBOUND";
-  const contact = isInbound ? email.fromEmail : email.toEmail;
+  const contact   = isInbound ? email.fromEmail : email.toEmail;
+  const htmlContentWidth = width - 64;
 
+  // ── Render: email ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView edges={["bottom"]} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        {/* Header */}
+        {/* ── Header ── */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Text style={styles.backText}>← Mail</Text>
           </TouchableOpacity>
-          <View
-            style={[
-              styles.statusBadge,
-              email.status === "FAILED" ? styles.badgeFailed : styles.badgeDefault,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                email.status === "FAILED" ? styles.statusFailed : styles.statusDefault,
-              ]}
-            >
+          <View style={[
+            styles.statusBadge,
+            email.status === "FAILED" ? styles.badgeFailed : styles.badgeDefault,
+          ]}>
+            <Text style={[
+              styles.statusText,
+              email.status === "FAILED" ? styles.statusFailed : styles.statusDefault,
+            ]}>
               {email.status || email.direction}
             </Text>
           </View>
@@ -233,54 +307,72 @@ export default function MailDetailScreen({ route, navigation }: any) {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Subject */}
+          {/* ── Subject ── */}
           <Text style={styles.subject}>{email.subject || "(No subject)"}</Text>
           <Text style={styles.subMeta}>
             {isInbound ? "Received" : "Sent"} · {formatDate(email.createdAt)}
           </Text>
 
-          {/* Sender row */}
+          {/* ── Sender row ── */}
           <View style={styles.senderRow}>
-            <View
-              style={[
-                styles.avatar,
-                { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.avatarText,
-                  { color: isInbound ? "#3b82f6" : "#0f766e" },
-                ]}
-              >
+            <View style={[styles.avatar, { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" }]}>
+              <Text style={[styles.avatarText, { color: isInbound ? "#3b82f6" : "#0f766e" }]}>
                 {initials(contact)}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.senderName} numberOfLines={1}>
-                {contact || "Unknown"}
-              </Text>
+              <Text style={styles.senderName} numberOfLines={1}>{contact || "Unknown"}</Text>
               <Text style={styles.senderMeta} numberOfLines={1}>
                 From: {email.fromEmail || "—"}  ·  To: {email.toEmail || "—"}
               </Text>
             </View>
           </View>
 
-          {/* Body */}
+          {/* ── Body ── */}
           <View style={styles.bodyCard}>
-            <Text style={styles.bodyText}>
-              {email.body || "No email body available."}
-            </Text>
+            {email.body ? (
+              isHtml(email.body) ? (
+                <RenderHtml
+                  contentWidth={htmlContentWidth}
+                  source={{ html: sanitizeEmailHtml(email.body) }}
+                  tagsStyles={{
+                    body:       { margin: 0, padding: 0 },
+                    p:          { fontSize: 14, color: "#334155", lineHeight: 22, marginTop: 0, marginBottom: 8 },
+                    a:          { color: "#0f766e", textDecorationLine: "underline" },
+                    h1:         { fontSize: 20, color: "#0f172a", fontWeight: "700" },
+                    h2:         { fontSize: 17, color: "#0f172a", fontWeight: "700" },
+                    h3:         { fontSize: 15, color: "#0f172a", fontWeight: "600" },
+                    ul:         { paddingLeft: 16 },
+                    ol:         { paddingLeft: 16 },
+                    li:         { fontSize: 14, color: "#334155", lineHeight: 22 },
+                    blockquote: { borderLeftWidth: 3, borderLeftColor: "#0f766e", paddingLeft: 12, marginLeft: 0, color: "#64748b", fontStyle: "italic" },
+                    pre:        { backgroundColor: "#f1f5f9", padding: 10, borderRadius: 6 },
+                    code:       { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 13, color: "#0f172a", backgroundColor: "#f1f5f9" },
+                    img:        { maxWidth: htmlContentWidth },
+                    table:      { borderWidth: 1, borderColor: "#e2e8f0" },
+                    th:         { backgroundColor: "#f8fafc", padding: 8, fontWeight: "700", fontSize: 13 },
+                    td:         { padding: 8, fontSize: 13, color: "#334155" },
+                  }}
+                  baseStyle={{ fontSize: 14, color: "#334155", lineHeight: 22 }}
+                />
+              ) : (
+                <Text style={styles.bodyText}>{email.body}</Text>
+              )
+            ) : (
+              <Text style={[styles.bodyText, { color: "#94a3b8" }]}>
+                No email body available.
+              </Text>
+            )}
           </View>
 
-          {/* Error message from email record */}
+          {/* ── Error message from email record ── */}
           {!!email.errorMessage && (
             <View style={styles.errorCard}>
               <Text style={styles.errorCardText}>{email.errorMessage}</Text>
             </View>
           )}
 
-          {/* Banners */}
+          {/* ── Success / error banners ── */}
           {!!successMsg && (
             <View style={styles.successBanner}>
               <Text style={styles.successText}>{successMsg}</Text>
@@ -292,7 +384,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
             </View>
           )}
 
-          {/* Reply */}
+          {/* ── Reply ── */}
           <View style={styles.replyCard}>
             <Text style={styles.replyLabel}>↩ Reply</Text>
             <TextInput
@@ -307,10 +399,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
             <TouchableOpacity
               onPress={sendReply}
               disabled={saving || !replyBody.trim()}
-              style={[
-                styles.sendBtn,
-                (!replyBody.trim() || saving) && styles.sendBtnDisabled,
-              ]}
+              style={[styles.sendBtn, (!replyBody.trim() || saving) && styles.sendBtnDisabled]}
             >
               <Text style={styles.sendBtnText}>
                 {saving ? "Sending..." : "Send Reply"}
@@ -326,143 +415,50 @@ export default function MailDetailScreen({ route, navigation }: any) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
+  container:   { flex: 1, backgroundColor: "#f1f5f9" },
+  centered:    { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  loadingText: { marginTop: 12, fontSize: 14, color: "#64748b" },
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  backBtn: { paddingVertical: 4, paddingRight: 12 },
-  backText: { fontSize: 15, color: "#0f766e", fontWeight: "700" },
-
-  statusBadge: { borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
-  badgeFailed: { backgroundColor: "#fee2e2" },
+  header:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  backBtn:      { paddingVertical: 4, paddingRight: 12 },
+  backText:     { fontSize: 15, color: "#0f766e", fontWeight: "700" },
+  statusBadge:  { borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
+  badgeFailed:  { backgroundColor: "#fee2e2" },
   badgeDefault: { backgroundColor: "#f1f5f9" },
-  statusText: { fontSize: 12, fontWeight: "700" },
+  statusText:   { fontSize: 12, fontWeight: "700" },
   statusFailed: { color: "#ef4444" },
-  statusDefault: { color: "#475569" },
+  statusDefault:{ color: "#475569" },
 
   scrollContent: { padding: 16, gap: 14, paddingBottom: 40 },
 
-  subject: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0f172a",
-    lineHeight: 28,
-  },
+  subject: { fontSize: 20, fontWeight: "800", color: "#0f172a", lineHeight: 28 },
   subMeta: { fontSize: 13, color: "#64748b", marginTop: 4 },
 
-  senderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontSize: 14, fontWeight: "800" },
-  senderName: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  senderMeta: { fontSize: 12, color: "#64748b", marginTop: 2 },
+  senderRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 14, padding: 14, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
+  avatar:    { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  avatarText:  { fontSize: 14, fontWeight: "800" },
+  senderName:  { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  senderMeta:  { fontSize: 12, color: "#64748b", marginTop: 2 },
 
-  bodyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
+  bodyCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
   bodyText: { fontSize: 14, color: "#334155", lineHeight: 22 },
 
-  errorCard: {
-    backgroundColor: "#fef2f2",
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-  },
+  errorCard:     { backgroundColor: "#fef2f2", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#fecaca" },
   errorCardText: { fontSize: 13, color: "#b91c1c" },
 
-  successBanner: { backgroundColor: "#d1fae5", borderRadius: 10, padding: 12 },
-  successText: { fontSize: 13, color: "#065f46", fontWeight: "600" },
-  errorBanner: { backgroundColor: "#fee2e2", borderRadius: 10, padding: 12 },
+  successBanner:   { backgroundColor: "#d1fae5", borderRadius: 10, padding: 12 },
+  successText:     { fontSize: 13, color: "#065f46", fontWeight: "600" },
+  errorBanner:     { backgroundColor: "#fee2e2", borderRadius: 10, padding: 12 },
   errorBannerText: { fontSize: 13, color: "#b91c1c", fontWeight: "600" },
 
-  replyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  replyLabel: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  replyInput: {
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: "#1e293b",
-    minHeight: 120,
-  },
-  sendBtn: {
-    marginTop: 12,
-    backgroundColor: "#0f766e",
-    borderRadius: 10,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
+  replyCard:    { backgroundColor: "#fff", borderRadius: 14, padding: 16, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
+  replyLabel:   { fontSize: 12, fontWeight: "800", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
+  replyInput:   { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, fontSize: 14, color: "#1e293b", minHeight: 120 },
+  sendBtn:         { marginTop: 12, backgroundColor: "#0f766e", borderRadius: 10, paddingVertical: 13, alignItems: "center" },
   sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  sendBtnText:     { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  errorText: {
-    fontSize: 14,
-    color: "#ef4444",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  retryBtn: {
-    backgroundColor: "#0f766e",
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
+  errorText: { fontSize: 14, color: "#ef4444", textAlign: "center", marginBottom: 16 },
+  retryBtn:  { backgroundColor: "#0f766e", borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
   retryText: { color: "#fff", fontWeight: "700" },
 });

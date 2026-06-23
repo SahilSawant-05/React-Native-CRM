@@ -1,4 +1,4 @@
-import React from "react";
+import React, { use } from "react";
 import {
   Alert,
   ScrollView,
@@ -37,7 +37,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.email}>{user?.email}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>AGENT</Text>
+            <Text style={styles.roleText}>{user?.role}</Text>
           </View>
         </View>
 
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Role</Text>
-            <Text style={styles.rowValue}>Agent</Text>
+            <Text style={styles.rowValue}>{user?.role}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Tenant ID</Text>
