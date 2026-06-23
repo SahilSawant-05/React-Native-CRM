@@ -4,6 +4,8 @@ import {
   Text,
   FlatList,
   StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../../api/client";
@@ -32,6 +34,8 @@ export default function TemplatesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -55,6 +59,23 @@ export default function TemplatesScreen() {
     }, [fetchTemplates])
   );
 
+  const syncTemplates = useCallback(async () => {
+    setSyncing(true);
+    setSyncMsg("");
+    setError(null);
+    try {
+      const res = await api.post("/api/templates/sync");
+      const count = res.data?.synced ?? res.data?.count;
+      setSyncMsg(count != null ? `${count} templates synced from WhatsApp` : "Templates synced from WhatsApp");
+      setTimeout(() => setSyncMsg(""), 4000);
+      fetchTemplates();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchTemplates]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchTemplates();
@@ -65,7 +86,13 @@ export default function TemplatesScreen() {
   return (
     <SafeAreaView edges={["bottom"]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchTemplates(); }} />}
-      <Text style={styles.sectionHeader}>WHATSAPP TEMPLATES</Text>
+      {!!syncMsg && <View style={styles.syncBanner}><Text style={styles.syncText}>{syncMsg}</Text></View>}
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionHeader}>WHATSAPP TEMPLATES</Text>
+        <TouchableOpacity onPress={syncTemplates} disabled={syncing} style={styles.syncBtn}>
+          {syncing ? <ActivityIndicator size="small" color="#0f766e" /> : <Text style={styles.syncBtnText}>↻ Sync</Text>}
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={templates}
         keyExtractor={(item) => item.id}
@@ -109,7 +136,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f1f5f9" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { fontSize: 16, color: "#94a3b8", marginTop: 40 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 },
   sectionHeader: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, paddingHorizontal: 16, paddingVertical: 8 },
+  syncBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: "#f0fdfa", borderRadius: 8, borderWidth: 1, borderColor: "#99f6e4", minWidth: 60, alignItems: "center" },
+  syncBtnText: { fontSize: 13, fontWeight: "700", color: "#0f766e" },
+  syncBanner: { backgroundColor: "#d1fae5", paddingHorizontal: 16, paddingVertical: 8 },
+  syncText: { fontSize: 13, color: "#065f46", fontWeight: "600" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,

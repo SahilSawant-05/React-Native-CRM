@@ -67,26 +67,63 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   CANCELLED: { bg: "#f1f5f9", text: "#94a3b8" },
 };
 
-// ─── Contact Picker Modal ─────────────────────────────────────────────────────
+// ─── Contact Picker Modal (with server-side search + pagination) ──────────────
 
 function ContactPickerModal({
-  visible, onClose, selected, onToggle, contacts, loading,
+  visible, onClose, selected, onToggle,
 }: {
   visible: boolean; onClose: () => void;
   selected: Set<string | number>; onToggle: (id: string | number) => void;
-  contacts: Contact[]; loading: boolean;
 }) {
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
-  const filtered = contacts.filter(
-    (c) => c.name?.toLowerCase().includes(search.toLowerCase()) ||
-            c.phone?.includes(search)
-  );
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const searchTimerRef = React.useRef<any>(null);
+
+  const fetchContacts = useCallback(async (q: string, p: number, replace: boolean) => {
+    try {
+      if (replace) setLoading(true); else setLoadingMore(true);
+      const endpoint = q.trim()
+        ? `/api/contacts/search/page`
+        : `/api/contacts/page`;
+      const res = await api.get(endpoint, { params: { page: p, size: 20, query: q.trim() || undefined } });
+      const data = res.data ?? {};
+      const items: Contact[] = Array.isArray(data) ? data : Array.isArray(data.content) ? data.content : Array.isArray(data.items) ? data.items : [];
+      setContacts(prev => replace ? items : [...prev, ...items]);
+      setTotalPages(data.totalPages ?? 1);
+      setPage(p);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  // Load on open
+  useEffect(() => {
+    if (visible) { setSearch(""); setPage(0); fetchContacts("", 0, true); }
+  }, [visible]);
+
+  // Debounced search
+  useEffect(() => {
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setPage(0);
+      fetchContacts(search, 0, true);
+    }, 400);
+  }, [search]);
+
+  const loadMore = () => {
+    if (!loadingMore && page + 1 < totalPages) fetchContacts(search, page + 1, false);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
         <View style={mpStyles.header}>
-          <Text style={mpStyles.title}>Select Recipients ({selected.size})</Text>
+          <Text style={mpStyles.title}>Recipients ({selected.size} selected)</Text>
           <TouchableOpacity onPress={onClose} style={mpStyles.doneBtn}>
             <Text style={mpStyles.doneBtnText}>Done</Text>
           </TouchableOpacity>
@@ -95,24 +132,24 @@ function ContactPickerModal({
           style={mpStyles.search}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search contacts..."
+          placeholder="Search by name or phone..."
           placeholderTextColor="#94a3b8"
         />
         {loading ? (
           <ActivityIndicator style={{ marginTop: 40 }} color="#0f766e" />
         ) : (
           <FlatList
-            data={filtered}
+            data={contacts}
             keyExtractor={(c) => String(c.id)}
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={loadingMore ? <ActivityIndicator color="#0f766e" style={{ margin: 12 }} /> : null}
+            ListEmptyComponent={<Text style={{ color: "#94a3b8", textAlign: "center", marginTop: 40 }}>No contacts found</Text>}
             renderItem={({ item }) => {
               const isSelected = selected.has(item.id);
               return (
-                <TouchableOpacity
-                  onPress={() => onToggle(item.id)}
-                  style={mpStyles.row}
-                  activeOpacity={0.7}
-                >
+                <TouchableOpacity onPress={() => onToggle(item.id)} style={mpStyles.row} activeOpacity={0.7}>
                   <View style={[mpStyles.check, isSelected && mpStyles.checkSelected]}>
                     {isSelected && <Text style={mpStyles.checkMark}>✓</Text>}
                   </View>
@@ -148,7 +185,6 @@ const mpStyles = StyleSheet.create({
 
 function CreateTab() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   const [name, setName] = useState("");
@@ -165,14 +201,10 @@ function CreateTab() {
   useEffect(() => {
     async function load() {
       try {
-        const [tRes, cRes] = await Promise.all([
-          api.get("/api/templates"),
-          api.get("/api/contacts/page?page=0&size=200"),
-        ]);
+        const tRes = await api.get("/api/templates");
         setTemplates(normalize(tRes.data));
-        setContacts(normalize(cRes.data));
       } catch (e: any) {
-        setError(e?.message || "Failed to load data");
+        setError(e?.message || "Failed to load templates");
       } finally {
         setLoadingData(false);
       }
@@ -236,7 +268,7 @@ function CreateTab() {
         <Text style={ctStyles.label}>Template</Text>
         <TouchableOpacity style={ctStyles.picker} onPress={() => setTemplatePickerOpen(true)}>
           <Text style={selectedTemplate ? ctStyles.pickerValue : ctStyles.pickerPlaceholder}>
-            {selectedTemplate ? selectedTemplate.name : "Select template..."}
+            {selectedTemplate ? (selectedTemplate.metaTemplateName || selectedTemplate.name) : "Select template..."}
           </Text>
           <Text style={ctStyles.pickerChevron}>▾</Text>
         </TouchableOpacity>
@@ -309,7 +341,7 @@ function CreateTab() {
                   onPress={() => { setSelectedTemplate(item); setTemplatePickerOpen(false); }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={ctStyles.templateName}>{item.name}</Text>
+                    <Text style={ctStyles.templateName}>{item.metaTemplateName || item.name}</Text>
                     {!!item.category && <Text style={ctStyles.templateMeta}>{item.category}</Text>}
                     {!!item.body && <Text style={ctStyles.templateBody} numberOfLines={2}>{item.body}</Text>}
                   </View>
@@ -325,8 +357,6 @@ function CreateTab() {
           onClose={() => setPickerOpen(false)}
           selected={selectedContacts}
           onToggle={toggleContact}
-          contacts={contacts}
-          loading={false}
         />
       </ScrollView>
     </KeyboardAvoidingView>
