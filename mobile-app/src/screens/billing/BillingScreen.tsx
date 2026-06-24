@@ -16,6 +16,31 @@ try {
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useFocusEffect } from "@react-navigation/native";
 
+// ─── Normalize API list responses (handles array, items, content, data wrappers) ─
+function normalizeList(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.content)) return data.content;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
+// Normalize a storage package to consistent field names
+function normalizePkg(pkg: any) {
+  return {
+    ...pkg,
+    // key — try multiple possible field names
+    packageKey: pkg.packageKey ?? pkg.key ?? pkg.id ?? String(pkg.packageId ?? ""),
+    // price in paise
+    amountPaise: pkg.amountPaise ?? pkg.priceInPaise ?? pkg.pricePaise
+      ?? (pkg.price != null ? Math.round(Number(pkg.price) * 100) : undefined)
+      ?? 0,
+    // storage size
+    storageGb: pkg.storageGb ?? pkg.storageInGb ?? pkg.capacityGb
+      ?? pkg.storageLimitGb ?? pkg.sizeGb ?? 0,
+  };
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtDate(v?: string) {
@@ -102,9 +127,9 @@ export default function BillingScreen() {
         api.get("/api/billing/storage-packages").catch(() => ({ data: [] })),
       ]);
       setSummary(summaryRes.data);
-      setPayments(Array.isArray(paymentsRes.data) ? paymentsRes.data : []);
-      setCreditPackages(Array.isArray(topupRes.data) ? topupRes.data : []);
-      setStoragePackages(Array.isArray(storageRes.data) ? storageRes.data : []);
+      setPayments(normalizeList(paymentsRes.data));
+      setCreditPackages(normalizeList(topupRes.data).map(normalizePkg));
+      setStoragePackages(normalizeList(storageRes.data).map(normalizePkg));
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || "Failed to load billing");
     } finally {
@@ -159,12 +184,18 @@ export default function BillingScreen() {
       await verifyPayment(order.razorpayOrderId, payment.razorpay_payment_id, payment.razorpay_signature);
       Alert.alert("Success", `${fmtCredits(order.credits ?? pkg.credits)} credits added!`);
     } catch (err: any) {
-      if (err?.code !== "PAYMENT_CANCELLED") Alert.alert("Payment Failed", err?.description || err?.message || "Try again");
+      if (err?.code !== "PAYMENT_CANCELLED") {
+        Alert.alert("Payment Failed", err?.response?.data?.message || err?.description || err?.message || "Try again");
+      }
     } finally { setBuyingKey(null); }
   };
 
   const buyStorage = async (pkg: any) => {
     const key = pkg.packageKey;
+    if (!key) {
+      Alert.alert("Error", "Invalid storage package — missing key");
+      return;
+    }
     setBuyingKey(key);
     try {
       const { data: order } = await api.post("/api/billing/razorpay/storage/order", { packageKey: key });
@@ -172,7 +203,10 @@ export default function BillingScreen() {
       await verifyPayment(order.razorpayOrderId, payment.razorpay_payment_id, payment.razorpay_signature);
       Alert.alert("Success", "Storage upgraded!");
     } catch (err: any) {
-      if (err?.code !== "PAYMENT_CANCELLED") Alert.alert("Payment Failed", err?.description || err?.message || "Try again");
+      if (err?.code !== "PAYMENT_CANCELLED") {
+        const msg = err?.response?.data?.message || err?.description || err?.message || "Try again";
+        Alert.alert("Payment Failed", msg);
+      }
     } finally { setBuyingKey(null); }
   };
 
@@ -188,7 +222,9 @@ export default function BillingScreen() {
       await verifyPayment(order.razorpayOrderId, payment.razorpay_payment_id, payment.razorpay_signature);
       Alert.alert("Success", `${plan.name} plan activated!`);
     } catch (err: any) {
-      if (err?.code !== "PAYMENT_CANCELLED") Alert.alert("Payment Failed", err?.description || err?.message || "Try again");
+      if (err?.code !== "PAYMENT_CANCELLED") {
+        Alert.alert("Payment Failed", err?.response?.data?.message || err?.description || err?.message || "Try again");
+      }
     } finally { setBuyingKey(null); }
   };
 
