@@ -104,7 +104,8 @@ export default function UploadLeadsScreen() {
       } as any);
 
       const res = await api.post("/api/contacts/upload/preview", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        // Do NOT set Content-Type here — React Native XHR must set it automatically
+        // so the multipart boundary is included. transformRequest bypasses axios JSON serialization.
         transformRequest: (data: any) => data,
       });
 

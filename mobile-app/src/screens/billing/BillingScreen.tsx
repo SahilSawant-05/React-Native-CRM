@@ -1,11 +1,18 @@
 import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl,
-  TouchableOpacity, ActivityIndicator, Alert,
+  TouchableOpacity, ActivityIndicator, Alert, Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import RazorpayCheckout from "react-native-razorpay";
 import api from "../../api/client";
+
+// react-native-razorpay requires a native dev build — guard against Expo Go
+let RazorpayCheckout: any = null;
+try {
+  RazorpayCheckout = require("react-native-razorpay").default;
+} catch {
+  // not available in Expo Go
+}
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -121,6 +128,16 @@ export default function BillingScreen() {
   };
 
   const openRazorpay = async (order: any, description: string) => {
+    if (!RazorpayCheckout) {
+      // Expo Go fallback — open Razorpay payment link in browser if provided
+      if (order.shortUrl || order.paymentLink) {
+        await Linking.openURL(order.shortUrl || order.paymentLink);
+        // Return a mock so the caller can still call verifyPayment
+        // (verification will likely fail without real IDs — handle gracefully)
+        throw Object.assign(new Error("Opened in browser — verify manually"), { code: "PAYMENT_CANCELLED" });
+      }
+      throw new Error("Razorpay native module not available. Please use a dev build (EAS build) instead of Expo Go.");
+    }
     return RazorpayCheckout.open({
       key: order.keyId,
       amount: order.amountPaise,
@@ -128,6 +145,7 @@ export default function BillingScreen() {
       name: "CRM",
       order_id: order.razorpayOrderId,
       description,
+      prefill: {},
       theme: { color: "#0f766e" },
     });
   };
