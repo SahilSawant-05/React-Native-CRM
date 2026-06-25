@@ -35,6 +35,8 @@ import TemplatesScreen from "../screens/templates/TemplatesScreen";
 import CampaignsScreen from "../screens/campaigns/CampaignsScreen";
 import CrmSettingsScreen from "../screens/settings/CrmSettingsScreen";
 import WhatsAppSetupScreen from "../screens/whatsapp/WhatsAppSetupScreen";
+import BillingStatusScreen from "../screens/billing/BillingStatusScreen";
+import CalendarScreen from "../screens/calendar/CalendarScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -64,6 +66,7 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "Chat",          label: "Messages",         emoji: "💬" },
       { name: "Mail",          label: "Mail",             emoji: "✉️" },
       { name: "Tasks",         label: "Tasks",            emoji: "✅" },
+      { name: "Calendar",      label: "Calendar",         emoji: "📅" },
       { name: "Notifications", label: "Notifications",    emoji: "🔔" },
     ],
   },
@@ -88,6 +91,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { name: "CrmSettings",   label: "CRM Settings",     emoji: "⚙️" },
       { name: "WhatsAppSetup", label: "WhatsApp Setup",   emoji: "📱" },
+      { name: "Billing",       label: "Billing",          emoji: "💳" },
       { name: "Profile",       label: "Profile",          emoji: "👤" },
     ],
   },
@@ -292,8 +296,10 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   MediaLibrary:  withHeader(MediaLibraryScreen,  "Media Library"),
   Templates:     withHeader(TemplatesScreen,     "Templates"),
   Campaigns:     withHeader(CampaignsScreen,     "Campaign Builder"),
+  Calendar:      withHeader(CalendarScreen,      "Calendar"),
   CrmSettings:   withHeader(CrmSettingsScreen,   "CRM Settings"),
   WhatsAppSetup: withHeader(WhatsAppSetupScreen, "WhatsApp Setup"),
+  Billing:       withHeader(BillingStatusScreen, "Billing"),
   Profile:       withHeader(ProfileScreen,       "Profile"),
 };
 
