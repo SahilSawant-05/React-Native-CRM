@@ -324,7 +324,7 @@ export default function BillingScreen() {
                     <Text style={s.pkgDetail}>{pkg.storageGb} GB · valid 12 months</Text>
                   </View>
                   <View style={{ alignItems: "flex-end", gap: 8 }}>
-                    <Text style={s.pkgPrice}>{fmtCurrency(pkg.amountPaise)}</Text>
+                    <Text style={s.pkgPrice}>{fmtCurrency(pkg.monthlyPricePaise)}</Text>
                     <TouchableOpacity
                       style={[s.buyBtn, (busy || !!buyingKey) && s.btnDisabled]}
                       onPress={() => buyStorage(pkg)}

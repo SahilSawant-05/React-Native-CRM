@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --port 5173",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web"
@@ -19,7 +19,8 @@
     "doctor": "^0.3.0",
     "expo": "~54.0.35",
     "expo-constants": "~18.0.13",
-    "expo-document-picker": "^56.0.4",
+    "expo-dev-client": "~6.0.21",
+    "expo-document-picker": "~14.0.8",
     "expo-image-picker": "~17.0.11",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
@@ -27,7 +28,6 @@
     "react-native": "0.81.5",
     "react-native-draggable-flatlist": "^4.0.3",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-razorpay": "^3.0.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-render-html": "^6.3.4",
     "react-native-safe-area-context": "~5.6.0",
