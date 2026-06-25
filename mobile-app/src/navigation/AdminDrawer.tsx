@@ -31,8 +31,6 @@ import NotificationsScreen from "../screens/notifications/NotificationsScreen";
 import PipelineScreen from "../screens/pipeline/PipelineScreen";
 import MediaLibraryScreen from "../screens/media/MediaLibraryScreen";
 import DomainCatalogScreen from "../screens/catalog/DomainCatalogScreen";
-import TemplatesScreen from "../screens/templates/TemplatesScreen";
-import CampaignsScreen from "../screens/campaigns/CampaignsScreen";
 import CrmSettingsScreen from "../screens/settings/CrmSettingsScreen";
 import WhatsAppSetupScreen from "../screens/whatsapp/WhatsAppSetupScreen";
 import BillingStatusScreen from "../screens/billing/BillingStatusScreen";
@@ -77,13 +75,6 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "Pipeline",      label: "Pipeline",         emoji: "🔀" },
       { name: "DomainCatalog", label: "Domain Catalog",   emoji: "🗂️" },
       { name: "MediaLibrary",  label: "Media Library",    emoji: "🖼️" },
-    ],
-  },
-  {
-    title: "Marketing",
-    items: [
-      { name: "Templates",     label: "Templates",        emoji: "📝" },
-      { name: "Campaigns",     label: "Campaign Builder", emoji: "📣" },
     ],
   },
   {
@@ -294,8 +285,6 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Pipeline:      withHeader(PipelineScreen,      "Pipeline"),
   DomainCatalog: withHeader(DomainCatalogScreen, "Domain Catalog"),
   MediaLibrary:  withHeader(MediaLibraryScreen,  "Media Library"),
-  Templates:     withHeader(TemplatesScreen,     "Templates"),
-  Campaigns:     withHeader(CampaignsScreen,     "Campaign Builder"),
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
   CrmSettings:   withHeader(CrmSettingsScreen,   "CRM Settings"),
   WhatsAppSetup: withHeader(WhatsAppSetupScreen, "WhatsApp Setup"),
