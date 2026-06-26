@@ -3,7 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { useAuth } from "../auth/AuthContext";
 import { setSessionExpiredCallback } from "../api/client";
 import AuthStack from "./AuthStack";
-import AppTabs from "./AppTabs";
+import AgentDrawer from "./AgentDrawer";
 import AdminDrawer from "./AdminDrawer";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 
@@ -20,7 +20,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {token ? (isAdmin ? <AdminDrawer /> : <AppTabs />) : <AuthStack />}
+      {token ? (isAdmin ? <AdminDrawer /> : <AgentDrawer />) : <AuthStack />}
     </NavigationContainer>
   );
 }
