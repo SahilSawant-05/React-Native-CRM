@@ -59,8 +59,8 @@ export default function DomainCatalogScreen() {
     fetchItems();
   };
 
-  const formatPrice = (price: number) =>
-    "₹" + price.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const formatPrice = (price: number | null | undefined) =>
+    price == null ? "—" : "₹" + price.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
   if (loading) return <LoadingSpinner message="Loading catalog..." />;
 
