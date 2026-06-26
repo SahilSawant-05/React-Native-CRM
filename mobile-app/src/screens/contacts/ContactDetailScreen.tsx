@@ -54,11 +54,17 @@ export default function ContactDetailScreen({ route }: Props) {
     .toUpperCase();
 
   // tags may arrive as a comma-separated string or non-array — normalise
-  const tags: string[] = Array.isArray(contact.tags)
-    ? contact.tags
-    : typeof contact.tags === "string" && contact.tags
-      ? contact.tags.split(",").map(t => t.trim()).filter(Boolean)
-      : [];
+  // tags may arrive as a comma-separated string or non-array — normalise
+let tags: string[] = [];
+try {
+  if (Array.isArray(contact.tags)) {
+    tags = (contact.tags as any[]).map((t) => String(t).trim()).filter((t) => t.length > 0);
+  } else if (contact.tags) {
+    tags = String(contact.tags).split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+  }
+} catch {
+  tags = [];
+}
 
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
@@ -74,7 +80,7 @@ export default function ContactDetailScreen({ route }: Props) {
           {tags.length > 0 && (
             <View style={styles.tagsRow}>
               {tags.map((tag, i) => (
-                <View key={`tag-${tag ?? i}`} style={styles.tag}>
+                <View key={`tag-${i}-${tag}`} style={styles.tag}>
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
               ))}
@@ -136,7 +142,7 @@ export default function ContactDetailScreen({ route }: Props) {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Recent Activity</Text>
             {timeline.slice(0, 10).map((item, i) => (
-              <View key={`tl-${item.id ?? item.createdAt ?? i}`} style={styles.timelineItem}>
+              <View key={`tl-${i}-${item.id ?? item.createdAt ?? i}`} style={styles.timelineItem}>
                 <View style={styles.timelineDot} />
                 <View style={styles.timelineContent}>
                   <Text style={styles.timelineType}>{item.type || "Activity"}</Text>

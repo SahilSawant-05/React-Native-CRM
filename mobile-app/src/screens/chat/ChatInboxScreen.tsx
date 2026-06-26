@@ -83,9 +83,22 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
-
-  // allItems holds the full API result; displayed is locally filtered by search
   const [allItems, setAllItems] = useState<InboxItem[]>([]);
+
+  const searchRef = useRef(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track if user is actively typing — suppress API results while typing
+  const isTypingRef = useRef(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const applyFilter = (data: InboxItem[], q: string) => {
+    const query = q.toLowerCase().trim();
+    if (!query) return data;
+    return data.filter(i =>
+      (i.contactName || "").toLowerCase().includes(query) ||
+      (i.lastMessage || "").toLowerCase().includes(query)
+    );
+  };
 
   const load = useCallback(async (p = 0, s = "", q = "", silent = false) => {
     if (p === 0 && !silent) setLoading(true);
@@ -94,8 +107,16 @@ export default function ChatInboxScreen({ navigation }: Props) {
     try {
       const data = await fetchInbox({ page: p, size: 100, status: s || undefined, search: q || undefined });
       const content = data.content ?? [];
-      setAllItems((prev) => (p === 0 ? content : [...prev, ...content]));
-      setItems((prev) => (p === 0 ? content : [...prev, ...content]));
+
+      setAllItems((prev) => {
+        const merged = p === 0 ? content : [...prev, ...content];
+        // Only update displayed list if user is NOT actively typing
+        if (!isTypingRef.current) {
+          setItems(applyFilter(merged, searchRef.current));
+        }
+        return merged;
+      });
+
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
@@ -114,26 +135,46 @@ export default function ChatInboxScreen({ navigation }: Props) {
   function switchStatus(s: string) {
     setStatus(s);
     setSearch("");
+    searchRef.current = "";
+    isTypingRef.current = false;
     load(0, s, "");
   }
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleSearch(text: string) {
     setSearch(text);
-    // Apply local filter immediately — no API call, no re-mount, no focus loss
-    const q = text.toLowerCase().trim();
-    setItems(
-      q
-        ? allItems.filter(i =>
-            (i.contactName || "").toLowerCase().includes(q) ||
-            (i.lastMessage || "").toLowerCase().includes(q)
-          )
-        : allItems
-    );
-    // Also debounce an API search for deeper results
+    searchRef.current = text;
+
+    // Mark as typing — prevents API response from overwriting local filter
+    isTypingRef.current = true;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+    }, 600);
+
+    // Instant local filter — no flicker, no stutter
+    setItems((prev) => {
+      // Use allItems ref via closure — need to read from state
+      return applyFilter(prev.length > 0 ? prev : [], text);
+    });
+
+    // Use allItems directly for accurate local filter
+    setAllItems((all) => {
+      setItems(applyFilter(all, text));
+      return all;
+    });
+
+    // Debounced API call for deeper server-side results
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim()) {
-      debounceRef.current = setTimeout(() => load(0, status, text, true), 500);
+      debounceRef.current = setTimeout(() => {
+        load(0, status, text, true);
+      }, 800); // longer delay = less interruption
+    } else {
+      // Cleared search — restore full list immediately
+      setAllItems((all) => {
+        setItems(all);
+        return all;
+      });
     }
   }
 
@@ -141,7 +182,6 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
-      {/* Search */}
       <View style={styles.searchWrap}>
         <TextInput
           style={styles.searchInput}
@@ -150,10 +190,11 @@ export default function ChatInboxScreen({ navigation }: Props) {
           value={search}
           onChangeText={handleSearch}
           clearButtonMode="while-editing"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
       </View>
 
-      {/* Status filter tabs */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
           {STATUS_TABS.map((s) => (
@@ -199,6 +240,11 @@ export default function ChatInboxScreen({ navigation }: Props) {
           </View>
         }
         contentContainerStyle={items.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+        // Performance props to reduce re-render stutter
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={15}
+        windowSize={10}
+        initialNumToRender={15}
       />
     </SafeAreaView>
   );

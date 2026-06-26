@@ -61,9 +61,23 @@ export default function ContactsScreen({ navigation }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
-
-  // allContacts holds the full API page; contacts is the locally-filtered view
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
+
+  const searchRef = useRef(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Prevent API response from overwriting list while user is actively typing
+  const isTypingRef = useRef(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const applyFilter = (data: Contact[], q: string) => {
+    const query = q.toLowerCase().trim();
+    if (!query) return data;
+    return data.filter(c =>
+      (c.name || "").toLowerCase().includes(query) ||
+      (c.phone || "").toLowerCase().includes(query) ||
+      (c.email || "").toLowerCase().includes(query)
+    );
+  };
 
   const load = useCallback(async (p = 0, q = "", silent = false) => {
     if (p === 0 && !silent) setLoading(true);
@@ -73,13 +87,16 @@ export default function ContactsScreen({ navigation }: Props) {
     try {
       const data = await fetchContacts({ page: p, size: 50, search: q });
       const items = data.content ?? [];
-      if (p === 0) {
-        setAllContacts(items);
-        setContacts(items);
-      } else {
-        setAllContacts(prev => [...prev, ...items]);
-        setContacts(prev => [...prev, ...items]);
-      }
+
+      setAllContacts((prev) => {
+        const merged = p === 0 ? items : [...prev, ...items];
+        // Only update displayed list if user is NOT actively typing
+        if (!isTypingRef.current) {
+          setContacts(applyFilter(merged, searchRef.current));
+        }
+        return merged;
+      });
+
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
@@ -95,24 +112,33 @@ export default function ContactsScreen({ navigation }: Props) {
 
   useEffect(() => { load(0, ""); }, []);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleSearch(text: string) {
     setSearch(text);
-    // Apply local filter immediately — no spinner, no focus loss
-    const q = text.toLowerCase().trim();
-    setContacts(
-      q
-        ? allContacts.filter(c =>
-            (c.name || "").toLowerCase().includes(q) ||
-            (c.phone || "").toLowerCase().includes(q) ||
-            (c.email || "").toLowerCase().includes(q)
-          )
-        : allContacts
-    );
-    // Debounced API search for deeper results
+    searchRef.current = text;
+
+    // Mark as typing — blocks API response from overwriting local filter
+    isTypingRef.current = true;
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+    }, 600);
+
+    // Instant local filter — zero flicker, no focus loss
+    setAllContacts((all) => {
+      setContacts(applyFilter(all, text));
+      return all;
+    });
+
+    // Debounced API call for deeper server-side results
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim()) {
-      debounceRef.current = setTimeout(() => load(0, text, true), 500);
+      debounceRef.current = setTimeout(() => load(0, text, true), 800);
+    } else {
+      // Search cleared — restore full list immediately
+      setAllContacts((all) => {
+        setContacts(all);
+        return all;
+      });
     }
   }
 
@@ -135,6 +161,8 @@ export default function ContactsScreen({ navigation }: Props) {
           onChangeText={handleSearch}
           clearButtonMode="while-editing"
           returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
       </View>
 
@@ -158,6 +186,10 @@ export default function ContactsScreen({ navigation }: Props) {
         }
         contentContainerStyle={contacts.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={15}
+        windowSize={10}
+        initialNumToRender={15}
       />
     </SafeAreaView>
   );
