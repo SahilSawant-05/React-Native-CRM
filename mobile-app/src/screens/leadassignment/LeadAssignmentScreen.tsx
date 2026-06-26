@@ -24,8 +24,10 @@ interface AssignmentRule {
   name: string;
   criteriaType: string;
   criteriaValue?: string | null;
-  assignedToUserId: number | string;
-  assignedToUserName?: string;
+  assignmentStrategy: string;   // "ASSIGN_USER" | "ROUND_ROBIN"
+  assignedUserId?: number | string | null;
+  assignedUserIds?: (number | string)[];
+  active?: boolean;
   priority?: number;
 }
 
@@ -123,8 +125,9 @@ function RuleFormModal({
   const [name, setName] = useState("");
   const [criteriaType, setCriteriaType] = useState("LEAD_SOURCE");
   const [criteriaValue, setCriteriaValue] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState("");
-  const [priority, setPriority] = useState("0");
+  const [assignmentStrategy, setAssignmentStrategy] = useState("ASSIGN_USER");
+  const [assignedUserId, setAssignedUserId] = useState("");
+  const [priority, setPriority] = useState("100");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -134,29 +137,37 @@ function RuleFormModal({
       setName(rule.name ?? "");
       setCriteriaType(rule.criteriaType ?? "LEAD_SOURCE");
       setCriteriaValue(rule.criteriaValue ?? "");
-      setAssignedToUserId(String(rule.assignedToUserId ?? ""));
-      setPriority(String(rule.priority ?? 0));
+      setAssignmentStrategy(rule.assignmentStrategy ?? "ASSIGN_USER");
+      setAssignedUserId(String(rule.assignedUserId ?? ""));
+      setPriority(String(rule.priority ?? 100));
     } else {
       setName("");
       setCriteriaType("LEAD_SOURCE");
       setCriteriaValue("");
-      setAssignedToUserId("");
-      setPriority("0");
+      setAssignmentStrategy("ASSIGN_USER");
+      setAssignedUserId("");
+      setPriority("100");
     }
     setError("");
   }, [visible, rule]);
 
   async function handleSave() {
     if (!name.trim()) { setError("Rule name is required."); return; }
-    if (!assignedToUserId) { setError("Please select an agent to assign leads to."); return; }
+    if (assignmentStrategy === "ASSIGN_USER" && !assignedUserId) {
+      setError("Please select an agent to assign leads to.");
+      return;
+    }
     setSaving(true);
     setError("");
     const payload = {
       name: name.trim(),
       criteriaType,
       criteriaValue: criteriaType === "DEFAULT" ? null : (criteriaValue || null),
-      assignedToUserId: Number(assignedToUserId),
-      priority: Number(priority) || 0,
+      assignmentStrategy,
+      assignedUserId: assignmentStrategy === "ASSIGN_USER" ? Number(assignedUserId) : null,
+      assignedUserIds: [],
+      active: true,
+      priority: Number(priority) || 100,
     };
     try {
       if (rule?.id) {
@@ -214,11 +225,23 @@ function RuleFormModal({
           </View>
 
           <PickerRow
-            label="Assign To (Agent)"
-            options={userOptions.length ? userOptions : [{ value: "", label: "No agents found" }]}
-            value={assignedToUserId}
-            onChange={setAssignedToUserId}
+            label="Assignment Strategy"
+            options={[
+              { value: "ASSIGN_USER", label: "Assign to specific agent" },
+              { value: "ROUND_ROBIN", label: "Round robin (not supported on mobile)" },
+            ]}
+            value={assignmentStrategy}
+            onChange={setAssignmentStrategy}
           />
+
+          {assignmentStrategy === "ASSIGN_USER" && (
+            <PickerRow
+              label="Assign To (Agent)"
+              options={userOptions.length ? userOptions : [{ value: "", label: "No agents found" }]}
+              value={assignedUserId}
+              onChange={setAssignedUserId}
+            />
+          )}
 
           <PickerRow
             label="Criteria Type"
@@ -325,9 +348,12 @@ export default function LeadAssignmentScreen() {
     ]);
   }
 
-  function agentName(userId: number | string) {
-    const u = users.find((u) => String(u.id) === String(userId));
-    return u ? (u.name || u.email || String(userId)) : String(userId);
+  function agentName(rule: AssignmentRule) {
+    if (rule.assignmentStrategy === "ROUND_ROBIN") return "Round Robin";
+    const uid = rule.assignedUserId;
+    if (!uid) return "Unassigned";
+    const u = users.find((u) => String(u.id) === String(uid));
+    return u ? (u.name || u.email || String(uid)) : String(uid);
   }
 
   if (loading) return <LoadingSpinner message="Loading assignment rules…" />;
@@ -369,7 +395,7 @@ export default function LeadAssignmentScreen() {
                 </View>
                 <Text style={s.arrow}>→</Text>
                 <View style={s.metaChipAgent}>
-                  <Text style={s.metaChipText}>👤 {agentName(item.assignedToUserId)}</Text>
+                  <Text style={s.metaChipText}>👤 {agentName(item)}</Text>
                 </View>
               </View>
 

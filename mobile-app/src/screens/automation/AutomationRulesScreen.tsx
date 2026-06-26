@@ -176,20 +176,26 @@ function RuleFormModal({
     setSaving(true);
     setError("");
     const payload = {
+      ...form,
       name: form.name.trim(),
-      triggerType: form.triggerType,
-      actionType: form.actionType,
-      active: form.active,
       conditionLeadSource: form.conditionLeadSource || null,
-      dueInHours: form.dueInHours || 24,
-      taskTitle: form.taskTitle || null,
-      taskDescription: form.taskDescription || null,
-      whatsappTemplateId: form.whatsappTemplateId || null,
-      emailTemplateId: form.emailTemplateId || null,
+      conditionStage: form.conditionStage || null,
+      conditionPipelineId: null,
+      conditionIndustryKey: null,
+      targetStage: null,
+      targetPipelineId: null,
+      opportunityTitle: null,
+      emailTemplateId: form.emailTemplateId ? Number(form.emailTemplateId) : null,
+      emailSubject: null,
+      emailBody: null,
+      whatsappTemplateId: form.whatsappTemplateId ? Number(form.whatsappTemplateId) : null,
       notificationTitle: form.notificationTitle || null,
       notificationBody: form.notificationBody || null,
-      delayInHours: form.delayInHours || null,
-      requireNoResponse: form.requireNoResponse || false,
+      delayInHours: form.delayInHours === "" ? null : Number(form.delayInHours) || null,
+      requireNoResponse: Boolean(form.requireNoResponse),
+      dueInHours: form.dueInHours === "" ? null : Number(form.dueInHours) || 24,
+      taskTitle: form.taskTitle || null,
+      taskDescription: form.taskDescription || null,
     };
     try {
       if (rule?.id) {
@@ -394,10 +400,30 @@ export default function AutomationRulesScreen() {
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
   async function toggleActive(rule: AutomationRule) {
+    const next = !rule.active;
+    setRules((prev) => prev.map((r) => r.id === rule.id ? { ...r, active: next } : r));
     try {
-      await api.put(`/api/automation-rules/${rule.id}`, { ...rule, active: !rule.active });
-      setRules((prev) => prev.map((r) => r.id === rule.id ? { ...r, active: !r.active } : r));
+      await api.put(`/api/automation-rules/${rule.id}`, {
+        ...rule,
+        active: next,
+        conditionLeadSource: rule.conditionLeadSource || null,
+        conditionStage: rule.conditionStage || null,
+        conditionPipelineId: null,
+        conditionIndustryKey: null,
+        targetStage: null,
+        targetPipelineId: null,
+        opportunityTitle: null,
+        emailTemplateId: rule.emailTemplateId ? Number(rule.emailTemplateId) : null,
+        emailSubject: null,
+        emailBody: null,
+        whatsappTemplateId: rule.whatsappTemplateId ? Number(rule.whatsappTemplateId) : null,
+        delayInHours: rule.delayInHours ? Number(rule.delayInHours) : null,
+        requireNoResponse: Boolean(rule.requireNoResponse),
+        dueInHours: Number(rule.dueInHours) || 24,
+      });
     } catch {
+      // revert optimistic update
+      setRules((prev) => prev.map((r) => r.id === rule.id ? { ...r, active: !next } : r));
       Alert.alert("Error", "Failed to update rule.");
     }
   }
