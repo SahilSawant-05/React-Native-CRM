@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -31,13 +32,13 @@ interface Template {
   category?: string;
   body?: string;
   status?: string;
-  components?: string; // JSON array of WhatsApp template components
+  componentsJson?: string; // JSON array of WhatsApp template components (matches web field name)
 }
 
 function parseTemplateComponents(template: Template): any[] {
   try {
-    if (!template.components) return [];
-    return JSON.parse(template.components);
+    const parsed = JSON.parse(template?.componentsJson || "[]");
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -561,8 +562,12 @@ const amStyles = StyleSheet.create({
 });
 
 // ─── Template Confirm Sheet ───────────────────────────────────────────────────
-// Shown after a template is selected. If the template has a media header
-// (IMAGE / VIDEO / DOCUMENT), the user must pick a media asset before sending.
+// Shown after a template is selected. Matches the web UX:
+//   • Template name + body preview
+//   • If template has IMAGE/VIDEO/DOCUMENT header:
+//       - "Header image URL" label  +  "Choose header media" button (side by side)
+//       - Text input pre-filled from media library pick, or typed manually
+//   • Send button
 
 function TemplateConfirmSheet({
   template,
@@ -579,7 +584,6 @@ function TemplateConfirmSheet({
 
   const headerFormat = template ? templateHeaderMediaFormat(template) : "";
 
-  // Reset state whenever the sheet is opened for a new template
   useEffect(() => {
     if (template) {
       setHeaderMediaUrl("");
@@ -590,7 +594,7 @@ function TemplateConfirmSheet({
   function handleSend() {
     if (headerFormat && !headerMediaUrl.trim()) {
       setValidationError(
-        `Please choose a ${headerFormat.toLowerCase()} from the Media Library for this template's header.`
+        `Please choose a ${headerFormat.toLowerCase()} for this template's header.`
       );
       return;
     }
@@ -602,6 +606,15 @@ function TemplateConfirmSheet({
 
   const displayName = template.metaTemplateName || template.name || "(unnamed)";
   const bodyText = template.body || "";
+  const headerLabel = headerFormat
+    ? `Header ${headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} URL`
+    : "";
+  const headerPlaceholder =
+    headerFormat === "IMAGE"
+      ? "https://example.com/header.jpg"
+      : headerFormat === "VIDEO"
+      ? "https://example.com/header.mp4"
+      : "https://example.com/header.pdf";
 
   return (
     <Modal
@@ -611,7 +624,7 @@ function TemplateConfirmSheet({
       onRequestClose={onClose}
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
-        {/* Header */}
+        {/* Sheet header */}
         <View style={tcStyles.header}>
           <Text style={tcStyles.title}>Send Template</Text>
           <TouchableOpacity onPress={onClose} style={tcStyles.closeBtn}>
@@ -619,8 +632,8 @@ function TemplateConfirmSheet({
           </TouchableOpacity>
         </View>
 
-        <View style={tcStyles.body}>
-          {/* Template info card */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={tcStyles.body} keyboardShouldPersistTaps="handled">
+          {/* Template preview card */}
           <View style={tcStyles.card}>
             <Text style={tcStyles.tplName}>{displayName}</Text>
             {!!template.category && (
@@ -631,53 +644,48 @@ function TemplateConfirmSheet({
             )}
           </View>
 
-          {/* Header media section — only shown when template needs it */}
+          {/* Header media section — only shown when template HEADER needs IMAGE/VIDEO/DOCUMENT */}
           {!!headerFormat && (
             <View style={tcStyles.section}>
-              <Text style={tcStyles.sectionLabel}>
-                Header {headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} (required)
-              </Text>
-              {headerMediaUrl ? (
-                <View style={tcStyles.chosenMedia}>
-                  {headerFormat === "IMAGE" ? (
-                    <Image
-                      source={{ uri: headerMediaUrl }}
-                      style={tcStyles.chosenThumb}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={[tcStyles.chosenThumb, tcStyles.chosenThumbPlaceholder]}>
-                      <Text style={{ fontSize: 28 }}>
-                        {headerFormat === "VIDEO" ? "🎬" : "📄"}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={tcStyles.chosenUrl} numberOfLines={2}>
-                      {headerMediaUrl}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setHeaderPickerOpen(true)}
-                      style={tcStyles.changeBtn}
-                    >
-                      <Text style={tcStyles.changeBtnText}>Change</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
+              {/* Label row: "Header image URL"  |  [Choose header media] */}
+              <View style={tcStyles.headerLabelRow}>
+                <Text style={tcStyles.sectionLabel}>{headerLabel}</Text>
                 <TouchableOpacity
                   style={tcStyles.chooseBtn}
                   onPress={() => setHeaderPickerOpen(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={tcStyles.chooseBtnEmoji}>
+                  <Text style={tcStyles.chooseBtnIcon}>
                     {headerFormat === "IMAGE" ? "🖼️" : headerFormat === "VIDEO" ? "🎬" : "📄"}
                   </Text>
-                  <Text style={tcStyles.chooseBtnText}>
-                    Choose {headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} from Media Library
-                  </Text>
+                  <Text style={tcStyles.chooseBtnText}>Choose header media</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* URL text input (pre-filled from library pick, or typed manually) */}
+              <TextInput
+                style={tcStyles.urlInput}
+                placeholder={headerPlaceholder}
+                placeholderTextColor="#94a3b8"
+                value={headerMediaUrl}
+                onChangeText={(v) => { setHeaderMediaUrl(v); setValidationError(""); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+
+              {/* Thumbnail preview once a URL is set */}
+              {!!headerMediaUrl.trim() && headerFormat === "IMAGE" && (
+                <Image
+                  source={{ uri: headerMediaUrl.trim() }}
+                  style={tcStyles.previewThumb}
+                  resizeMode="cover"
+                />
               )}
+
+              <Text style={tcStyles.hint}>
+                This template requires a public HTTPS {headerFormat.toLowerCase()} header for every send.
+              </Text>
             </View>
           )}
 
@@ -686,7 +694,7 @@ function TemplateConfirmSheet({
               <Text style={tcStyles.errorText}>{validationError}</Text>
             </View>
           )}
-        </View>
+        </ScrollView>
 
         {/* Send button */}
         <View style={tcStyles.footer}>
@@ -695,12 +703,12 @@ function TemplateConfirmSheet({
           </TouchableOpacity>
         </View>
 
-        {/* Header media picker */}
+        {/* Header media library picker — locked to the required type */}
         <MediaLibraryPicker
           visible={headerPickerOpen}
           onClose={() => setHeaderPickerOpen(false)}
           allowedType={headerFormat}
-          title={`Choose ${headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} header`}
+          title={`Choose ${headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} header media`}
           onSelect={(asset) => {
             setHeaderMediaUrl(asset.publicUrl || "");
             setHeaderPickerOpen(false);
@@ -730,7 +738,7 @@ const tcStyles = StyleSheet.create({
     paddingVertical: 8,
   },
   closeBtnText: { color: "#475569", fontWeight: "600" },
-  body: { flex: 1, padding: 16, gap: 16 },
+  body: { padding: 16, gap: 16 },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -743,39 +751,43 @@ const tcStyles = StyleSheet.create({
   tplCat: { fontSize: 12, color: "#0f766e", fontWeight: "600" },
   tplBody: { fontSize: 13, color: "#475569", lineHeight: 18, marginTop: 4 },
   section: { gap: 10 },
-  sectionLabel: { fontSize: 13, fontWeight: "700", color: "#374151" },
+  headerLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  sectionLabel: { fontSize: 13, fontWeight: "600", color: "#374151", flex: 1 },
   chooseBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderWidth: 2,
-    borderColor: "#0f766e",
-    borderStyle: "dashed",
-    borderRadius: 12,
-    padding: 16,
-    backgroundColor: "#f0fdfa",
-  },
-  chooseBtnEmoji: { fontSize: 24 },
-  chooseBtnText: { fontSize: 14, fontWeight: "600", color: "#0f766e", flex: 1 },
-  chosenMedia: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 10,
+    gap: 6,
     borderWidth: 1,
-    borderColor: "#d1fae5",
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#fff",
   },
-  chosenThumb: { width: 64, height: 64, borderRadius: 8 },
-  chosenThumbPlaceholder: {
+  chooseBtnIcon: { fontSize: 14 },
+  chooseBtnText: { fontSize: 12, fontWeight: "600", color: "#374151" },
+  urlInput: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: "#0f172a",
+    backgroundColor: "#fff",
+  },
+  previewThumb: {
+    width: "100%",
+    height: 160,
+    borderRadius: 10,
     backgroundColor: "#f1f5f9",
-    alignItems: "center",
-    justifyContent: "center",
   },
-  chosenUrl: { fontSize: 11, color: "#64748b", flex: 1 },
-  changeBtn: { marginTop: 6 },
-  changeBtnText: { fontSize: 12, color: "#0f766e", fontWeight: "600" },
+  hint: { fontSize: 11, color: "#64748b" },
   errorBox: {
     backgroundColor: "#fef2f2",
     borderRadius: 10,
