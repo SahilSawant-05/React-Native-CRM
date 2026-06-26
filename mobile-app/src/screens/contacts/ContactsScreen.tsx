@@ -18,6 +18,12 @@ type Props = {
   navigation: NativeStackNavigationProp<any>;
 };
 
+function normalizeTags(tags: any): string[] {
+  if (Array.isArray(tags)) return tags.filter(Boolean);
+  if (typeof tags === "string" && tags) return tags.split(",").map(t => t.trim()).filter(Boolean);
+  return [];
+}
+
 function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => void }) {
   const initials = (contact.name || "?")
     .split(" ")
@@ -25,6 +31,7 @@ function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => voi
     .map((w) => w[0])
     .join("")
     .toUpperCase();
+  const tags = normalizeTags(contact.tags);
 
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
@@ -36,9 +43,9 @@ function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => voi
         {!!contact.phone && <Text style={styles.sub}>{contact.phone}</Text>}
         {!!contact.email && <Text style={styles.sub}>{contact.email}</Text>}
       </View>
-      {!!contact.tags?.length && (
+      {tags.length > 0 && (
         <View style={styles.tagBadge}>
-          <Text style={styles.tagText}>{contact.tags[0]}</Text>
+          <Text style={styles.tagText}>{tags[0]}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -94,6 +101,16 @@ export default function ContactsScreen({ navigation }: Props) {
 
   if (loading) return <LoadingSpinner message="Loading contacts…" />;
 
+  // Client-side filter as safety net when the API doesn't support search
+  const q = search.toLowerCase().trim();
+  const displayed = q
+    ? contacts.filter(c =>
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.phone || "").toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q)
+      )
+    : contacts;
+
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
       <View style={styles.searchBar}>
@@ -111,7 +128,7 @@ export default function ContactsScreen({ navigation }: Props) {
       {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, search)} />}
 
       <FlatList
-        data={contacts}
+        data={displayed}
         keyExtractor={(item, index) => String(item.id ?? item._id ?? item.phone ?? item.email ?? index)}
         renderItem={({ item }) => (
           <ContactRow

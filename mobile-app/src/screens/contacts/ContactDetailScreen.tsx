@@ -53,6 +53,13 @@ export default function ContactDetailScreen({ route }: Props) {
     .join("")
     .toUpperCase();
 
+  // tags may arrive as a comma-separated string or non-array — normalise
+  const tags: string[] = Array.isArray(contact.tags)
+    ? contact.tags
+    : typeof contact.tags === "string" && contact.tags
+      ? contact.tags.split(",").map(t => t.trim()).filter(Boolean)
+      : [];
+
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -64,9 +71,9 @@ export default function ContactDetailScreen({ route }: Props) {
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <Text style={styles.name}>{contact.name}</Text>
-          {!!contact.tags?.length && (
+          {tags.length > 0 && (
             <View style={styles.tagsRow}>
-              {contact.tags.map((tag, i) => (
+              {tags.map((tag, i) => (
                 <View key={`tag-${tag ?? i}`} style={styles.tag}>
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
