@@ -126,62 +126,72 @@ export default function MailDetailScreen({ route, navigation }: any) {
     if (!isMountedRef.current) return;
     setError(null);
 
-    // ── Strategy 1: single-item endpoint ──────────────────────────────────
-    // The server returns 500 for this endpoint (likely a backend bug with lazy
-    // loading or missing join). We catch ALL errors and fall through to the
-    // paginated fallback rather than re-throwing.
     let found: EmailLog | null = null;
 
+    // ── Strategy 1: single-item endpoint ──────────────────────────────────
+    // Backend 500s here (lazy-load / missing join bug). Catch and fall through.
     try {
       const res = await api.get(`/api/email/logs/${emailId}`);
       found = res.data ?? null;
       console.log("[MailDetail] single-item ok:", found?.id);
     } catch (e1: any) {
-      // Log for debugging but always fall through — the server 500s here.
       console.log(
         "[MailDetail] single-item failed:",
         e1?.response?.status,
-        e1?.response?.data?.message ?? e1?.message
+        e1?.response?.data?.message ?? e1?.message,
       );
     }
 
-    // ── Strategy 2: search paginated list ─────────────────────────────────
+    // ── Strategy 2: flat list endpoint (matches web behaviour) ────────────
+    // The web uses GET /api/email/logs (no pagination) and finds all emails
+    // here. Try this BEFORE the paginated endpoint because /api/email/logs/page
+    // only returns 17 items and email 474 is not among them.
     if (!found) {
-      console.log("[MailDetail] falling back to paginated list search...");
+      console.log("[MailDetail] trying flat list /api/email/logs ...");
+      try {
+        const res = await api.get("/api/email/logs");
+        const list = extractList(res.data);
+        console.log(`[MailDetail] /api/email/logs → ${list.length} items`);
+        found = list.find((e) => Number(e.id) === emailId) ?? null;
+        if (found) console.log("[MailDetail] found via flat list:", found.id);
+      } catch (e2: any) {
+        console.log(
+          "[MailDetail] /api/email/logs failed:",
+          e2?.response?.status,
+          e2?.response?.data?.message ?? e2?.message,
+        );
+      }
+    }
 
-      // Try several possible list endpoints — backend may expose different paths.
-      const LIST_ENDPOINTS = [
-        "/api/email/logs/page",
-        "/api/email/logs",
-      ];
+    // ── Strategy 3: paginated list endpoint ───────────────────────────────
+    // Last resort — scan pages until we find the email (up to 10 pages).
+    if (!found) {
+      console.log("[MailDetail] trying paginated /api/email/logs/page ...");
+      try {
+        const firstRes = await api.get("/api/email/logs/page", {
+          params: { page: 0, size: 100 },
+        });
+        const firstList = extractList(firstRes.data);
+        console.log(`[MailDetail] /api/email/logs/page p0 → ${firstList.length} items`);
+        found = firstList.find((e) => Number(e.id) === emailId) ?? null;
 
-      for (const ep of LIST_ENDPOINTS) {
-        if (found) break;
-        try {
-          // Fetch first page — most recent emails are here, so email 412 is
-          // likely in the first 100 results.
-          const res = await api.get(ep, { params: { page: 0, size: 100 } });
-          const list = extractList(res.data);
-          console.log(`[MailDetail] ${ep} → ${list.length} items`);
-
-          found = list.find(e => Number(e.id) === emailId) ?? null;
-
-          // If not in page 0, scan further pages (up to 5 total).
-          if (!found) {
-            const totalPages: number = res.data?.totalPages ?? res.data?.total_pages ?? 1;
-            for (let p = 1; p < Math.min(totalPages, 5) && !found; p++) {
-              const r2 = await api.get(ep, { params: { page: p, size: 100 } });
-              const l2 = extractList(r2.data);
-              found = l2.find(e => Number(e.id) === emailId) ?? null;
-            }
+        if (!found) {
+          const totalPages: number =
+            firstRes.data?.totalPages ?? firstRes.data?.total_pages ?? 1;
+          for (let p = 1; p < Math.min(totalPages, 10) && !found; p++) {
+            const r = await api.get("/api/email/logs/page", {
+              params: { page: p, size: 100 },
+            });
+            const l = extractList(r.data);
+            found = l.find((e) => Number(e.id) === emailId) ?? null;
           }
-        } catch (e2: any) {
-          console.log(
-            `[MailDetail] ${ep} failed:`,
-            e2?.response?.status,
-            e2?.response?.data?.message ?? e2?.message
-          );
         }
+      } catch (e3: any) {
+        console.log(
+          "[MailDetail] /api/email/logs/page failed:",
+          e3?.response?.status,
+          e3?.response?.data?.message ?? e3?.message,
+        );
       }
     }
 
@@ -193,8 +203,8 @@ export default function MailDetailScreen({ route, navigation }: any) {
     } else {
       setError(
         "Could not load this email. The server returned an error for the " +
-        "direct lookup (500) and it was not found in recent emails. " +
-        "Try refreshing or contact support."
+          "direct lookup (500) and it was not found in any email list. " +
+          "Try refreshing or contact support.",
       );
     }
 
@@ -206,8 +216,10 @@ export default function MailDetailScreen({ route, navigation }: any) {
       isMountedRef.current = true;
       setLoading(true);
       fetchEmail();
-      return () => { isMountedRef.current = false; };
-    }, [fetchEmail])
+      return () => {
+        isMountedRef.current = false;
+      };
+    }, [fetchEmail]),
   );
 
   // ── Mark as read ───────────────────────────────────────────────────────────
@@ -216,9 +228,11 @@ export default function MailDetailScreen({ route, navigation }: any) {
       if (!email || email.direction !== "INBOUND" || email.readAt) return;
       api
         .post(`/api/email/${email.id}/read`)
-        .then(res => { if (isMountedRef.current) setEmail(res.data); })
+        .then((res) => {
+          if (isMountedRef.current) setEmail(res.data);
+        })
         .catch(() => undefined);
-    }, [email])
+    }, [email]),
   );
 
   // ── Send reply ─────────────────────────────────────────────────────────────
@@ -235,9 +249,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
       setTimeout(() => setSuccessMsg(""), 3000);
       fetchEmail();
     } catch (e: any) {
-      setError(
-        e?.response?.data?.message || e?.message || "Reply failed"
-      );
+      setError(e?.response?.data?.message || e?.message || "Reply failed");
     } finally {
       setSaving(false);
     }
@@ -264,7 +276,13 @@ export default function MailDetailScreen({ route, navigation }: any) {
         </TouchableOpacity>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error || "Email not found."}</Text>
-          <TouchableOpacity onPress={() => { setLoading(true); fetchEmail(); }} style={styles.retryBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              setLoading(true);
+              fetchEmail();
+            }}
+            style={styles.retryBtn}
+          >
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -289,14 +307,18 @@ export default function MailDetailScreen({ route, navigation }: any) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Text style={styles.backText}>← Mail</Text>
           </TouchableOpacity>
-          <View style={[
-            styles.statusBadge,
-            email.status === "FAILED" ? styles.badgeFailed : styles.badgeDefault,
-          ]}>
-            <Text style={[
-              styles.statusText,
-              email.status === "FAILED" ? styles.statusFailed : styles.statusDefault,
-            ]}>
+          <View
+            style={[
+              styles.statusBadge,
+              email.status === "FAILED" ? styles.badgeFailed : styles.badgeDefault,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                email.status === "FAILED" ? styles.statusFailed : styles.statusDefault,
+              ]}
+            >
               {email.status || email.direction}
             </Text>
           </View>
@@ -315,13 +337,25 @@ export default function MailDetailScreen({ route, navigation }: any) {
 
           {/* ── Sender row ── */}
           <View style={styles.senderRow}>
-            <View style={[styles.avatar, { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" }]}>
-              <Text style={[styles.avatarText, { color: isInbound ? "#3b82f6" : "#0f766e" }]}>
+            <View
+              style={[
+                styles.avatar,
+                { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.avatarText,
+                  { color: isInbound ? "#3b82f6" : "#0f766e" },
+                ]}
+              >
                 {initials(contact)}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.senderName} numberOfLines={1}>{contact || "Unknown"}</Text>
+              <Text style={styles.senderName} numberOfLines={1}>
+                {contact || "Unknown"}
+              </Text>
               <Text style={styles.senderMeta} numberOfLines={1}>
                 From: {email.fromEmail || "—"}  ·  To: {email.toEmail || "—"}
               </Text>
@@ -378,12 +412,11 @@ export default function MailDetailScreen({ route, navigation }: any) {
               <Text style={styles.successText}>{successMsg}</Text>
             </View>
           )}
-          {!!error && (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorBannerText}>{error}</Text>
-            </View>
-          )}
-
+{!!error && !!email && (
+  <View style={styles.errorBanner}>
+    <Text style={styles.errorBannerText}>{error}</Text>
+  </View>
+)}
           {/* ── Reply ── */}
           <View style={styles.replyCard}>
             <Text style={styles.replyLabel}>↩ Reply</Text>
@@ -399,7 +432,10 @@ export default function MailDetailScreen({ route, navigation }: any) {
             <TouchableOpacity
               onPress={sendReply}
               disabled={saving || !replyBody.trim()}
-              style={[styles.sendBtn, (!replyBody.trim() || saving) && styles.sendBtnDisabled]}
+              style={[
+                styles.sendBtn,
+                (!replyBody.trim() || saving) && styles.sendBtnDisabled,
+              ]}
             >
               <Text style={styles.sendBtnText}>
                 {saving ? "Sending..." : "Send Reply"}

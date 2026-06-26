@@ -317,6 +317,8 @@ export default function MailScreen({ navigation }: any) {
 
       {/* List */}
       <FlatList
+        style={{ flex: 1 }}   // ✅ ADD THIS
+
         data={emails}
         keyExtractor={(item) => String(item.id)}
         refreshing={refreshing}
@@ -399,8 +401,8 @@ const styles = StyleSheet.create({
 
   // Folder tabs
   tabsScroll: { flexGrow: 0 },
-  tabs: { paddingHorizontal: 12, paddingBottom: 6, gap: 8, flexDirection: "row",padding:10 },
-  tab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#e2e8f0" },
+tabs: { paddingHorizontal: 12, paddingVertical: 7, gap: 8, flexDirection: "row" },
+  tab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#e2e8f0"},
   tabActive: { backgroundColor: "#0f766e" },
   tabText: { fontSize: 13, fontWeight: "600", color: "#475569" },
   tabTextActive: { color: "#fff" },
