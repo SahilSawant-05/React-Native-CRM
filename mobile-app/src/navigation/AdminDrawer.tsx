@@ -35,6 +35,7 @@ import CrmSettingsScreen from "../screens/settings/CrmSettingsScreen";
 import WhatsAppSetupScreen from "../screens/whatsapp/WhatsAppSetupScreen";
 import BillingStatusScreen from "../screens/billing/BillingStatusScreen";
 import CalendarScreen from "../screens/calendar/CalendarScreen";
+import DashboardScreen from "../screens/dashboard/DashboardScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Workspace",
     items: [
+      { name: "Dashboard",     label: "Dashboard",        emoji: "📊" },
       { name: "Queue",         label: "Work Queue",      emoji: "📋" },
       { name: "Chat",          label: "Messages",         emoji: "💬" },
       { name: "Mail",          label: "Mail",             emoji: "✉️" },
@@ -276,6 +278,7 @@ function withHeader(Comp: React.ComponentType<any>, title: string) {
 // ─── Screen map ───────────────────────────────────────────────────────────────
 
 const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
+  Dashboard:     withHeader(DashboardScreen,    "Dashboard"),
   Queue:         withHeader(WorkQueueScreen,    "Work Queue"),
   Chat:          ChatNavigator,
   Mail:          MailNavigator,           // ← was withHeader(MailScreen, "Mail")
@@ -296,14 +299,14 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
 
 export default function AdminDrawer() {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("Queue");
+  const [activeTab, setActiveTab] = useState("Dashboard");
 
   function navigate(name: string) {
     setActiveTab(name);
     setDrawerOpen(false);
   }
 
-  const ActiveScreen = SCREEN_MAP[activeTab] ?? SCREEN_MAP["Queue"];
+  const ActiveScreen = SCREEN_MAP[activeTab] ?? SCREEN_MAP["Dashboard"];
 
   return (
     <DrawerCtx.Provider value={{ open: () => setDrawerOpen(true) }}>

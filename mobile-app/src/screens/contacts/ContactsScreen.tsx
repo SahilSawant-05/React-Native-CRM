@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -79,9 +79,11 @@ export default function ContactsScreen({ navigation }: Props) {
 
   useEffect(() => { load(0, search); }, []);
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleSearch(text: string) {
     setSearch(text);
-    load(0, text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => load(0, text), 400);
   }
 
   function loadMore() {
