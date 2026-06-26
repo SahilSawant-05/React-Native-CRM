@@ -30,6 +30,26 @@ interface Template {
   metaTemplateName?: string;
   category?: string;
   body?: string;
+  status?: string;
+  components?: string; // JSON array of WhatsApp template components
+}
+
+function parseTemplateComponents(template: Template): any[] {
+  try {
+    if (!template.components) return [];
+    return JSON.parse(template.components);
+  } catch {
+    return [];
+  }
+}
+
+// Returns "IMAGE" | "VIDEO" | "DOCUMENT" | "" depending on the template's HEADER component
+function templateHeaderMediaFormat(template: Template): string {
+  const header = parseTemplateComponents(template).find(
+    (c: any) => String(c?.type || "").toUpperCase() === "HEADER"
+  );
+  const format = String(header?.format || "").toUpperCase();
+  return ["IMAGE", "VIDEO", "DOCUMENT"].includes(format) ? format : "";
 }
 
 // Media asset returned by the /api/media-assets endpoint (same shape the web app uses)
@@ -237,10 +257,14 @@ function MediaLibraryPicker({
   visible,
   onClose,
   onSelect,
+  allowedType,
+  title,
 }: {
   visible: boolean;
   onClose: () => void;
   onSelect: (asset: MediaAsset) => void;
+  allowedType?: string; // if set, lock filter to this type
+  title?: string;
 }) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
@@ -251,6 +275,10 @@ function MediaLibraryPicker({
     if (!visible) return;
     setLoading(true);
     setError("");
+    // If locked to a specific type, reset filter to match
+    if (allowedType) {
+      setFilter(allowedType as any);
+    }
     api
       .get("/api/media-assets")
       .then((r) => {
@@ -270,8 +298,9 @@ function MediaLibraryPicker({
       .finally(() => setLoading(false));
   }, [visible]);
 
+  const activeFilter = allowedType ? (allowedType as any) : filter;
   const filtered =
-    filter === "ALL" ? assets : assets.filter((a) => a.mediaType === filter);
+    activeFilter === "ALL" ? assets : assets.filter((a) => a.mediaType === activeFilter);
 
   const filterTypes: Array<"ALL" | "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO"> = [
     "ALL", "IMAGE", "VIDEO", "DOCUMENT", "AUDIO",
@@ -287,30 +316,34 @@ function MediaLibraryPicker({
       <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
         {/* Header */}
         <View style={mlStyles.header}>
-          <Text style={mlStyles.title}>Media Library</Text>
+          <Text style={mlStyles.title}>{title ?? "Media Library"}</Text>
           <TouchableOpacity onPress={onClose} style={mlStyles.closeBtn}>
             <Text style={mlStyles.closeBtnText}>Cancel</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={mlStyles.hint}>
-          Tap any asset to send it. These are already-hosted public URLs — no upload needed.
+          {allowedType
+            ? `Choose a ${allowedType.toLowerCase()} for the template header.`
+            : "Tap any asset to send it. These are already-hosted public URLs — no upload needed."}
         </Text>
 
-        {/* Type filter tabs */}
-        <View style={mlStyles.filterRow}>
-          {filterTypes.map((type) => (
-            <TouchableOpacity
-              key={type}
-              onPress={() => setFilter(type)}
-              style={[mlStyles.filterBtn, filter === type && mlStyles.filterBtnActive]}
-            >
-              <Text style={[mlStyles.filterText, filter === type && mlStyles.filterTextActive]}>
-                {type}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Type filter tabs — hidden when locked to a specific type */}
+        {!allowedType && (
+          <View style={mlStyles.filterRow}>
+            {filterTypes.map((type) => (
+              <TouchableOpacity
+                key={type}
+                onPress={() => setFilter(type)}
+                style={[mlStyles.filterBtn, filter === type && mlStyles.filterBtnActive]}
+              >
+                <Text style={[mlStyles.filterText, filter === type && mlStyles.filterTextActive]}>
+                  {type}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator style={{ marginTop: 40 }} color="#0f766e" />
@@ -527,6 +560,245 @@ const amStyles = StyleSheet.create({
   cancelText: { fontSize: 15, color: "#ef4444", fontWeight: "600" },
 });
 
+// ─── Template Confirm Sheet ───────────────────────────────────────────────────
+// Shown after a template is selected. If the template has a media header
+// (IMAGE / VIDEO / DOCUMENT), the user must pick a media asset before sending.
+
+function TemplateConfirmSheet({
+  template,
+  onClose,
+  onSend,
+}: {
+  template: Template | null;
+  onClose: () => void;
+  onSend: (t: Template, headerMediaUrl: string | null) => void;
+}) {
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
+  const [headerPickerOpen, setHeaderPickerOpen] = useState(false);
+  const [validationError, setValidationError] = useState("");
+
+  const headerFormat = template ? templateHeaderMediaFormat(template) : "";
+
+  // Reset state whenever the sheet is opened for a new template
+  useEffect(() => {
+    if (template) {
+      setHeaderMediaUrl("");
+      setValidationError("");
+    }
+  }, [template]);
+
+  function handleSend() {
+    if (headerFormat && !headerMediaUrl.trim()) {
+      setValidationError(
+        `Please choose a ${headerFormat.toLowerCase()} from the Media Library for this template's header.`
+      );
+      return;
+    }
+    setValidationError("");
+    onSend(template!, headerMediaUrl.trim() || null);
+  }
+
+  if (!template) return null;
+
+  const displayName = template.metaTemplateName || template.name || "(unnamed)";
+  const bodyText = template.body || "";
+
+  return (
+    <Modal
+      visible={!!template}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+        {/* Header */}
+        <View style={tcStyles.header}>
+          <Text style={tcStyles.title}>Send Template</Text>
+          <TouchableOpacity onPress={onClose} style={tcStyles.closeBtn}>
+            <Text style={tcStyles.closeBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={tcStyles.body}>
+          {/* Template info card */}
+          <View style={tcStyles.card}>
+            <Text style={tcStyles.tplName}>{displayName}</Text>
+            {!!template.category && (
+              <Text style={tcStyles.tplCat}>{template.category}</Text>
+            )}
+            {!!bodyText && (
+              <Text style={tcStyles.tplBody}>{bodyText}</Text>
+            )}
+          </View>
+
+          {/* Header media section — only shown when template needs it */}
+          {!!headerFormat && (
+            <View style={tcStyles.section}>
+              <Text style={tcStyles.sectionLabel}>
+                Header {headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} (required)
+              </Text>
+              {headerMediaUrl ? (
+                <View style={tcStyles.chosenMedia}>
+                  {headerFormat === "IMAGE" ? (
+                    <Image
+                      source={{ uri: headerMediaUrl }}
+                      style={tcStyles.chosenThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[tcStyles.chosenThumb, tcStyles.chosenThumbPlaceholder]}>
+                      <Text style={{ fontSize: 28 }}>
+                        {headerFormat === "VIDEO" ? "🎬" : "📄"}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={tcStyles.chosenUrl} numberOfLines={2}>
+                      {headerMediaUrl}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setHeaderPickerOpen(true)}
+                      style={tcStyles.changeBtn}
+                    >
+                      <Text style={tcStyles.changeBtnText}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={tcStyles.chooseBtn}
+                  onPress={() => setHeaderPickerOpen(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={tcStyles.chooseBtnEmoji}>
+                    {headerFormat === "IMAGE" ? "🖼️" : headerFormat === "VIDEO" ? "🎬" : "📄"}
+                  </Text>
+                  <Text style={tcStyles.chooseBtnText}>
+                    Choose {headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} from Media Library
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {!!validationError && (
+            <View style={tcStyles.errorBox}>
+              <Text style={tcStyles.errorText}>{validationError}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Send button */}
+        <View style={tcStyles.footer}>
+          <TouchableOpacity style={tcStyles.sendBtn} onPress={handleSend} activeOpacity={0.8}>
+            <Text style={tcStyles.sendBtnText}>Send Template</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Header media picker */}
+        <MediaLibraryPicker
+          visible={headerPickerOpen}
+          onClose={() => setHeaderPickerOpen(false)}
+          allowedType={headerFormat}
+          title={`Choose ${headerFormat.charAt(0) + headerFormat.slice(1).toLowerCase()} header`}
+          onSelect={(asset) => {
+            setHeaderMediaUrl(asset.publicUrl || "");
+            setHeaderPickerOpen(false);
+            setValidationError("");
+          }}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const tcStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  closeBtn: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  closeBtnText: { color: "#475569", fontWeight: "600" },
+  body: { flex: 1, padding: 16, gap: 16 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 6,
+  },
+  tplName: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  tplCat: { fontSize: 12, color: "#0f766e", fontWeight: "600" },
+  tplBody: { fontSize: 13, color: "#475569", lineHeight: 18, marginTop: 4 },
+  section: { gap: 10 },
+  sectionLabel: { fontSize: 13, fontWeight: "700", color: "#374151" },
+  chooseBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 2,
+    borderColor: "#0f766e",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: "#f0fdfa",
+  },
+  chooseBtnEmoji: { fontSize: 24 },
+  chooseBtnText: { fontSize: 14, fontWeight: "600", color: "#0f766e", flex: 1 },
+  chosenMedia: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#d1fae5",
+  },
+  chosenThumb: { width: 64, height: 64, borderRadius: 8 },
+  chosenThumbPlaceholder: {
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chosenUrl: { fontSize: 11, color: "#64748b", flex: 1 },
+  changeBtn: { marginTop: 6 },
+  changeBtnText: { fontSize: 12, color: "#0f766e", fontWeight: "600" },
+  errorBox: {
+    backgroundColor: "#fef2f2",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    padding: 12,
+  },
+  errorText: { color: "#dc2626", fontSize: 13 },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  sendBtn: {
+    backgroundColor: "#0f766e",
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  sendBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ChatConversationScreen({ route }: Props) {
@@ -541,6 +813,7 @@ export default function ChatConversationScreen({ route }: Props) {
   const [totalPages, setTotalPages] = useState(1);
   const [attachOpen, setAttachOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
@@ -603,8 +876,8 @@ export default function ChatConversationScreen({ route }: Props) {
     }
   }
 
-  async function handleSendTemplate(template: Template) {
-    setTemplatePickerOpen(false);
+  async function handleSendTemplate(template: Template, headerMediaUrl: string | null) {
+    setSelectedTemplate(null);
     setSending(true);
     const optimistic: Message = {
       id: `temp-${Date.now()}`,
@@ -619,6 +892,7 @@ export default function ChatConversationScreen({ route }: Props) {
         contactId: inbox.contactId,
         templateId: template.id,
         bodyParameters: [],
+        headerMediaUrl: headerMediaUrl || null,
       });
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -758,7 +1032,16 @@ export default function ChatConversationScreen({ route }: Props) {
       <TemplatePicker
         visible={templatePickerOpen}
         onClose={() => setTemplatePickerOpen(false)}
-        onSelect={handleSendTemplate}
+        onSelect={(t) => {
+          setTemplatePickerOpen(false);
+          setSelectedTemplate(t);
+        }}
+      />
+
+      <TemplateConfirmSheet
+        template={selectedTemplate}
+        onClose={() => setSelectedTemplate(null)}
+        onSend={handleSendTemplate}
       />
 
       <MediaLibraryPicker
