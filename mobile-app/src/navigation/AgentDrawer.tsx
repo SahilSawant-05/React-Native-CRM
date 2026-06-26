@@ -30,6 +30,7 @@ import PipelineScreen from "../screens/pipeline/PipelineScreen";
 import DomainCatalogScreen from "../screens/catalog/DomainCatalogScreen";
 import MediaLibraryScreen from "../screens/media/MediaLibraryScreen";
 import ReportsScreen from "../screens/reports/ReportsScreen";
+import ProfileScreen from "../screens/profile/ProfileScreen";
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,12 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Insights",
     items: [
       { name: "Reports",       label: "Reports",        emoji: "📈" },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      { name: "Profile",       label: "Profile",        emoji: "👤" },
     ],
   },
 ];
@@ -274,6 +281,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   DomainCatalog: withHeader(DomainCatalogScreen, "Domain Catalog"),
   MediaLibrary:  withHeader(MediaLibraryScreen,  "Media Library"),
   Reports:       withHeader(ReportsScreen,       "Reports"),
+  Profile:       withHeader(ProfileScreen,       "Profile"),
 };
 
 // ─── Main export ──────────────────────────────────────────────────────────────
