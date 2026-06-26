@@ -62,15 +62,24 @@ export default function ContactsScreen({ navigation }: Props) {
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
-  const load = useCallback(async (p = 0, q = "") => {
-    if (p === 0) setLoading(true);
-    else setLoadingMore(true);
+  // allContacts holds the full API page; contacts is the locally-filtered view
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+
+  const load = useCallback(async (p = 0, q = "", silent = false) => {
+    if (p === 0 && !silent) setLoading(true);
+    else if (p > 0) setLoadingMore(true);
     setError("");
     setErrorDetail("");
     try {
-      const data = await fetchContacts({ page: p, size: 25, search: q });
+      const data = await fetchContacts({ page: p, size: 50, search: q });
       const items = data.content ?? [];
-      setContacts((prev) => (p === 0 ? items : [...prev, ...items]));
+      if (p === 0) {
+        setAllContacts(items);
+        setContacts(items);
+      } else {
+        setAllContacts(prev => [...prev, ...items]);
+        setContacts(prev => [...prev, ...items]);
+      }
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
@@ -84,13 +93,27 @@ export default function ContactsScreen({ navigation }: Props) {
     }
   }, []);
 
-  useEffect(() => { load(0, search); }, []);
+  useEffect(() => { load(0, ""); }, []);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleSearch(text: string) {
     setSearch(text);
+    // Apply local filter immediately — no spinner, no focus loss
+    const q = text.toLowerCase().trim();
+    setContacts(
+      q
+        ? allContacts.filter(c =>
+            (c.name || "").toLowerCase().includes(q) ||
+            (c.phone || "").toLowerCase().includes(q) ||
+            (c.email || "").toLowerCase().includes(q)
+          )
+        : allContacts
+    );
+    // Debounced API search for deeper results
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => load(0, text), 400);
+    if (text.trim()) {
+      debounceRef.current = setTimeout(() => load(0, text, true), 500);
+    }
   }
 
   function loadMore() {
@@ -100,16 +123,6 @@ export default function ContactsScreen({ navigation }: Props) {
   }
 
   if (loading) return <LoadingSpinner message="Loading contacts…" />;
-
-  // Client-side filter as safety net when the API doesn't support search
-  const q = search.toLowerCase().trim();
-  const displayed = q
-    ? contacts.filter(c =>
-        (c.name || "").toLowerCase().includes(q) ||
-        (c.phone || "").toLowerCase().includes(q) ||
-        (c.email || "").toLowerCase().includes(q)
-      )
-    : contacts;
 
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
@@ -128,7 +141,7 @@ export default function ContactsScreen({ navigation }: Props) {
       {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, search)} />}
 
       <FlatList
-        data={displayed}
+        data={contacts}
         keyExtractor={(item, index) => String(item.id ?? item._id ?? item.phone ?? item.email ?? index)}
         renderItem={({ item }) => (
           <ContactRow
