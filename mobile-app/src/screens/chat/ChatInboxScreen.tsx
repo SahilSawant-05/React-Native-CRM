@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   RefreshControl,
@@ -84,37 +84,57 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
-  const load = useCallback(async (p = 0, s = status, q = search, silent = false) => {
+  // allItems holds the full API result; displayed is locally filtered by search
+  const [allItems, setAllItems] = useState<InboxItem[]>([]);
+
+  const load = useCallback(async (p = 0, s = "", q = "", silent = false) => {
     if (p === 0 && !silent) setLoading(true);
     setError("");
     setErrorDetail("");
     try {
-      const data = await fetchInbox({ page: p, size: 20, status: s || undefined, search: q || undefined });
+      const data = await fetchInbox({ page: p, size: 100, status: s || undefined, search: q || undefined });
       const content = data.content ?? [];
+      setAllItems((prev) => (p === 0 ? content : [...prev, ...content]));
       setItems((prev) => (p === 0 ? content : [...prev, ...content]));
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
-      const status = err?.response?.status;
+      const st = err?.response?.status;
       const msg = err?.response?.data?.message || err?.response?.data?.error || err.message || "Failed to load inbox";
       setError(msg);
-      setErrorDetail(status ? `HTTP ${status} — ${err.config?.url ?? ""}` : err.message ?? "");
+      setErrorDetail(st ? `HTTP ${st} — ${err.config?.url ?? ""}` : err.message ?? "");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [status, search]);
+  }, []);
 
-  useEffect(() => { load(0, status, search); }, []);
+  useEffect(() => { load(0, "", ""); }, []);
 
   function switchStatus(s: string) {
     setStatus(s);
-    load(0, s, search);
+    setSearch("");
+    load(0, s, "");
   }
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleSearch(text: string) {
     setSearch(text);
-    load(0, status, text);
+    // Apply local filter immediately — no API call, no re-mount, no focus loss
+    const q = text.toLowerCase().trim();
+    setItems(
+      q
+        ? allItems.filter(i =>
+            (i.contactName || "").toLowerCase().includes(q) ||
+            (i.lastMessage || "").toLowerCase().includes(q)
+          )
+        : allItems
+    );
+    // Also debounce an API search for deeper results
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (text.trim()) {
+      debounceRef.current = setTimeout(() => load(0, status, text, true), 500);
+    }
   }
 
   if (loading) return <LoadingSpinner message="Loading inbox…" />;
