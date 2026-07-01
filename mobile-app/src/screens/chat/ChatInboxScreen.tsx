@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   FlatList,
   RefreshControl,
@@ -11,16 +11,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { fetchInbox, InboxItem } from "../../api/chat";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 
-const STATUS_TABS = ["", "OPEN", "IN_PROGRESS", "RESOLVED"];
+// "RESOLVED" removed — these map to backend status filters
+const STATUS_TABS = ["", "OPEN"];
 const STATUS_LABELS: Record<string, string> = {
   "": "All",
   OPEN: "Open",
   IN_PROGRESS: "Active",
-  RESOLVED: "Resolved",
 };
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -76,6 +77,7 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
 export default function ChatInboxScreen({ navigation }: Props) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [status, setStatus] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -86,18 +88,31 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const [allItems, setAllItems] = useState<InboxItem[]>([]);
 
   const searchRef = useRef(search);
+  const statusRef = useRef(status);
+  const unreadOnlyRef = useRef(unreadOnly);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track if user is actively typing — suppress API results while typing
   const isTypingRef = useRef(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track whether we've already done the initial (spinner) load
+  const hasLoadedOnceRef = useRef(false);
 
-  const applyFilter = (data: InboxItem[], q: string) => {
+  // Total unread message count across all loaded conversations, for the badge
+  const unreadTotal = allItems.reduce((sum, i) => sum + (i.unreadCount ?? 0), 0);
+
+  const applyFilter = (data: InboxItem[], q: string, unread: boolean) => {
+    let result = data;
+    if (unread) {
+      result = result.filter((i) => (i.unreadCount ?? 0) > 0);
+    }
     const query = q.toLowerCase().trim();
-    if (!query) return data;
-    return data.filter(i =>
-      (i.contactName || "").toLowerCase().includes(query) ||
-      (i.lastMessage || "").toLowerCase().includes(query)
-    );
+    if (query) {
+      result = result.filter(i =>
+        (i.contactName || "").toLowerCase().includes(query) ||
+        (i.lastMessage || "").toLowerCase().includes(query)
+      );
+    }
+    return result;
   };
 
   const load = useCallback(async (p = 0, s = "", q = "", silent = false) => {
@@ -112,7 +127,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
         const merged = p === 0 ? content : [...prev, ...content];
         // Only update displayed list if user is NOT actively typing
         if (!isTypingRef.current) {
-          setItems(applyFilter(merged, searchRef.current));
+          setItems(applyFilter(merged, searchRef.current, unreadOnlyRef.current));
         }
         return merged;
       });
@@ -130,14 +145,36 @@ export default function ChatInboxScreen({ navigation }: Props) {
     }
   }, []);
 
-  useEffect(() => { load(0, "", ""); }, []);
+  // Refresh every time this screen comes into focus — not just on mount.
+  // This is what picks up messages sent/received while the user was on
+  // the conversation screen, so the row shows the real last message
+  // instead of a stale "No messages yet".
+  useFocusEffect(
+    useCallback(() => {
+      load(0, statusRef.current, searchRef.current, hasLoadedOnceRef.current).catch(() => {});
+      hasLoadedOnceRef.current = true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   function switchStatus(s: string) {
     setStatus(s);
+    statusRef.current = s;
     setSearch("");
     searchRef.current = "";
     isTypingRef.current = false;
     load(0, s, "");
+  }
+
+  // Client-side toggle — unread state doesn't come from the backend status
+  // filter, it's derived from unreadCount on already-loaded items.
+  function toggleUnread() {
+    setUnreadOnly((prev) => {
+      const next = !prev;
+      unreadOnlyRef.current = next;
+      setItems(applyFilter(allItems, searchRef.current, next));
+      return next;
+    });
   }
 
   function handleSearch(text: string) {
@@ -151,15 +188,9 @@ export default function ChatInboxScreen({ navigation }: Props) {
       isTypingRef.current = false;
     }, 600);
 
-    // Instant local filter — no flicker, no stutter
-    setItems((prev) => {
-      // Use allItems ref via closure — need to read from state
-      return applyFilter(prev.length > 0 ? prev : [], text);
-    });
-
-    // Use allItems directly for accurate local filter
+    // Instant local filter from the full cached list — no flicker, no stutter
     setAllItems((all) => {
-      setItems(applyFilter(all, text));
+      setItems(applyFilter(all, text, unreadOnlyRef.current));
       return all;
     });
 
@@ -167,12 +198,12 @@ export default function ChatInboxScreen({ navigation }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim()) {
       debounceRef.current = setTimeout(() => {
-        load(0, status, text, true);
+        load(0, statusRef.current, text, true);
       }, 800); // longer delay = less interruption
     } else {
-      // Cleared search — restore full list immediately
+      // Cleared search — restore full list immediately (still respecting unread toggle)
       setAllItems((all) => {
-        setItems(all);
+        setItems(applyFilter(all, "", unreadOnlyRef.current));
         return all;
       });
     }
@@ -208,6 +239,15 @@ export default function ChatInboxScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           ))}
+
+          <TouchableOpacity
+            style={[styles.chip, unreadOnly && styles.chipActive]}
+            onPress={toggleUnread}
+          >
+            <Text style={[styles.chipText, unreadOnly && styles.chipTextActive]}>
+              Unread{unreadTotal > 0 ? ` (${unreadTotal})` : ""}
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
@@ -235,8 +275,12 @@ export default function ChatInboxScreen({ navigation }: Props) {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>💬</Text>
-            <Text style={styles.emptyTitle}>No conversations</Text>
-            <Text style={styles.emptyDesc}>Your inbox is empty.</Text>
+            <Text style={styles.emptyTitle}>
+              {unreadOnly ? "No unread conversations" : "No conversations"}
+            </Text>
+            <Text style={styles.emptyDesc}>
+              {unreadOnly ? "You're all caught up." : "Your inbox is empty."}
+            </Text>
           </View>
         }
         contentContainerStyle={items.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}

@@ -60,6 +60,47 @@ function normalizePage<T>(data: any, key = "items", assignId?: (raw: any, idx: n
   };
 }
 
+// Backend inbox field names aren't guaranteed to match InboxItem exactly
+// (same situation as Message.textBody/body/text below). This tries every
+// reasonable variant so the preview text actually shows up regardless of
+// what the backend calls it.
+function normalizeInboxItem(raw: any): InboxItem {
+  const lastMessage =
+    raw.lastMessage ??
+    raw.lastMessageText ??
+    raw.lastMessagePreview ??
+    raw.lastMessageBody ??
+    raw.message ??
+    raw.messagePreview ??
+    raw.preview ??
+    raw.snippet ??
+    raw.textBody ??
+    raw.body ??
+    raw.text ??
+    undefined;
+
+  const lastMessageAt =
+    raw.lastMessageAt ??
+    raw.lastMessageTime ??
+    raw.lastMessageTimestamp ??
+    raw.lastMessageDate ??
+    raw.updatedAt ??
+    raw.timestamp ??
+    raw.createdAt ??
+    undefined;
+
+  return {
+    contactId: raw.contactId,
+    contactName: raw.contactName,
+    contactPhone: raw.contactPhone,
+    lastMessage,
+    lastMessageAt,
+    unreadCount: raw.unreadCount ?? raw.unread ?? 0,
+    status: raw.status,
+    assignedAgentName: raw.assignedAgentName ?? raw.agentName,
+  };
+}
+
 export async function fetchInbox(params: {
   page?: number;
   size?: number;
@@ -74,7 +115,20 @@ export async function fetchInbox(params: {
       ...(params.search ? { search: params.search } : {}),
     },
   });
-  return normalizePage<InboxItem>(res.data, "items", (raw, idx) => `inbox-${raw.contactId ?? raw.contactPhone ?? idx}`);
+
+  // TEMP DEBUG — remove once confirmed. Logs the raw first item so we can
+  // see the exact field name the backend uses for the message preview.
+  const firstRaw = res.data?.items?.[0] ?? res.data?.content?.[0] ?? res.data?.[0];
+  if (firstRaw) {
+    // console.log("RAW INBOX ITEM:", JSON.stringify(firstRaw, null, 2));
+  }
+
+  const page = normalizePage<any>(res.data, "items", (raw, idx) => `inbox-${raw.contactId ?? raw.contactPhone ?? idx}`);
+
+  return {
+    ...page,
+    content: page.content.map(normalizeInboxItem),
+  };
 }
 
 export async function fetchMessages(contactId: string | number, page = 0): Promise<MessagesPage> {
