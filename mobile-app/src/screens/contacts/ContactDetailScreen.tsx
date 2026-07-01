@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Linking,
   ScrollView,
@@ -13,6 +13,8 @@ import { fetchContactById, fetchContactTimeline } from "../../api/contacts";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+import { DrawerCtx } from "../../navigation/AdminDrawer";
+import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
@@ -22,6 +24,13 @@ type Props = {
 export default function ContactDetailScreen({ route }: Props) {
   const initial = route.params.contact;
   const [contact, setContact] = useState<Contact>(initial);
+  // Works in both admin (DrawerCtx) and agent (AgentDrawerCtx) contexts
+  const adminDrawer = useContext(DrawerCtx);
+  const agentDrawer = useContext(AgentDrawerCtx);
+  function navigateToTab(tab: string) {
+    adminDrawer.navigateTo(tab);
+    agentDrawer.navigateTo(tab);
+  }
   const [timeline, setTimeline] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -99,22 +108,24 @@ try {
               <Text style={[styles.actionLabel, { color: "#15803d" }]}>Call</Text>
             </TouchableOpacity>
           )}
+          {/* WhatsApp → opens CRM Chat (not phone WhatsApp) */}
           {!!contact.phone && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: "#f0fdf4" }]}
-              onPress={() => Linking.openURL(`https://wa.me/${contact.phone?.replace(/\D/g, "")}`)}
+              onPress={() => navigateToTab("Chat")}
             >
               <Text style={styles.actionIcon}>💬</Text>
-              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>WhatsApp</Text>
+              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>Chat</Text>
             </TouchableOpacity>
           )}
+          {/* Email → opens CRM Mail (not phone mail app) */}
           {!!contact.email && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: "#eff6ff" }]}
-              onPress={() => Linking.openURL(`mailto:${contact.email}`)}
+              onPress={() => navigateToTab("Mail")}
             >
               <Text style={styles.actionIcon}>✉️</Text>
-              <Text style={[styles.actionLabel, { color: "#1d4ed8" }]}>Email</Text>
+              <Text style={[styles.actionLabel, { color: "#1d4ed8" }]}>Mail</Text>
             </TouchableOpacity>
           )}
         </View>

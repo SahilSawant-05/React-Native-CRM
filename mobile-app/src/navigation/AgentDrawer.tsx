@@ -86,8 +86,11 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-/* Context so child screens can open the drawer */
-export const AgentDrawerCtx = React.createContext<{ open: () => void }>({ open: () => {} });
+/* Context so child screens can open the drawer or navigate to a tab */
+export const AgentDrawerCtx = React.createContext<{ open: () => void; navigateTo: (name: string) => void }>({
+  open: () => {},
+  navigateTo: () => {},
+});
 
 /* Hamburger button for screen headers */
 export function HamburgerBtn() {
@@ -298,7 +301,7 @@ export default function AgentDrawer() {
   const ActiveScreen = SCREEN_MAP[activeTab] ?? SCREEN_MAP["Dashboard"];
 
   return (
-    <AgentDrawerCtx.Provider value={{ open: () => setDrawerOpen(true) }}>
+    <AgentDrawerCtx.Provider value={{ open: () => setDrawerOpen(true), navigateTo: navigate }}>
       <View style={{ flex: 1 }}>
         <ActiveScreen />
         <DrawerPanel

@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,9 +13,150 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { fetchContacts } from "../../api/contacts";
+import api from "../../api/client";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+
+const LEAD_SOURCES = [
+  { value: "", label: "Select source" },
+  { value: "WHATSAPP", label: "WhatsApp" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "FACEBOOK", label: "Facebook" },
+  { value: "INSTAGRAM", label: "Instagram" },
+  { value: "GOOGLE_ADS", label: "Google Ads" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "WALK_IN", label: "Walk-in" },
+  { value: "PORTAL", label: "Portal" },
+  { value: "CAMPAIGN", label: "Campaign" },
+  { value: "OTHER", label: "Other" },
+];
+
+function AddContactModal({ visible, onClose, onSaved }: {
+  visible: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", tags: "", leadSource: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(key: string, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setError("");
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      await api.post("/api/contacts", {
+        name: form.name.trim(),
+        email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
+        company: form.company.trim() || null,
+        tags: form.tags.trim() || null,
+        leadSource: form.leadSource || null,
+      });
+      setForm({ name: "", email: "", phone: "", company: "", tags: "", leadSource: "" });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || "Failed to save contact.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+        <View style={addStyles.header}>
+          <Text style={addStyles.title}>New Contact</Text>
+          <TouchableOpacity onPress={onClose} style={addStyles.cancelBtn}>
+            <Text style={addStyles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={addStyles.body} keyboardShouldPersistTaps="handled">
+          {!!error && <View style={addStyles.errorBox}><Text style={addStyles.errorText}>{error}</Text></View>}
+          {[
+            { key: "name", label: "Full Name *", placeholder: "John Doe" },
+            { key: "email", label: "Email", placeholder: "john@example.com", type: "email-address" },
+            { key: "phone", label: "Phone", placeholder: "+91 9876543210", type: "phone-pad" },
+            { key: "company", label: "Company", placeholder: "Acme Corp" },
+            { key: "tags", label: "Tags (comma separated)", placeholder: "hot-lead, vip" },
+          ].map(({ key, label, placeholder, type }) => (
+            <View key={key} style={addStyles.field}>
+              <Text style={addStyles.label}>{label}</Text>
+              <TextInput
+                style={addStyles.input}
+                placeholder={placeholder}
+                placeholderTextColor="#94a3b8"
+                value={(form as any)[key]}
+                onChangeText={(v) => set(key, v)}
+                keyboardType={(type as any) ?? "default"}
+                autoCapitalize={key === "email" ? "none" : "words"}
+                autoCorrect={false}
+              />
+            </View>
+          ))}
+          {/* Lead Source picker */}
+          <View style={addStyles.field}>
+            <Text style={addStyles.label}>Lead Source</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {LEAD_SOURCES.filter(s => s.value).map((src) => (
+                  <TouchableOpacity
+                    key={src.value}
+                    onPress={() => set("leadSource", form.leadSource === src.value ? "" : src.value)}
+                    style={[addStyles.srcChip, form.leadSource === src.value && addStyles.srcChipActive]}
+                  >
+                    <Text style={[addStyles.srcChipText, form.leadSource === src.value && addStyles.srcChipTextActive]}>
+                      {src.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </ScrollView>
+        <View style={addStyles.footer}>
+          <TouchableOpacity style={addStyles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={addStyles.saveBtnText}>Add Contact</Text>}
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const addStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: 20, borderBottomWidth: 1, borderBottomColor: "#e2e8f0", backgroundColor: "#fff",
+  },
+  title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  cancelBtn: { backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  cancelText: { color: "#475569", fontWeight: "600" },
+  body: { padding: 16, gap: 14 },
+  errorBox: { backgroundColor: "#fef2f2", borderRadius: 10, borderWidth: 1, borderColor: "#fecaca", padding: 12 },
+  errorText: { color: "#dc2626", fontSize: 13 },
+  field: { gap: 6 },
+  label: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  input: {
+    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#0f172a", backgroundColor: "#fff",
+  },
+  srcChip: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#e2e8f0",
+  },
+  srcChipActive: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
+  srcChipText: { fontSize: 12, fontWeight: "600", color: "#475569" },
+  srcChipTextActive: { color: "#fff" },
+  footer: { padding: 16, borderTopWidth: 1, borderTopColor: "#e2e8f0", backgroundColor: "#fff" },
+  saveBtn: { backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 15, alignItems: "center" },
+  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+});
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -62,6 +206,7 @@ export default function ContactsScreen({ navigation }: Props) {
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
 
   const searchRef = useRef(search);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,7 +297,11 @@ export default function ContactsScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
-      <View style={styles.searchBar}>
+      <AddContactModal
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => load(0, search)}
+      />
         <TextInput
           style={styles.searchInput}
           placeholder="Search contacts…"
@@ -184,13 +333,18 @@ export default function ContactsScreen({ navigation }: Props) {
             <Text style={styles.emptyText}>No contacts found.</Text>
           </View>
         }
-        contentContainerStyle={contacts.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+        contentContainerStyle={contacts.length === 0 ? { flex: 1 } : { paddingBottom: 80 }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         removeClippedSubviews={true}
         maxToRenderPerBatch={15}
         windowSize={10}
         initialNumToRender={15}
       />
+
+      {/* Add Contact FAB */}
+      <TouchableOpacity style={styles.fab} onPress={() => setAddOpen(true)} activeOpacity={0.85}>
+        <Text style={styles.fabText}>＋</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -237,4 +391,12 @@ const styles = StyleSheet.create({
   separator: { height: 1, backgroundColor: "#f1f5f9" },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { color: "#94a3b8", fontSize: 15 },
+  fab: {
+    position: "absolute", bottom: 24, right: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
+    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+  },
+  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });
