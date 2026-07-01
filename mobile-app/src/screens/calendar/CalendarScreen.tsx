@@ -61,11 +61,22 @@ function fmtMonthYear(d: Date) {
   return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
+// Returns the device's local UTC offset as "+05:30" / "-08:00", which is
+// what java.time.OffsetDateTime requires on the backend.
+function localOffset(): string {
+  const offsetMin = -new Date().getTimezoneOffset(); // JS gives inverted sign
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+}
+
 function buildStartAt(date: Date, timeStr: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   const time = timeStr || "09:00";
-  return `${dateStr}T${time}:00`;
+  return `${dateStr}T${time}:00${localOffset()}`;
 }
 
 function getCategoryById(id: number) {
@@ -154,21 +165,45 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
     setSaving(true);
     try {
       const startAt = buildStartAt(defaultDate, startTime);
-      const endAt = allDay ? null : buildStartAt(defaultDate, endTime);
-      await api.post("/api/events", {
+
+      // Send description as "" instead of null/omitted — many Spring DTOs
+      // reject a missing field even when it's logically optional. This is
+      // a defensive guess; the console.log below will show us if the
+      // real 400 reason is something else entirely.
+      const payload: Record<string, any> = {
         title: title.trim(),
         startAt,
-        endAt,
         allDay,
         categoryId,
-        description: description.trim() || null,
-        assignedUserId: null,
-      });
+        description: description.trim(),
+      };
+
+      if (!allDay) payload.endAt = buildStartAt(defaultDate, endTime);
+
+      console.log("[CreateEvent] POST /api/events payload:", JSON.stringify(payload, null, 2));
+      await api.post("/api/events", payload);
       reset();
       onCreated();
       onClose();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.message || e?.message || "Failed to create event");
+      const data = e?.response?.data;
+      console.log("[CreateEvent] error response body:", JSON.stringify(data, null, 2));
+
+      // Try the common shapes Spring Boot / Jakarta validation errors come back as.
+      const fieldErrors =
+        data?.errors?.map((er: any) => `${er.field ?? er.objectName ?? ""}: ${er.defaultMessage ?? er.message ?? ""}`) ??
+        data?.fieldErrors?.map((er: any) => `${er.field}: ${er.defaultMessage}`) ??
+        (Array.isArray(data?.violations) ? data.violations.map((v: any) => `${v.field ?? v.property ?? ""}: ${v.message}`) : null);
+
+      const detail =
+        (fieldErrors && fieldErrors.length ? fieldErrors.join("\n") : null) ??
+        data?.message ??
+        data?.error ??
+        (typeof data === "string" ? data : null) ??
+        e?.message ??
+        "Failed to create event";
+
+      Alert.alert("Error", detail);
     } finally {
       setSaving(false);
     }
