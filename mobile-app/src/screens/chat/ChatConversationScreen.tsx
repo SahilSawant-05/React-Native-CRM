@@ -75,6 +75,15 @@ function formatDate(dateStr?: string) {
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(dateStr));
 }
 
+// Returns a reliable epoch ms for a message regardless of which timestamp
+// field the API populated (createdAt vs timestamp), used for sorting.
+function messageTime(m?: Message): number {
+  if (!m) return 0;
+  const raw = m.createdAt || m.timestamp;
+  const t = raw ? new Date(raw).getTime() : NaN;
+  return Number.isNaN(t) ? 0 : t;
+}
+
 function StatusTick({ status }: { status?: string }) {
   const s = (status ?? "").toUpperCase();
   if (s === "READ") return <Text style={[styles.statusIcon, { color: "#38bdf8" }]}> ✓✓</Text>;
@@ -853,10 +862,21 @@ export default function ChatConversationScreen({ route }: Props) {
       setError("");
       try {
         const data = await fetchMessages(inbox.contactId, p);
-        // Newest-first order for the inverted FlatList (index 0 = bottom of screen).
-        // Page 0 has the most recent messages; older pages are appended further down.
-        const content = [...(data.content ?? [])];
-        setMessages((prev) => (p === 0 ? content : [...prev, ...content]));
+        // The backend's ordering isn't guaranteed to already be
+        // newest-first — some endpoints return ascending (oldest first)
+        // per page. Since this is an INVERTED FlatList, index 0 must
+        // always be the newest message or the whole thread renders out
+        // of order and new messages won't land at the bottom like
+        // WhatsApp. Sort explicitly rather than trust the API's order.
+        const content = [...(data.content ?? [])].sort(
+          (a, b) => messageTime(b) - messageTime(a)
+        );
+        setMessages((prev) => {
+          const merged = p === 0 ? content : [...prev, ...content];
+          // Re-sort the merged result too, in case an older page's
+          // messages interleave in time with what's already loaded.
+          return merged.sort((a, b) => messageTime(b) - messageTime(a));
+        });
         setTotalPages(data.totalPages ?? 1);
         setPage(p);
       } catch (err: any) {
