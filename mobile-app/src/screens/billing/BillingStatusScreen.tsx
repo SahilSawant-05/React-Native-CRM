@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl,
+  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -70,6 +70,9 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
 }
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
+
+// Update this to your actual web dashboard / billing URL
+const WEB_DASHBOARD_URL = "https://app.vistaarflow.in/dashboard/billing";
 
 export default function BillingStatusScreen() {
   const [summary, setSummary] = useState<any>(null);
@@ -179,6 +182,16 @@ export default function BillingStatusScreen() {
             </View>
           </>
         )}
+
+        {/* ── Footer note: purchases happen on web ── */}
+        <View style={s.footerNote}>
+          <Text style={s.footerNoteText}>
+            To buy or purchase a package, please visit our website or the web dashboard.
+          </Text>
+          <TouchableOpacity onPress={() => Linking.openURL(WEB_DASHBOARD_URL)} activeOpacity={0.7}>
+            <Text style={s.footerNoteLink}>Open web dashboard</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -236,4 +249,8 @@ const s = StyleSheet.create({
   errorIcon: { fontSize: 40, marginBottom: 10 },
   errorTitle: { fontSize: 18, fontWeight: "700", color: "#1e293b", marginBottom: 8 },
   errorMsg: { fontSize: 14, color: "#64748b", textAlign: "center" },
+
+  footerNote: { marginTop: 20, alignItems: "center", paddingHorizontal: 24, paddingVertical: 8 },
+  footerNoteText: { fontSize: 12, color: "#94a3b8", textAlign: "center", lineHeight: 18 },
+  footerNoteLink: { fontSize: 12, color: "#0f766e", fontWeight: "700", marginTop: 6, textDecorationLine: "underline" },
 });

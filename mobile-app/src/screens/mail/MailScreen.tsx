@@ -54,6 +54,16 @@ const PAGE_SIZE = 20;
 
 const emptyComposer = { toEmail: "", subject: "", bodyText: "" };
 
+type FolderCounts = Record<Folder, number | null>;
+
+const emptyCounts: FolderCounts = {
+  ALL: null,
+  INBOX: null,
+  SENT: null,
+  UNREAD: null,
+  FAILED: null,
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function shortDate(iso: string) {
@@ -73,6 +83,12 @@ function initials(email: string) {
   if (!email) return "?";
   const name = email.split("@")[0];
   return name.slice(0, 2).toUpperCase();
+}
+
+function formatCount(n: number | null): string {
+  if (n === null) return "";
+  if (n > 999) return `${Math.floor(n / 1000)}k+`;
+  return String(n);
 }
 
 // ─── Compose Modal ────────────────────────────────────────────────────────────
@@ -162,6 +178,7 @@ export default function MailScreen({ navigation }: any) {
   const [composer, setComposer] = useState(emptyComposer);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [counts, setCounts] = useState<FolderCounts>(emptyCounts);
   const isMountedRef = useRef(true);
 
   const fetchEmails = useCallback(async (pageNum: number, replace: boolean, currentFolder: Folder, currentSearch: string) => {
@@ -200,18 +217,53 @@ export default function MailScreen({ navigation }: any) {
     }
   }, []);
 
+  // Fetch a lightweight count (totalElements) for every folder tab so badges
+  // like Inbox (12) / Unread (3) / Failed (1) stay up to date.
+  const fetchCounts = useCallback(async (currentSearch: string) => {
+    try {
+      const results = await Promise.allSettled(
+        FOLDERS.map((f) =>
+          api.get("/api/email/logs/page", {
+            params: {
+              folder: f.key,
+              query: currentSearch.trim() || undefined,
+              page: 0,
+              size: 1,
+            },
+          })
+        )
+      );
+      if (!isMountedRef.current) return;
+      setCounts((prev) => {
+        const next: FolderCounts = { ...prev };
+        results.forEach((result, idx) => {
+          const key = FOLDERS[idx].key;
+          if (result.status === "fulfilled") {
+            const data = result.value?.data || {};
+            next[key] = data.totalElements ?? 0;
+          }
+        });
+        return next;
+      });
+    } catch {
+      // Count badges are non-critical; fail silently.
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
       setLoading(true);
       fetchEmails(0, true, folder, search);
+      fetchCounts(search);
       return () => { isMountedRef.current = false; };
-    }, [fetchEmails, folder, search])
+    }, [fetchEmails, fetchCounts, folder, search])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchEmails(0, true, folder, search);
+    fetchCounts(search);
   };
 
   const loadMore = () => {
@@ -232,6 +284,7 @@ export default function MailScreen({ navigation }: any) {
     setEmails([]);
     setLoading(true);
     fetchEmails(0, true, folder, search);
+    fetchCounts(search);
   };
 
   const setComposerField = (field: string, value: string) => {
@@ -252,6 +305,7 @@ export default function MailScreen({ navigation }: any) {
       setSuccessMsg("Email sent.");
       setTimeout(() => setSuccessMsg(""), 3000);
       fetchEmails(0, true, folder, search);
+      fetchCounts(search);
     } catch (e: any) {
       setError(e?.message || "Send failed");
     } finally {
@@ -298,15 +352,25 @@ export default function MailScreen({ navigation }: any) {
 
       {/* Folder tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
-        {FOLDERS.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            onPress={() => selectFolder(f.key)}
-            style={[styles.tab, folder === f.key && styles.tabActive]}
-          >
-            <Text style={[styles.tabText, folder === f.key && styles.tabTextActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {FOLDERS.map((f) => {
+          const count = counts[f.key];
+          return (
+            <TouchableOpacity
+              key={f.key}
+              onPress={() => selectFolder(f.key)}
+              style={[styles.tab, folder === f.key && styles.tabActive]}
+            >
+              <Text style={[styles.tabText, folder === f.key && styles.tabTextActive]}>{f.label}</Text>
+              {count !== null && count !== undefined && (
+                <View style={[styles.tabCountPill, folder === f.key && styles.tabCountPillActive]}>
+                  <Text style={[styles.tabCountText, folder === f.key && styles.tabCountTextActive]}>
+                    {formatCount(count)}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {/* Count */}
@@ -401,11 +465,15 @@ const styles = StyleSheet.create({
 
   // Folder tabs
   tabsScroll: { flexGrow: 0 },
-tabs: { paddingHorizontal: 12, paddingVertical: 7, gap: 8, flexDirection: "row" },
-  tab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#e2e8f0"},
+  tabs: { paddingHorizontal: 12, paddingVertical: 7, gap: 8, flexDirection: "row" },
+  tab: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#e2e8f0"},
   tabActive: { backgroundColor: "#0f766e" },
   tabText: { fontSize: 13, fontWeight: "600", color: "#475569" },
   tabTextActive: { color: "#fff" },
+  tabCountPill: { marginLeft: 6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#cbd5e1", alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  tabCountPillActive: { backgroundColor: "rgba(255,255,255,0.25)" },
+  tabCountText: { fontSize: 11, fontWeight: "700", color: "#475569" },
+  tabCountTextActive: { color: "#fff" },
 
   // Count
   countRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 6 },

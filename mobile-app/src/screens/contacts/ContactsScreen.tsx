@@ -32,16 +32,29 @@ const LEAD_SOURCES = [
   { value: "OTHER", label: "Other" },
 ];
 
+const COUNTRY_CODES = [
+  { code: "+91", flag: "🇮🇳", label: "India" },
+  { code: "+1", flag: "🇺🇸", label: "USA" },
+];
+
 function AddContactModal({ visible, onClose, onSaved }: {
   visible: boolean; onClose: () => void; onSaved: () => void;
 }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", tags: "", leadSource: "" });
+  const [form, setForm] = useState({
+    name: "", email: "", phone: "", company: "", tags: "", leadSource: "", countryCode: "+91",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   function set(key: string, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setError("");
+  }
+
+  function selectCountryCode(code: string) {
+    set("countryCode", code);
+    setShowCountryDropdown(false);
   }
 
   async function handleSave() {
@@ -49,15 +62,16 @@ function AddContactModal({ visible, onClose, onSaved }: {
     setSaving(true);
     setError("");
     try {
+      const phoneTrimmed = form.phone.trim();
       await api.post("/api/contacts", {
         name: form.name.trim(),
         email: form.email.trim() || null,
-        phone: form.phone.trim() || null,
+        phone: phoneTrimmed ? `${form.countryCode} ${phoneTrimmed}` : null,
         company: form.company.trim() || null,
         tags: form.tags.trim() || null,
         leadSource: form.leadSource || null,
       });
-      setForm({ name: "", email: "", phone: "", company: "", tags: "", leadSource: "" });
+      setForm({ name: "", email: "", phone: "", company: "", tags: "", leadSource: "", countryCode: "+91" });
       onSaved();
       onClose();
     } catch (err: any) {
@@ -78,27 +92,108 @@ function AddContactModal({ visible, onClose, onSaved }: {
         </View>
         <ScrollView contentContainerStyle={addStyles.body} keyboardShouldPersistTaps="handled">
           {!!error && <View style={addStyles.errorBox}><Text style={addStyles.errorText}>{error}</Text></View>}
-          {[
-            { key: "name", label: "Full Name *", placeholder: "John Doe" },
-            { key: "email", label: "Email", placeholder: "john@example.com", type: "email-address" },
-            { key: "phone", label: "Phone", placeholder: "+91 9876543210", type: "phone-pad" },
-            { key: "company", label: "Company", placeholder: "Acme Corp" },
-            { key: "tags", label: "Tags (comma separated)", placeholder: "hot-lead, vip" },
-          ].map(({ key, label, placeholder, type }) => (
-            <View key={key} style={addStyles.field}>
-              <Text style={addStyles.label}>{label}</Text>
+
+          <View style={addStyles.field}>
+            <Text style={addStyles.label}>Full Name *</Text>
+            <TextInput
+              style={addStyles.input}
+              placeholder="John Doe"
+              placeholderTextColor="#94a3b8"
+              value={form.name}
+              onChangeText={(v) => set("name", v)}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={addStyles.field}>
+            <Text style={addStyles.label}>Email</Text>
+            <TextInput
+              style={addStyles.input}
+              placeholder="john@example.com"
+              placeholderTextColor="#94a3b8"
+              value={form.email}
+              onChangeText={(v) => set("email", v)}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          {/* Phone with country code dropdown */}
+          <View style={[addStyles.field, { zIndex: 20 }]}>
+            <Text style={addStyles.label}>Phone</Text>
+            <View style={addStyles.phoneRow}>
+              <View style={{ zIndex: 20 }}>
+                <TouchableOpacity
+                  style={addStyles.countryBtn}
+                  onPress={() => setShowCountryDropdown((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={addStyles.countryBtnText}>
+                    {COUNTRY_CODES.find((c) => c.code === form.countryCode)?.flag} {form.countryCode}
+                  </Text>
+                  <Text style={addStyles.countryBtnCaret}>▾</Text>
+                </TouchableOpacity>
+
+                {showCountryDropdown && (
+                  <View style={addStyles.dropdown}>
+                    {COUNTRY_CODES.map((c) => (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={[
+                          addStyles.dropdownItem,
+                          form.countryCode === c.code && addStyles.dropdownItemActive,
+                        ]}
+                        onPress={() => selectCountryCode(c.code)}
+                      >
+                        <Text style={addStyles.dropdownItemText}>
+                          {c.flag} {c.code} · {c.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
               <TextInput
-                style={addStyles.input}
-                placeholder={placeholder}
+                style={[addStyles.input, addStyles.phoneInput]}
+                placeholder="9876543210"
                 placeholderTextColor="#94a3b8"
-                value={(form as any)[key]}
-                onChangeText={(v) => set(key, v)}
-                keyboardType={(type as any) ?? "default"}
-                autoCapitalize={key === "email" ? "none" : "words"}
+                value={form.phone}
+                onChangeText={(v) => set("phone", v)}
+                keyboardType="phone-pad"
                 autoCorrect={false}
               />
             </View>
-          ))}
+          </View>
+
+          <View style={addStyles.field}>
+            <Text style={addStyles.label}>Company</Text>
+            <TextInput
+              style={addStyles.input}
+              placeholder="Acme Corp"
+              placeholderTextColor="#94a3b8"
+              value={form.company}
+              onChangeText={(v) => set("company", v)}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={addStyles.field}>
+            <Text style={addStyles.label}>Tags (comma separated)</Text>
+            <TextInput
+              style={addStyles.input}
+              placeholder="hot-lead, vip"
+              placeholderTextColor="#94a3b8"
+              value={form.tags}
+              onChangeText={(v) => set("tags", v)}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+          </View>
+
           {/* Lead Source picker */}
           <View style={addStyles.field}>
             <Text style={addStyles.label}>Lead Source</Text>
@@ -146,6 +241,36 @@ const addStyles = StyleSheet.create({
     borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#0f172a", backgroundColor: "#fff",
   },
+  phoneRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+  phoneInput: { flex: 1 },
+  countryBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "#fff",
+    minWidth: 88,
+  },
+  countryBtnText: { fontSize: 14, fontWeight: "600", color: "#0f172a" },
+  countryBtnCaret: { fontSize: 11, color: "#64748b", marginLeft: "auto" },
+  dropdown: {
+    position: "absolute",
+    top: 46,
+    left: 0,
+    minWidth: 160,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 30,
+    overflow: "hidden",
+  },
+  dropdownItem: { paddingHorizontal: 12, paddingVertical: 10 },
+  dropdownItemActive: { backgroundColor: "#f0fdfa" },
+  dropdownItemText: { fontSize: 13, fontWeight: "600", color: "#0f172a" },
   srcChip: {
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
     backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#e2e8f0",
@@ -302,6 +427,8 @@ export default function ContactsScreen({ navigation }: Props) {
         onClose={() => setAddOpen(false)}
         onSaved={() => load(0, search)}
       />
+
+      <View style={styles.searchBar}>
         <TextInput
           style={styles.searchInput}
           placeholder="Search contacts…"
