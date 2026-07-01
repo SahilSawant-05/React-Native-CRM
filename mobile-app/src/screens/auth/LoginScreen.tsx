@@ -56,8 +56,8 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Header band */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>WhatsApp CRM</Text>
-          <Text style={styles.headerSub}>Agent Portal</Text>
+          <Text style={styles.headerTitle}>Vistaar Flow</Text>
+          <Text style={styles.headerSub}>Admin / Agent Portal</Text>
           <View style={styles.waBadge}>
             <Text style={styles.waBadgeText}>💬</Text>
           </View>
@@ -66,7 +66,7 @@ export default function LoginScreen() {
         {/* Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign In</Text>
-          <Text style={styles.cardSub}>Agent access only</Text>
+          {/* <Text style={styles.cardSub}>Agent access only</Text> */}
 
           {!!error && (
             <View style={styles.errorBox}>
@@ -126,8 +126,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <Text style={styles.agentNote}>
-            This app is exclusively for CRM agents. Owners and admins should use the web portal.
-          </Text>
+            Admins and Agents can sign in here, but the web portal offers the best experience.          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

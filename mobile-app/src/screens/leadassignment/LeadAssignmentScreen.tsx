@@ -38,12 +38,14 @@ interface CrmUser {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// Kept in sync with the web app (LeadAssignmentRules.jsx) so criteria created
+// on mobile actually match leads the same way rules created on web do.
 
 const CRITERIA_TYPES = [
   { value: "LEAD_SOURCE",     label: "Lead Source" },
+  { value: "WEBSITE_DOMAIN",  label: "Website Domain" },
   { value: "INDUSTRY",        label: "Industry" },
   { value: "CITY",            label: "City" },
-  { value: "WEBSITE_DOMAIN",  label: "Website Domain" },
   { value: "TAG",             label: "Tag" },
   { value: "DEFAULT",         label: "Default fallback" },
 ];
@@ -53,9 +55,16 @@ const LEAD_SOURCES = [
   "GOOGLE_ADS","REFERRAL","WALK_IN","PORTAL","CAMPAIGN","OTHER",
 ];
 
+// These are the actual backend enum values used for industryKey — must match
+// web's INDUSTRIES list exactly, or an INDUSTRY rule created here will never
+// match a real lead. Previously this list had free-text labels
+// ("Technology", "Healthcare", etc.) that don't correspond to any stored
+// industryKey value.
 const INDUSTRIES = [
-  "Technology","Healthcare","Finance","Education","Real Estate",
-  "Retail","Manufacturing","Hospitality","Legal","Consulting","Other",
+  { value: "REAL_ESTATE", label: "Real Estate" },
+  { value: "EDUCATION",   label: "Education" },
+  { value: "BIKE_SALES",  label: "Bike Sales" },
+  { value: "GENERIC",     label: "Generic" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -189,11 +198,14 @@ function RuleFormModal({
     label: u.name || u.email || String(u.id),
   }));
 
+  // Picker-backed criteria types (values must match backend enums exactly).
+  // Free-text criteria types (CITY, WEBSITE_DOMAIN, TAG) fall through to a
+  // plain text input below, same as web.
   const criteriaValueOptions =
     criteriaType === "LEAD_SOURCE"
       ? LEAD_SOURCES.map((s) => ({ value: s, label: s.replaceAll("_", " ") }))
       : criteriaType === "INDUSTRY"
-      ? INDUSTRIES.map((i) => ({ value: i, label: i }))
+      ? INDUSTRIES
       : null;
 
   return (
@@ -356,6 +368,20 @@ export default function LeadAssignmentScreen() {
     return u ? (u.name || u.email || String(uid)) : String(uid);
   }
 
+  // For display in the list: turn a stored enum value like "REAL_ESTATE" or
+  // "GOOGLE_ADS" back into a friendly label using the same lookup tables
+  // used by the form, falling back to the raw value if not found.
+  function criteriaValueLabel(item: AssignmentRule) {
+    if (!item.criteriaValue) return "";
+    if (item.criteriaType === "INDUSTRY") {
+      return INDUSTRIES.find((i) => i.value === item.criteriaValue)?.label ?? item.criteriaValue;
+    }
+    if (item.criteriaType === "LEAD_SOURCE") {
+      return item.criteriaValue.replaceAll("_", " ");
+    }
+    return item.criteriaValue;
+  }
+
   if (loading) return <LoadingSpinner message="Loading assignment rules…" />;
 
   return (
@@ -390,7 +416,7 @@ export default function LeadAssignmentScreen() {
                 <View style={s.metaChip}>
                   <Text style={s.metaChipText}>
                     {criteria?.label ?? item.criteriaType}
-                    {item.criteriaValue ? ` = ${item.criteriaValue}` : ""}
+                    {item.criteriaValue ? ` = ${criteriaValueLabel(item)}` : ""}
                   </Text>
                 </View>
                 <Text style={s.arrow}>→</Text>
