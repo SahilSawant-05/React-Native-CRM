@@ -1,4 +1,4 @@
-package com.techoceanhub.crmagent
+package com.crmagent
 
 import android.os.Build
 import android.os.Bundle

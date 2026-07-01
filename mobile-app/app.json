@@ -17,14 +17,9 @@
     },
 
     "android": {
-      "package": "com.techoceanhub.crmagent",
-
-      "googleServicesFile": "./google-services.json",
-
-      "adaptiveIcon": {
-        "backgroundColor": "#0f766e"
-      }
-    },
+  "package": "com.crmagent"
+}
+,
 
     "plugins": [
       "expo-notifications"
