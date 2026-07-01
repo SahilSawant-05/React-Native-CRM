@@ -18,6 +18,7 @@ interface CalEvent {
   allDay?: boolean;
   categoryId?: number;
   categoryKey?: string;
+  category?: any;
   description?: string;
 }
 
@@ -83,6 +84,39 @@ function getCategoryById(id: number) {
   return CATEGORIES.find(c => c.id === id) ?? CATEGORIES[0];
 }
 
+// Resolves the category for an event no matter which shape the API
+// returned it in. Previously callers only checked `event.categoryId`, so
+// any response that nested the category (e.g. `category: { id, key }`)
+// or used a different field name (`categoryKey`) fell through to a
+// hardcoded default and every event rendered as "Planning".
+function resolveCategory(event: CalEvent) {
+  const rawId =
+    event.categoryId ??
+    event.category?.id ??
+    event.category?.categoryId;
+
+  if (rawId != null) {
+    const byId = CATEGORIES.find(c => c.id === Number(rawId));
+    if (byId) return byId;
+  }
+
+  const rawKey =
+    event.categoryKey ??
+    event.category?.key ??
+    event.category?.name ??
+    (typeof event.category === "string" ? event.category : undefined);
+
+  if (rawKey) {
+    const byKey = CATEGORIES.find(
+      c => c.key.toLowerCase() === String(rawKey).toLowerCase()
+        || c.name.toLowerCase() === String(rawKey).toLowerCase()
+    );
+    if (byKey) return byKey;
+  }
+
+  return CATEGORIES[0];
+}
+
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 // ─── DayCell ─────────────────────────────────────────────────────────────────
@@ -111,7 +145,7 @@ function DayCell({ day, isToday, isSelected, dotCount, onPress }: {
 // ─── EventCard ────────────────────────────────────────────────────────────────
 
 function EventCard({ event, showDate }: { event: CalEvent; showDate?: boolean }) {
-  const cat = getCategoryById(event.categoryId ?? 1);
+  const cat = resolveCategory(event);
   return (
     <View style={s.taskCard}>
       <View style={[s.priorityBar, { backgroundColor: cat.color }]} />
