@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useContext, useRef, useState } from "react";
 import {
   FlatList,
   RefreshControl,
@@ -15,6 +15,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { fetchInbox, InboxItem } from "../../api/chat";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+import { DrawerCtx } from "../../navigation/AdminDrawer";
+import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 
 // "RESOLVED" removed — these map to backend status filters
 const STATUS_TABS = ["", "OPEN"];
@@ -75,6 +77,9 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
 }
 
 export default function ChatInboxScreen({ navigation }: Props) {
+  const adminDrawer = useContext(DrawerCtx);
+  const agentDrawer = useContext(AgentDrawerCtx);
+
   const [items, setItems] = useState<InboxItem[]>([]);
   const [status, setStatus] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -151,6 +156,21 @@ export default function ChatInboxScreen({ navigation }: Props) {
   // instead of a stale "No messages yet".
   useFocusEffect(
     useCallback(() => {
+      // If a contact was requested via openChat(), navigate straight to their conversation
+      const pending = adminDrawer.pendingChatRef.current ?? agentDrawer.pendingChatRef.current;
+      if (pending) {
+        adminDrawer.pendingChatRef.current = null;
+        agentDrawer.pendingChatRef.current = null;
+        const inbox: InboxItem = {
+          contactId: pending.contactId,
+          contactName: pending.contactName,
+          contactPhone: pending.contactPhone,
+          lastMessage: "",
+          unreadCount: 0,
+        };
+        navigation.navigate("ChatConversation", { inbox });
+      }
+
       load(0, statusRef.current, searchRef.current, hasLoadedOnceRef.current).catch(() => {});
       hasLoadedOnceRef.current = true;
       // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -94,10 +94,19 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+export interface PendingChat { contactId: string | number; contactName: string; contactPhone?: string }
+
 /* Context so child screens can open the drawer or navigate to a tab */
-export const DrawerCtx = React.createContext<{ open: () => void; navigateTo: (name: string) => void }>({
+export const DrawerCtx = React.createContext<{
+  open: () => void;
+  navigateTo: (name: string) => void;
+  openChat: (contact: PendingChat) => void;
+  pendingChatRef: React.MutableRefObject<PendingChat | null>;
+}>({
   open: () => {},
   navigateTo: () => {},
+  openChat: () => {},
+  pendingChatRef: { current: null },
 });
 
 /* Hamburger button for screen headers */
@@ -309,16 +318,22 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
 export default function AdminDrawer() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Dashboard");
+  const pendingChatRef = React.useRef<PendingChat | null>(null);
 
   function navigate(name: string) {
     setActiveTab(name);
     setDrawerOpen(false);
   }
 
+  function openChat(contact: PendingChat) {
+    pendingChatRef.current = contact;
+    navigate("Chat");
+  }
+
   const ActiveScreen = SCREEN_MAP[activeTab] ?? SCREEN_MAP["Dashboard"];
 
   return (
-    <DrawerCtx.Provider value={{ open: () => setDrawerOpen(true), navigateTo: navigate }}>
+    <DrawerCtx.Provider value={{ open: () => setDrawerOpen(true), navigateTo: navigate, openChat, pendingChatRef }}>
       <View style={{ flex: 1 }}>
         <ActiveScreen />
         <DrawerPanel

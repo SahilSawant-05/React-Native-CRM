@@ -31,6 +31,11 @@ export default function ContactDetailScreen({ route }: Props) {
     adminDrawer.navigateTo(tab);
     agentDrawer.navigateTo(tab);
   }
+  function openContactChat() {
+    const pending = { contactId: contact.id ?? contact._id ?? "", contactName: contact.name, contactPhone: contact.phone };
+    adminDrawer.openChat(pending);
+    agentDrawer.openChat(pending);
+  }
   const [timeline, setTimeline] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -108,19 +113,14 @@ try {
               <Text style={[styles.actionLabel, { color: "#15803d" }]}>Call</Text>
             </TouchableOpacity>
           )}
-          {/* WhatsApp → opens phone WhatsApp app with this contact */}
+          {/* WhatsApp → opens CRM Chat for this specific contact */}
           {!!contact.phone && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: "#f0fdf4" }]}
-              onPress={() => {
-                const phone = contact.phone!.replace(/\D/g, "");
-                Linking.openURL(`whatsapp://send?phone=${phone}`).catch(() =>
-                  Linking.openURL(`https://wa.me/${phone}`)
-                );
-              }}
+              onPress={openContactChat}
             >
               <Text style={styles.actionIcon}>💬</Text>
-              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>WhatsApp</Text>
+              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>Chat</Text>
             </TouchableOpacity>
           )}
           {/* Email → opens CRM Mail (not phone mail app) */}
