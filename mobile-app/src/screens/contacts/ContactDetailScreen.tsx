@@ -108,19 +108,14 @@ try {
               <Text style={[styles.actionLabel, { color: "#15803d" }]}>Call</Text>
             </TouchableOpacity>
           )}
-          {/* WhatsApp → opens phone WhatsApp app with this contact */}
+          {/* WhatsApp → opens CRM Chat screen */}
           {!!contact.phone && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: "#f0fdf4" }]}
-              onPress={() => {
-                const phone = contact.phone!.replace(/\D/g, "");
-                Linking.openURL(`whatsapp://send?phone=${phone}`).catch(() =>
-                  Linking.openURL(`https://wa.me/${phone}`)
-                );
-              }}
+              onPress={() => navigateToTab("Chat")}
             >
               <Text style={styles.actionIcon}>💬</Text>
-              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>WhatsApp</Text>
+              <Text style={[styles.actionLabel, { color: "#0f766e" }]}>Chat</Text>
             </TouchableOpacity>
           )}
           {/* Email → opens CRM Mail (not phone mail app) */}
