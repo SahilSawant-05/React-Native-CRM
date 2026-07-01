@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 import {
   View, Text, FlatList, StyleSheet, Image,
-  TouchableOpacity, Clipboard, Alert, RefreshControl,
+  TouchableOpacity, Clipboard, Alert, ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as DocumentPicker from "expo-document-picker";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -48,6 +49,7 @@ export default function MediaLibraryScreen() {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAssets = useCallback(async () => {
@@ -72,6 +74,34 @@ export default function MediaLibraryScreen() {
     setLoading(true);
     fetchAssets();
   }, [fetchAssets]));
+
+  async function handleUpload() {
+    let result;
+    try {
+      result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    } catch {
+      return;
+    }
+    if (result.canceled || !result.assets?.length) return;
+    const file = result.assets[0];
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || "application/octet-stream",
+      } as any);
+      await api.post("/api/media-assets", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await fetchAssets();
+    } catch (err: any) {
+      Alert.alert("Upload failed", err?.response?.data?.message || err?.message || "Failed to upload file.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   if (loading) return <LoadingSpinner message="Loading media..." />;
 
@@ -128,6 +158,18 @@ export default function MediaLibraryScreen() {
           );
         }}
       />
+
+      {/* Upload FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={handleUpload}
+        activeOpacity={0.85}
+        disabled={uploading}
+      >
+        {uploading
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={styles.fabText}>＋</Text>}
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -160,4 +202,12 @@ const styles = StyleSheet.create({
   },
   copyBtnDisabled: { backgroundColor: "#e2e8f0" },
   copyBtnText: { fontSize: 12, fontWeight: "700", color: "#fff" },
+  fab: {
+    position: "absolute", bottom: 24, right: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
+    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+  },
+  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });

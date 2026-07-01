@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as DocumentPicker from "expo-document-picker";
 import { RouteProp } from "@react-navigation/native";
 import { fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "../../api/chat";
 import api from "../../api/client";
@@ -488,11 +490,13 @@ function AttachMenu({
   onClose,
   onTemplate,
   onMediaLibrary,
+  onUploadDevice,
 }: {
   visible: boolean;
   onClose: () => void;
   onTemplate: () => void;
   onMediaLibrary: () => void;
+  onUploadDevice: () => void;
 }) {
   if (!visible) return null;
   return (
@@ -522,6 +526,19 @@ function AttachMenu({
           <View>
             <Text style={amStyles.label}>Send Media</Text>
             <Text style={amStyles.sublabel}>Images, videos, documents from CRM library</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={amStyles.item}
+          onPress={() => {
+            onClose();
+            onUploadDevice();
+          }}
+        >
+          <Text style={amStyles.emoji}>📂</Text>
+          <View>
+            <Text style={amStyles.label}>Upload from Device</Text>
+            <Text style={amStyles.sublabel}>Pick a file from your phone and send</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={amStyles.cancel} onPress={onClose}>
@@ -954,6 +971,60 @@ export default function ChatConversationScreen({ route }: Props) {
     }
   }
 
+  async function handleUploadFromDevice() {
+    let result;
+    try {
+      result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    } catch {
+      return;
+    }
+    if (result.canceled || !result.assets?.length) return;
+    const file = result.assets[0];
+
+    setSending(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || "application/octet-stream",
+      } as any);
+      const uploadRes = await api.post("/api/media-assets", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const publicUrl: string = uploadRes.data?.publicUrl || uploadRes.data?.url || "";
+      if (!publicUrl) throw new Error("Upload succeeded but no public URL returned.");
+
+      const mimeType = file.mimeType || "";
+      const mediaType = mimeType.startsWith("image/") ? "IMAGE"
+        : mimeType.startsWith("video/") ? "VIDEO"
+        : mimeType.startsWith("audio/") ? "AUDIO"
+        : "DOCUMENT";
+
+      const optimistic: Message = {
+        id: `temp-${Date.now()}`,
+        mediaUrl: publicUrl,
+        mediaType,
+        mediaFileName: file.name,
+        direction: "OUTBOUND",
+        createdAt: new Date().toISOString(),
+        status: "SENT",
+      };
+      appendOptimistic(optimistic);
+
+      await api.post("/api/messages/send-whatsapp/media", {
+        contactId: inbox.contactId,
+        mediaType,
+        mediaUrl: publicUrl,
+        fileName: file.name || null,
+      });
+    } catch (err: any) {
+      Alert.alert("Upload failed", err?.response?.data?.message || err?.message || "Failed to upload file.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   if (loading) return <LoadingSpinner message="Loading conversation…" />;
 
   return (
@@ -1039,6 +1110,7 @@ export default function ChatConversationScreen({ route }: Props) {
         onClose={() => setAttachOpen(false)}
         onTemplate={() => setTemplatePickerOpen(true)}
         onMediaLibrary={() => setMediaLibraryOpen(true)}
+        onUploadDevice={handleUploadFromDevice}
       />
 
       <TemplatePicker
