@@ -2,6 +2,7 @@ import React, { useCallback, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, ActivityIndicator, Modal, TextInput, Alert,
+  KeyboardAvoidingView, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -9,14 +10,25 @@ import api from "../../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CalTask {
+interface CalEvent {
   id: string | number;
   title: string;
-  status: string;
-  priority?: string;
-  dueAt?: string;
-  contactName?: string;
+  startAt?: string;
+  endAt?: string;
+  allDay?: boolean;
+  categoryId?: number;
+  categoryKey?: string;
+  description?: string;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  { id: 1, key: "PLANNING",  name: "Planning",  color: "#22c55e", bg: "#f0fdf4" },
+  { id: 2, key: "MEETING",   name: "Meeting",   color: "#3b82f6", bg: "#eff6ff" },
+  { id: 3, key: "REPORTING", name: "Reporting", color: "#f59e0b", bg: "#fffbeb" },
+  { id: 4, key: "DESIGN",    name: "Design",    color: "#ef4444", bg: "#fef2f2" },
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -49,18 +61,17 @@ function fmtMonthYear(d: Date) {
   return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
-function toISOLocal(d: Date) {
+function buildStartAt(date: Date, timeStr: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00:00`;
+  const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const time = timeStr || "09:00";
+  return `${dateStr}T${time}:00`;
 }
 
-const PRIORITY_COLOR: Record<string, string> = {
-  HIGH: "#ef4444", URGENT: "#ef4444",
-  MEDIUM: "#f59e0b",
-  LOW: "#22c55e",
-};
+function getCategoryById(id: number) {
+  return CATEGORIES.find(c => c.id === id) ?? CATEGORIES[0];
+}
 
-const STATUS_DONE = new Set(["COMPLETED", "DONE", "CLOSED", "RESOLVED"]);
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 // ─── DayCell ─────────────────────────────────────────────────────────────────
@@ -86,65 +97,78 @@ function DayCell({ day, isToday, isSelected, dotCount, onPress }: {
   );
 }
 
-// ─── TaskCard ─────────────────────────────────────────────────────────────────
+// ─── EventCard ────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, done, showDate }: { task: CalTask; done?: boolean; showDate?: boolean }) {
-  const pc = PRIORITY_COLOR[(task.priority || "").toUpperCase()] ?? "#94a3b8";
+function EventCard({ event, showDate }: { event: CalEvent; showDate?: boolean }) {
+  const cat = getCategoryById(event.categoryId ?? 1);
   return (
-    <View style={[s.taskCard, done && s.taskCardDone]}>
-      <View style={[s.priorityBar, { backgroundColor: pc }]} />
+    <View style={s.taskCard}>
+      <View style={[s.priorityBar, { backgroundColor: cat.color }]} />
       <View style={{ flex: 1 }}>
-        <Text style={[s.taskTitle, done && s.taskTitleDone]} numberOfLines={2}>{task.title}</Text>
+        <Text style={s.taskTitle} numberOfLines={2}>{event.title}</Text>
         <View style={s.taskMeta}>
-          {task.contactName && <Text style={s.taskMetaText}>👤 {task.contactName}</Text>}
-          {showDate && task.dueAt && (
+          {showDate && event.startAt && (
             <Text style={s.taskMetaText}>
-              📅 {new Date(task.dueAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-              {fmtTime(task.dueAt) ? `  ${fmtTime(task.dueAt)}` : ""}
+              📅 {new Date(event.startAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+              {fmtTime(event.startAt) ? `  ${fmtTime(event.startAt)}` : ""}
             </Text>
           )}
-          {!showDate && task.dueAt && fmtTime(task.dueAt) && (
-            <Text style={s.taskMetaText}>🕐 {fmtTime(task.dueAt)}</Text>
+          {!showDate && event.startAt && fmtTime(event.startAt) && (
+            <Text style={s.taskMetaText}>🕐 {fmtTime(event.startAt)}</Text>
+          )}
+          {!!event.description && (
+            <Text style={s.taskMetaText} numberOfLines={1}>{event.description}</Text>
           )}
         </View>
       </View>
-      <View style={[s.statusBadge, done && s.statusBadgeDone]}>
-        <Text style={[s.statusText, done && s.statusTextDone]}>
-          {done ? "DONE" : (task.status || "OPEN").toUpperCase()}
-        </Text>
+      <View style={[s.statusBadge, { backgroundColor: cat.bg }]}>
+        <Text style={[s.statusText, { color: cat.color }]}>{cat.name.toUpperCase()}</Text>
       </View>
     </View>
   );
 }
 
-// ─── CreateTaskModal ──────────────────────────────────────────────────────────
+// ─── CreateEventModal ─────────────────────────────────────────────────────────
 
-function CreateTaskModal({ visible, defaultDate, onClose, onCreated }: {
+function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
   visible: boolean;
   defaultDate: Date;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState("MEDIUM");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
+  const [allDay, setAllDay] = useState(false);
+  const [categoryId, setCategoryId] = useState(1);
+  const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
+  function reset() {
+    setTitle(""); setStartTime("09:00"); setEndTime("10:00");
+    setAllDay(false); setCategoryId(1); setDescription("");
+  }
+
   async function save() {
-    if (!title.trim()) { Alert.alert("Required", "Please enter a task title."); return; }
+    if (!title.trim()) { Alert.alert("Required", "Please enter an event title."); return; }
     setSaving(true);
     try {
-      await api.post("/api/tasks", {
+      const startAt = buildStartAt(defaultDate, startTime);
+      const endAt = allDay ? null : buildStartAt(defaultDate, endTime);
+      await api.post("/api/events", {
         title: title.trim(),
-        priority,
-        dueAt: toISOLocal(defaultDate),
-        status: "OPEN",
+        startAt,
+        endAt,
+        allDay,
+        categoryId,
+        description: description.trim() || null,
+        assignedUserId: null,
       });
-      setTitle("");
-      setPriority("MEDIUM");
+      reset();
       onCreated();
       onClose();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.message || e?.message || "Failed to create task");
+      Alert.alert("Error", e?.response?.data?.message || e?.message || "Failed to create event");
     } finally {
       setSaving(false);
     }
@@ -152,43 +176,91 @@ function CreateTaskModal({ visible, defaultDate, onClose, onCreated }: {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.modalScrim} activeOpacity={1} onPress={onClose} />
-      <View style={s.modalSheet}>
-        <View style={s.modalHandle} />
-        <Text style={s.modalTitle}>New Task</Text>
-        <Text style={s.modalSub}>
-          {defaultDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
-        </Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <TouchableOpacity style={s.modalScrim} activeOpacity={1} onPress={onClose} />
+        <View style={s.modalSheet}>
+          <View style={s.modalHandle} />
+          <Text style={s.modalTitle}>New Event</Text>
+          <Text style={s.modalSub}>
+            {defaultDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
+          </Text>
 
-        <Text style={s.fieldLabel}>Title</Text>
-        <TextInput
-          style={s.input}
-          placeholder="Task title"
-          placeholderTextColor="#94a3b8"
-          value={title}
-          onChangeText={setTitle}
-          autoFocus
-        />
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={s.fieldLabel}>Title</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Event title"
+              placeholderTextColor="#94a3b8"
+              value={title}
+              onChangeText={setTitle}
+              autoFocus
+            />
 
-        <Text style={s.fieldLabel}>Priority</Text>
-        <View style={s.pillRow}>
-          {(["LOW", "MEDIUM", "HIGH"] as const).map(p => (
-            <TouchableOpacity
-              key={p}
-              style={[s.pill, priority === p && s.pillOn]}
-              onPress={() => setPriority(p)}
-            >
-              <Text style={[s.pillText, priority === p && s.pillTextOn]}>{p}</Text>
+            <Text style={s.fieldLabel}>Category</Text>
+            <View style={s.pillRow}>
+              {CATEGORIES.map(cat => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[s.pill, categoryId === cat.id && { backgroundColor: cat.color, borderColor: cat.color }]}
+                  onPress={() => setCategoryId(cat.id)}
+                >
+                  <Text style={[s.pillText, categoryId === cat.id && s.pillTextOn]}>{cat.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* All Day toggle */}
+            <TouchableOpacity style={s.allDayRow} onPress={() => setAllDay(v => !v)} activeOpacity={0.7}>
+              <View style={[s.checkbox, allDay && s.checkboxOn]}>
+                {allDay && <Text style={s.checkmark}>✓</Text>}
+              </View>
+              <Text style={s.allDayLabel}>All day</Text>
             </TouchableOpacity>
-          ))}
-        </View>
 
-        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
-          {saving
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={s.saveBtnText}>Create Task</Text>}
-        </TouchableOpacity>
-      </View>
+            {!allDay && (
+              <>
+                <Text style={s.fieldLabel}>Start Time (HH:MM)</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="09:00"
+                  placeholderTextColor="#94a3b8"
+                  value={startTime}
+                  onChangeText={setStartTime}
+                  keyboardType="numbers-and-punctuation"
+                />
+                <Text style={s.fieldLabel}>End Time (HH:MM)</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="10:00"
+                  placeholderTextColor="#94a3b8"
+                  value={endTime}
+                  onChangeText={setEndTime}
+                  keyboardType="numbers-and-punctuation"
+                />
+              </>
+            )}
+
+            <Text style={s.fieldLabel}>Description (optional)</Text>
+            <TextInput
+              style={[s.input, { height: 72, textAlignVertical: "top" }]}
+              placeholder="Add details…"
+              placeholderTextColor="#94a3b8"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+            />
+
+            <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
+              {saving
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={s.saveBtnText}>Create Event</Text>}
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -199,24 +271,17 @@ export default function CalendarScreen() {
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selected, setSelected] = useState<Date>(today);
-  const [tasks, setTasks] = useState<CalTask[]>([]);
+  const [events, setEvents] = useState<CalEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
-  const fetchTasks = useCallback(async () => {
+  const fetchEvents = useCallback(async () => {
     try {
-      let data: any[] = [];
-      for (const url of ["/api/tasks/my-tasks", "/api/tasks"]) {
-        try {
-          const res = await api.get(url, { params: { size: 500 } });
-          data = normalizeList(res.data);
-          break;
-        } catch { /* try next */ }
-      }
-      setTasks(data);
+      const res = await api.get("/api/events", { params: { size: 500 } });
+      setEvents(normalizeList(res.data));
     } catch {
-      setTasks([]);
+      setEvents([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -225,22 +290,22 @@ export default function CalendarScreen() {
 
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    fetchTasks();
-  }, [fetchTasks]));
+    fetchEvents();
+  }, [fetchEvents]));
 
-  const tasksByDay = React.useMemo(() => {
-    const map: Record<string, CalTask[]> = {};
-    for (const t of tasks) {
-      if (!t.dueAt) continue;
+  const eventsByDay = React.useMemo(() => {
+    const map: Record<string, CalEvent[]> = {};
+    for (const e of events) {
+      if (!e.startAt) continue;
       try {
-        const d = new Date(t.dueAt);
+        const d = new Date(e.startAt);
         const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
         if (!map[key]) map[key] = [];
-        map[key].push(t);
+        map[key].push(e);
       } catch { /* ignore */ }
     }
     return map;
-  }, [tasks]);
+  }, [events]);
 
   function dayKey(d: Date) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
 
@@ -249,20 +314,17 @@ export default function CalendarScreen() {
   const firstDow = new Date(year, month, 1).getDay();
   const totalDays = daysInMonth(year, month);
 
-  const selectedDayTasks = tasksByDay[dayKey(selected)] ?? [];
-  const pendingTasks = selectedDayTasks.filter(t => !STATUS_DONE.has((t.status || "").toUpperCase()));
-  const doneTasks   = selectedDayTasks.filter(t =>  STATUS_DONE.has((t.status || "").toUpperCase()));
+  const selectedDayEvents = eventsByDay[dayKey(selected)] ?? [];
 
-  const upcoming = tasks
-    .filter(t => {
-      if (STATUS_DONE.has((t.status || "").toUpperCase())) return false;
-      if (!t.dueAt) return true;
-      try { return new Date(t.dueAt) >= today; } catch { return true; }
+  const upcoming = events
+    .filter(e => {
+      if (!e.startAt) return false;
+      try { return new Date(e.startAt) >= today; } catch { return false; }
     })
     .sort((a, b) => {
-      if (!a.dueAt) return 1;
-      if (!b.dueAt) return -1;
-      return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+      if (!a.startAt) return 1;
+      if (!b.startAt) return -1;
+      return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
     })
     .slice(0, 20);
 
@@ -270,7 +332,7 @@ export default function CalendarScreen() {
     <SafeAreaView edges={["bottom"]} style={s.container}>
       <ScrollView
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchTasks(); }} tintColor="#0f766e" />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEvents(); }} tintColor="#0f766e" />
         }
         contentContainerStyle={{ paddingBottom: 40 }}
       >
@@ -305,7 +367,7 @@ export default function CalendarScreen() {
                     day={day}
                     isToday={sameDay(date, today)}
                     isSelected={sameDay(date, selected)}
-                    dotCount={(tasksByDay[dayKey(date)] ?? []).length}
+                    dotCount={(eventsByDay[dayKey(date)] ?? []).length}
                     onPress={() => setSelected(date)}
                   />
                 );
@@ -318,8 +380,8 @@ export default function CalendarScreen() {
         <View style={s.dayHeaderRow}>
           <Text style={s.dayHeaderText}>
             {selected.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}
-            {selectedDayTasks.length > 0
-              ? `  ·  ${selectedDayTasks.length} task${selectedDayTasks.length > 1 ? "s" : ""}`
+            {selectedDayEvents.length > 0
+              ? `  ·  ${selectedDayEvents.length} event${selectedDayEvents.length > 1 ? "s" : ""}`
               : ""}
           </Text>
           <TouchableOpacity style={s.createBtn} onPress={() => setShowCreate(true)}>
@@ -327,26 +389,25 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </View>
 
-        {selectedDayTasks.length === 0 && (
+        {selectedDayEvents.length === 0 && (
           <Text style={s.emptyText}>Nothing scheduled — tap + Event to add one.</Text>
         )}
-        {pendingTasks.map(t => <TaskCard key={t.id} task={t} />)}
-        {doneTasks.map(t => <TaskCard key={t.id} task={t} done />)}
+        {selectedDayEvents.map(e => <EventCard key={e.id} event={e} />)}
 
         {/* ── Upcoming ── */}
         {upcoming.length > 0 && (
           <>
             <Text style={s.sectionHeader}>UPCOMING</Text>
-            {upcoming.map(t => <TaskCard key={t.id} task={t} showDate />)}
+            {upcoming.map(e => <EventCard key={e.id} event={e} showDate />)}
           </>
         )}
       </ScrollView>
 
-      <CreateTaskModal
+      <CreateEventModal
         visible={showCreate}
         defaultDate={selected}
         onClose={() => setShowCreate(false)}
-        onCreated={fetchTasks}
+        onCreated={fetchEvents}
       />
     </SafeAreaView>
   );
@@ -407,23 +468,19 @@ const s = StyleSheet.create({
     borderRadius: 12, padding: 12, elevation: 1,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2,
   },
-  taskCardDone: { opacity: 0.55 },
   priorityBar: { width: 3, height: 40, borderRadius: 2 },
   taskTitle: { fontSize: 14, fontWeight: "600", color: "#1e293b", marginBottom: 4 },
-  taskTitleDone: { textDecorationLine: "line-through", color: "#94a3b8" },
   taskMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   taskMetaText: { fontSize: 12, color: "#64748b" },
-  statusBadge: { backgroundColor: "#f0fdfa", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
-  statusBadgeDone: { backgroundColor: "#f1f5f9" },
-  statusText: { fontSize: 10, fontWeight: "700", color: "#0f766e" },
-  statusTextDone: { color: "#94a3b8" },
+  statusBadge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
+  statusText: { fontSize: 10, fontWeight: "700" },
 
   // Modal
   modalScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: {
     position: "absolute", bottom: 0, left: 0, right: 0,
     backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, paddingBottom: 36,
+    padding: 24, paddingBottom: 36, maxHeight: "85%",
   },
   modalHandle: {
     width: 40, height: 4, borderRadius: 2, backgroundColor: "#e2e8f0",
@@ -437,14 +494,21 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#0f172a",
     marginBottom: 16, backgroundColor: "#f8fafc",
   },
-  pillRow: { flexDirection: "row", gap: 8, marginBottom: 24 },
+  pillRow: { flexDirection: "row", gap: 6, marginBottom: 16, flexWrap: "wrap" },
   pill: {
-    flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1,
+    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1,
     borderColor: "#e2e8f0", alignItems: "center",
   },
-  pillOn: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
-  pillText: { fontSize: 13, fontWeight: "700", color: "#64748b" },
+  pillText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
   pillTextOn: { color: "#fff" },
-  saveBtn: { backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  allDayRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "#d1d5db",
+    alignItems: "center", justifyContent: "center",
+  },
+  checkboxOn: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
+  checkmark: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  allDayLabel: { fontSize: 14, fontWeight: "600", color: "#374151" },
+  saveBtn: { backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 8 },
   saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
