@@ -13,8 +13,10 @@ import {
   PanResponder,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -23,7 +25,6 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
 interface Opportunity {
   id: string;
   contactId?: number | null;
@@ -83,7 +84,6 @@ interface DomainItem {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
 const FALLBACK_STAGES: StageMeta[] = [
   { key: "NEW",       label: "New",       color: "#0f766e", icon: "🆕" },
   { key: "QUALIFIED", label: "Qualified", color: "#2563eb", icon: "✅" },
@@ -96,12 +96,16 @@ const PALETTE = ["#0f766e","#2563eb","#7c3aed","#d97706","#059669","#dc2626","#0
 const ICONS   = ["🆕","✅","📅","🔍","📋","🤝","🏆","❌"];
 const STALE_DAYS = 3;
 const OPPORTUNITY_PAGE_SIZE = 100;
-
 const { width: SW, height: SH } = Dimensions.get("window");
 const COL_W = SW * 0.78;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Height of the fixed header bar rendered above the KeyboardAvoidingView in the
+// Add/Edit modal. Used as the iOS keyboardVerticalOffset so the padding math
+// accounts for that header instead of overshooting/undershooting and clipping
+// the Save button or the chip rows.
+const MODAL_HEADER_HEIGHT = 56;
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
 function normalizeList(data: any): any[] {
   if (Array.isArray(data))          return data;
   if (Array.isArray(data?.content)) return data.content;
@@ -118,12 +122,8 @@ function buildStagesMeta(keys: string[]): StageMeta[] {
   return keys.map((key, i) => ({
     key,
     label: key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-    color: key === "WON"  ? "#059669"
-         : key === "LOST" ? "#dc2626"
-         : PALETTE[i % PALETTE.length],
-    icon: key === "WON"  ? "🏆"
-        : key === "LOST" ? "❌"
-        : ICONS[i % ICONS.length],
+    color: key === "WON"  ? "#059669" : key === "LOST" ? "#dc2626" : PALETTE[i % PALETTE.length],
+    icon: key === "WON"  ? "🏆" : key === "LOST" ? "❌" : ICONS[i % ICONS.length],
   }));
 }
 
@@ -137,12 +137,8 @@ function buildStages(rawStages: any[]): StageMeta[] {
       return {
         key,
         label: s.label || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-        color: key === "WON"  ? "#059669"
-             : key === "LOST" ? "#dc2626"
-             : PALETTE[i % PALETTE.length],
-        icon: key === "WON"  ? "🏆"
-            : key === "LOST" ? "❌"
-            : ICONS[i % ICONS.length],
+        color: key === "WON"  ? "#059669" : key === "LOST" ? "#dc2626" : PALETTE[i % PALETTE.length],
+        icon: key === "WON"  ? "🏆" : key === "LOST" ? "❌" : ICONS[i % ICONS.length],
       };
     });
 }
@@ -209,7 +205,6 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-
 function Toast({ message, type, onClose }: { message: string; type: string; onClose: () => void }) {
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -221,15 +216,9 @@ function Toast({ message, type, onClose }: { message: string; type: string; onCl
     ]).start(() => onClose());
   }, []);
 
-  const bg = type === "error" ? "#fef2f2"
-           : type === "info"  ? "#eff6ff"
-           : "#f0fdf4";
-  const border = type === "error" ? "#fca5a5"
-               : type === "info"  ? "#93c5fd"
-               : "#86efac";
-  const textColor = type === "error" ? "#dc2626"
-                  : type === "info"  ? "#2563eb"
-                  : "#16a34a";
+  const bg = type === "error" ? "#fef2f2" : type === "info"  ? "#eff6ff" : "#f0fdf4";
+  const border = type === "error" ? "#fca5a5" : type === "info"  ? "#93c5fd" : "#86efac";
+  const textColor = type === "error" ? "#dc2626" : type === "info"  ? "#2563eb" : "#16a34a";
 
   return (
     <Animated.View style={[ts.wrap, { backgroundColor: bg, borderColor: border, opacity: anim }]}>
@@ -243,8 +232,7 @@ const ts = StyleSheet.create({
   text: { fontSize: 13, fontWeight: "600" },
 });
 
-// ─── Lost Reason Modal ────────────────────────────────────────────────────────
-
+// ─── Lost Reason Modal ──────────────────────────────────────────────────────
 function LostReasonModal({ visible, onConfirm, onCancel }: {
   visible: boolean;
   onConfirm: (reason: string) => void;
@@ -254,7 +242,11 @@ function LostReasonModal({ visible, onConfirm, onCancel }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <View style={lms.overlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={lms.kav}
+          keyboardVerticalOffset={0}
+        >
           <View style={lms.sheet}>
             <Text style={lms.title}>Reason for Loss</Text>
             <Text style={lms.sub}>Describe why this opportunity was lost</Text>
@@ -287,6 +279,7 @@ function LostReasonModal({ visible, onConfirm, onCancel }: {
 
 const lms = StyleSheet.create({
   overlay:    { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  kav:        { width: "100%" },
   sheet:      { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
   title:      { fontSize: 17, fontWeight: "800", color: "#0f172a", marginBottom: 4 },
   sub:        { fontSize: 13, color: "#64748b", marginBottom: 16 },
@@ -298,8 +291,137 @@ const lms = StyleSheet.create({
   confirmText:{ fontSize: 14, fontWeight: "700", color: "#fff" },
 });
 
-// ─── Add / Edit Modal ─────────────────────────────────────────────────────────
+// ─── Contact Picker ───────────────────────────────────────────────────────────
+// NOTE: this is intentionally NOT a <Modal>. It renders as an absolutely
+// positioned overlay inside the same native window as the Add/Edit modal.
+// Two stacked <Modal> components (this one used to be a second Modal on top
+// of the Add/Edit Modal) is what broke keyboard resize behavior, especially
+// on Android — each Modal is its own native window, so the OS can only
+// correctly resize/track the keyboard against one of them, and the two
+// windows fight over it. An overlay has no window of its own, so there's
+// only ever one place the keyboard listener has to push content up.
+function ContactPickerModal({ visible, contacts, selectedId, onSelect, onClose }: {
+  visible: boolean;
+  contacts: Contact[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+  useEffect(() => { if (visible) setQuery(""); }, [visible]);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvt, e => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter(
+      c => c.name?.toLowerCase().includes(q) || (c.phone || "").toLowerCase().includes(q)
+    );
+  }, [contacts, query]);
+
+  if (!visible) return null;
+
+  // Available height above the keyboard (with a small safety margin), capped
+  // so the sheet never grows taller than it would with no keyboard shown.
+  const maxSheetHeight = keyboardHeight > 0 ? Math.max(260, SH - keyboardHeight - 24) : SH * 0.7;
+
+  return (
+    <View style={cp.overlayAbsolute} pointerEvents="box-none">
+      <TouchableOpacity
+        style={StyleSheet.absoluteFill}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+      <View style={[cp.sheet, { maxHeight: maxSheetHeight, marginBottom: keyboardHeight }]}>
+        <FlatList
+          data={filtered}
+          keyExtractor={item => String(item.id)}
+          keyboardShouldPersistTaps="handled"
+          style={cp.list}
+          contentContainerStyle={cp.listContent}
+          stickyHeaderIndices={[0]}
+          ListHeaderComponent={
+            <View style={cp.stickyHeader}>
+              <View style={cp.header}>
+                <Text style={cp.title}>Select Contact</Text>
+                <TouchableOpacity onPress={onClose}>
+                  <Text style={cp.doneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={cp.searchWrap}>
+                <TextInput
+                  style={cp.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="🔍  Search by name or phone..."
+                  placeholderTextColor="#94a3b8"
+                  autoFocus
+                  clearButtonMode="while-editing"
+                />
+              </View>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={cp.empty}>
+              <Text style={cp.emptyText}>No contacts match "{query}"</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const active = String(item.id) === String(selectedId);
+            return (
+              <TouchableOpacity
+                style={[cp.row, active && cp.rowActive]}
+                onPress={() => { onSelect(String(item.id)); onClose(); }}
+              >
+                <View style={cp.avatar}>
+                  <Text style={cp.avatarText}>{(item.name || "?").trim().charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={cp.rowName} numberOfLines={1}>{item.name}</Text>
+                  {!!item.phone && <Text style={cp.rowPhone} numberOfLines={1}>{item.phone}</Text>}
+                </View>
+                {active && <Text style={cp.check}>✓</Text>}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+const cp = StyleSheet.create({
+  overlayAbsolute: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end", zIndex: 9999, elevation: 50 },
+  sheet:       { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: "hidden" },
+  stickyHeader:{ backgroundColor: "#fff", paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  header:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, marginBottom: 14 },
+  title:       { fontSize: 17, fontWeight: "800", color: "#0f172a" },
+  doneText:    { fontSize: 14, fontWeight: "700", color: "#0f766e" },
+  searchWrap:  { paddingHorizontal: 24 },
+  searchInput: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: "#1e293b" },
+  list:        { flexGrow: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32 },
+  row:         { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 10, borderRadius: 10 },
+  rowActive:   { backgroundColor: "#f0fdf4" },
+  avatar:      { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0f766e18", alignItems: "center", justifyContent: "center" },
+  avatarText:  { fontSize: 14, fontWeight: "800", color: "#0f766e" },
+  rowName:     { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  rowPhone:    { fontSize: 12, color: "#64748b", marginTop: 1 },
+  check:       { fontSize: 16, fontWeight: "800", color: "#0f766e" },
+  empty:       { paddingVertical: 40, alignItems: "center" },
+  emptyText:   { fontSize: 13, color: "#94a3b8", fontWeight: "600" },
+});
+
+// ─── Add / Edit Modal ───────────────────────────────────────────────────────
 interface OppFormState {
   contactId: string;
   title: string;
@@ -324,16 +446,8 @@ function OpportunityModal({ open, stages, contacts, initial, defaultStage, savin
   onSave: (form: OppFormState) => void;
 }) {
   const [form, setForm] = useState<OppFormState>({
-    contactId: "",
-    title: "",
-    stage: defaultStage,
-    amount: "",
-    expectedCloseDate: "",
-    priority: "MEDIUM",
-    probability: "",
-    lostReason: "",
-    source: "",
-    notes: "",
+    contactId: "", title: "", stage: defaultStage, amount: "", expectedCloseDate: "",
+    priority: "MEDIUM", probability: "", lostReason: "", source: "", notes: "",
   });
 
   useEffect(() => {
@@ -352,10 +466,12 @@ function OpportunityModal({ open, stages, contacts, initial, defaultStage, savin
     });
   }, [open, initial, defaultStage]);
 
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+
   if (!open) return null;
 
-  const set = (key: keyof OppFormState, val: string) =>
-    setForm(f => ({ ...f, [key]: val }));
+  const set = (key: keyof OppFormState, val: string) => setForm(f => ({ ...f, [key]: val }));
+  const selectedContact = contacts.find(c => String(c.id) === form.contactId) || null;
 
   const submit = () => {
     if (!form.contactId || !form.title.trim()) {
@@ -371,10 +487,19 @@ function OpportunityModal({ open, stages, contacts, initial, defaultStage, savin
 
   const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
+  // NOTE: intentionally NOT a <Modal>. On Android, RN's <Modal> renders as a
+  // native Dialog with its own windowSoftInputMode, which cannot be set from
+  // JS — no amount of KeyboardAvoidingView/KeyboardAwareScrollView tuning can
+  // fix a Dialog that Android itself won't resize for the keyboard. Rendering
+  // this as a plain absolutely-positioned overlay makes it part of the host
+  // Activity's own window instead, which DOES correctly resize/pan with the
+  // keyboard (governed by the app's AndroidManifest windowSoftInputMode /
+  // Expo's app.json android.softwareKeyboardLayoutMode).
   return (
-    <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <View style={om.overlayRoot} pointerEvents="box-none">
       <SafeAreaView edges={["top", "bottom"]} style={om.root}>
-        {/* Header */}
+        {/* Header — stays fixed above the scroll view so it's never covered or
+            pushed out of view when the keyboard opens */}
         <View style={om.header}>
           <TouchableOpacity onPress={onClose} style={om.closeBtn}>
             <Text style={om.closeText}>Cancel</Text>
@@ -389,151 +514,171 @@ function OpportunityModal({ open, stages, contacts, initial, defaultStage, savin
           </TouchableOpacity>
         </View>
 
+        {/* Plain ScrollView with generous bottom padding — you can always
+            manually scroll a field (e.g. Notes, Source) clear of the
+            keyboard, regardless of whether Android resizes the window. This
+            is deliberately simple: no auto-scroll-to-focused-input library,
+            just room to scroll. */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? MODAL_HEADER_HEIGHT : 0}
         >
-          <ScrollView contentContainerStyle={om.body} keyboardShouldPersistTaps="handled">
-            {/* Contact */}
-            <Text style={om.label}>Contact</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={om.chipScroll}>
-              {contacts.map(c => {
-                const active = String(c.id) === form.contactId;
-                return (
-                  <TouchableOpacity
-                    key={String(c.id)}
-                    onPress={() => set("contactId", String(c.id))}
-                    style={[om.chip, active && om.chipActive]}
-                  >
-                    <Text style={[om.chipText, active && om.chipTextActive]} numberOfLines={1}>
-                      {c.name}{c.phone ? ` (${c.phone})` : ""}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={om.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Contact — searchable selector instead of a chip slider */}
+          <Text style={om.label}>Contact</Text>
+          <TouchableOpacity
+            style={om.selectBox}
+            onPress={() => setContactPickerOpen(true)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[om.selectText, !selectedContact && om.selectPlaceholder]}
+              numberOfLines={1}
+            >
+              {selectedContact
+                ? `${selectedContact.name}${selectedContact.phone ? ` (${selectedContact.phone})` : ""}`
+                : "Select a contact"}
+            </Text>
+            <Text style={om.selectChevron}>▾</Text>
+          </TouchableOpacity>
 
-            {/* Title */}
-            <Text style={om.label}>Title *</Text>
-            <TextInput
-              style={om.input}
-              value={form.title}
-              onChangeText={v => set("title", v)}
-              placeholder="Opportunity title"
-              placeholderTextColor="#94a3b8"
-            />
+          {/* Title */}
+          <Text style={om.label}>Title *</Text>
+          <TextInput
+            style={om.input}
+            value={form.title}
+            onChangeText={v => set("title", v)}
+            placeholder="Opportunity title"
+            placeholderTextColor="#94a3b8"
+          />
 
-            {/* Stage */}
-            <Text style={om.label}>Stage</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={om.chipScroll}>
-              {stages.map(st => {
-                const active = form.stage === st.key;
-                return (
-                  <TouchableOpacity
-                    key={st.key}
-                    onPress={() => set("stage", st.key)}
-                    style={[om.chip, active && { backgroundColor: st.color, borderColor: st.color }]}
-                  >
-                    <Text style={[om.chipText, active && om.chipTextActive]}>
-                      {st.icon} {st.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {normalizeStageKey(form.stage) === "LOST" && (
-              <>
-                <Text style={om.label}>Lost Reason *</Text>
-                <TextInput
-                  style={[om.input, { minHeight: 70, textAlignVertical: "top" }]}
-                  value={form.lostReason}
-                  onChangeText={v => set("lostReason", v)}
-                  placeholder="Budget, no response, competitor..."
-                  placeholderTextColor="#94a3b8"
-                  multiline
-                />
-              </>
-            )}
-
-            {/* Priority */}
-            <Text style={om.label}>Priority</Text>
-            <View style={om.row}>
-              {PRIORITIES.map(p => {
-                const active = form.priority === p;
-                const pc = PRIORITY_COLORS[p];
-                return (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => set("priority", p)}
-                    style={[om.priorityChip, active && { backgroundColor: pc.bg, borderColor: pc.text }]}
-                  >
-                    <Text style={[om.priorityText, active && { color: pc.text }]}>{p}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Amount */}
-            <Text style={om.label}>Amount (₹)</Text>
-            <TextInput
-              style={om.input}
-              value={form.amount}
-              onChangeText={v => set("amount", v)}
-              placeholder="0"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-            />
-
-            {/* Probability */}
-            <Text style={om.label}>Probability %</Text>
-            <TextInput
-              style={om.input}
-              value={form.probability}
-              onChangeText={v => set("probability", v)}
-              placeholder="0–100"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-            />
-
-            {/* Expected Close */}
-            <Text style={om.label}>Expected Close Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={om.input}
-              value={form.expectedCloseDate}
-              onChangeText={v => set("expectedCloseDate", v)}
-              placeholder="2025-12-31"
-              placeholderTextColor="#94a3b8"
-            />
-
-            {/* Source */}
-            <Text style={om.label}>Source</Text>
-            <TextInput
-              style={om.input}
-              value={form.source}
-              onChangeText={v => set("source", v)}
-              placeholder="Website, Referral, Cold call..."
-              placeholderTextColor="#94a3b8"
-            />
-
-            {/* Notes */}
-            <Text style={om.label}>Notes</Text>
-            <TextInput
-              style={[om.input, { minHeight: 90, textAlignVertical: "top" }]}
-              value={form.notes}
-              onChangeText={v => set("notes", v)}
-              placeholder="Additional notes..."
-              placeholderTextColor="#94a3b8"
-              multiline
-            />
+          {/* Stage */}
+          <Text style={om.label}>Stage</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={om.chipScroll}>
+            {stages.map(st => {
+              const active = form.stage === st.key;
+              return (
+                <TouchableOpacity
+                  key={st.key}
+                  onPress={() => set("stage", st.key)}
+                  style={[om.chip, active && { backgroundColor: st.color, borderColor: st.color }]}
+                >
+                  <Text style={[om.chipText, active && om.chipTextActive]}>
+                    {st.icon} {st.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
+
+          {normalizeStageKey(form.stage) === "LOST" && (
+            <>
+              <Text style={om.label}>Lost Reason *</Text>
+              <TextInput
+                style={[om.input, { minHeight: 70, textAlignVertical: "top" }]}
+                value={form.lostReason}
+                onChangeText={v => set("lostReason", v)}
+                placeholder="Budget, no response, competitor..."
+                placeholderTextColor="#94a3b8"
+                multiline
+              />
+            </>
+          )}
+
+          {/* Priority */}
+          <Text style={om.label}>Priority</Text>
+          <View style={om.row}>
+            {PRIORITIES.map(p => {
+              const active = form.priority === p;
+              const pc = PRIORITY_COLORS[p];
+              return (
+                <TouchableOpacity
+                  key={p}
+                  onPress={() => set("priority", p)}
+                  style={[om.priorityChip, active && { backgroundColor: pc.bg, borderColor: pc.text }]}
+                >
+                  <Text style={[om.priorityText, active && { color: pc.text }]}>{p}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Amount */}
+          <Text style={om.label}>Amount (₹)</Text>
+          <TextInput
+            style={om.input}
+            value={form.amount}
+            onChangeText={v => set("amount", v)}
+            placeholder="0"
+            placeholderTextColor="#94a3b8"
+            keyboardType="numeric"
+          />
+
+          {/* Probability */}
+          <Text style={om.label}>Probability %</Text>
+          <TextInput
+            style={om.input}
+            value={form.probability}
+            onChangeText={v => set("probability", v)}
+            placeholder="0–100"
+            placeholderTextColor="#94a3b8"
+            keyboardType="numeric"
+          />
+
+          {/* Expected Close */}
+          <Text style={om.label}>Expected Close Date (YYYY-MM-DD)</Text>
+          <TextInput
+            style={om.input}
+            value={form.expectedCloseDate}
+            onChangeText={v => set("expectedCloseDate", v)}
+            placeholder="2025-12-31"
+            placeholderTextColor="#94a3b8"
+          />
+
+          {/* Source */}
+          <Text style={om.label}>Source</Text>
+          <TextInput
+            style={om.input}
+            value={form.source}
+            onChangeText={v => set("source", v)}
+            placeholder="Website, Referral, Cold call..."
+            placeholderTextColor="#94a3b8"
+          />
+
+          {/* Notes */}
+          <Text style={om.label}>Notes</Text>
+          <TextInput
+            style={[om.input, { minHeight: 90, textAlignVertical: "top" }]}
+            value={form.notes}
+            onChangeText={v => set("notes", v)}
+            placeholder="Additional notes..."
+            placeholderTextColor="#94a3b8"
+            multiline
+          />
+        </ScrollView>
         </KeyboardAvoidingView>
+
+        <ContactPickerModal
+          visible={contactPickerOpen}
+          contacts={contacts}
+          selectedId={form.contactId}
+          onSelect={id => set("contactId", id)}
+          onClose={() => setContactPickerOpen(false)}
+        />
       </SafeAreaView>
-    </Modal>
+    </View>
   );
 }
 
 const om = StyleSheet.create({
+  overlayRoot:   { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 5000, elevation: 30 },
   root:          { flex: 1, backgroundColor: "#f8fafc" },
   header:        { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 14, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
   title:         { fontSize: 16, fontWeight: "800", color: "#0f172a" },
@@ -541,10 +686,14 @@ const om = StyleSheet.create({
   closeText:     { fontSize: 15, color: "#64748b", fontWeight: "600" },
   saveBtn:       { backgroundColor: "#0f766e", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 8 },
   saveText:      { fontSize: 14, fontWeight: "700", color: "#fff" },
-  body:          { padding: 16, gap: 4, paddingBottom: 60 },
+  body:          { padding: 16, gap: 4, paddingBottom: 320 },
   label:         { fontSize: 11, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 14, marginBottom: 6 },
   input:         { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14, color: "#0f172a" },
   chipScroll:    { flexGrow: 0, marginBottom: 2 },
+  selectBox:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 13, paddingVertical: 12 },
+  selectText:    { flex: 1, fontSize: 14, fontWeight: "600", color: "#0f172a" },
+  selectPlaceholder: { color: "#94a3b8", fontWeight: "500" },
+  selectChevron: { fontSize: 14, color: "#94a3b8", marginLeft: 8 },
   row:           { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   chip:          { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#e2e8f0", marginRight: 6, marginBottom: 4 },
   chipActive:    { backgroundColor: "#0f766e", borderColor: "#0f766e" },
@@ -555,7 +704,6 @@ const om = StyleSheet.create({
 });
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
-
 function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
   opp: Opportunity | null;
   stagesMap: Record<string, StageMeta>;
@@ -639,13 +787,7 @@ const dm = StyleSheet.create({
 });
 
 // ─── Filters Sheet ────────────────────────────────────────────────────────────
-
-interface Filters {
-  ownerUserId: string;
-  source: string;
-  staleOnly: boolean;
-}
-
+interface Filters { ownerUserId: string; source: string; staleOnly: boolean; }
 const EMPTY_FILTERS: Filters = { ownerUserId: "", source: "", staleOnly: false };
 
 function FiltersModal({ visible, filters, sourceOptions, onApply, onClose }: {
@@ -657,7 +799,6 @@ function FiltersModal({ visible, filters, sourceOptions, onApply, onClose }: {
 }) {
   const [local, setLocal] = useState<Filters>(filters);
   useEffect(() => { setLocal(filters); }, [filters, visible]);
-
   const set = (key: keyof Filters, val: any) => setLocal(f => ({ ...f, [key]: val }));
 
   return (
@@ -735,7 +876,6 @@ const fm = StyleSheet.create({
 });
 
 // ─── Floating Drag Card ───────────────────────────────────────────────────────
-
 function FloatingCard({ opp, animXY, visible, stageColor }: {
   opp: Opportunity | null;
   animXY: Animated.ValueXY;
@@ -762,15 +902,13 @@ const fcard = StyleSheet.create({
   amount: { fontSize: 13, fontWeight: "700", color: "#0f766e", marginTop: 3 },
 });
 
-// ─── Move To Bar ──────────────────────────────────────────────────────────────
-
+// ─── Move To Bar ────────────────────────────────────────────────────────────
 function MoveToBar({ targetStage, visible, stagesMap }: {
   targetStage: string | null;
   visible: boolean;
   stagesMap: Record<string, StageMeta>;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     Animated.spring(anim, { toValue: visible ? 1 : 0, useNativeDriver: true, tension: 80, friction: 10 }).start();
   }, [visible]);
@@ -800,7 +938,6 @@ const mtb = StyleSheet.create({
 });
 
 // ─── Opp Card ─────────────────────────────────────────────────────────────────
-
 function OppCard({ opp, onPress, onLongPress, faded, stageColor }: {
   opp: Opportunity;
   onPress: (opp: Opportunity) => void;
@@ -820,7 +957,6 @@ function OppCard({ opp, onPress, onLongPress, faded, stageColor }: {
       style={[oc.wrap, { borderLeftColor: stageColor, opacity: faded ? 0.25 : 1 }]}
     >
       <Text style={oc.title} numberOfLines={2}>{opp.title}</Text>
-
       {!!opp.contactName && (
         <Text style={oc.meta}>👤 {opp.contactName}{opp.contactPhone ? ` · ${opp.contactPhone}` : ""}</Text>
       )}
@@ -887,7 +1023,6 @@ const oc = StyleSheet.create({
 });
 
 // ─── Kanban Column ────────────────────────────────────────────────────────────
-
 function KanbanColumn({ stage, opps, isDropTarget, onCardPress, onLongPress, draggingId, stagesMap, onAdd }: {
   stage: StageMeta;
   opps: Opportunity[];
@@ -973,7 +1108,6 @@ const kc = StyleSheet.create({
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-
 interface ToastState { message: string; type: string }
 
 export default function PipelineScreen() {
@@ -1000,18 +1134,17 @@ export default function PipelineScreen() {
   const [filters,        setFilters]        = useState<Filters>(EMPTY_FILTERS);
   const [filtersVisible, setFiltersVisible] = useState(false);
 
-  // ── Modal state ────────────────────────────────────────────────────────────
+  // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen,    setModalOpen]    = useState(false);
   const [editCard,     setEditCard]     = useState<Opportunity | null>(null);
   const [activeStage,  setActiveStage]  = useState("NEW");
   const [detailCard,   setDetailCard]   = useState<Opportunity | null>(null);
   const [lostVisible,  setLostVisible]  = useState(false);
 
-  // ── Drag state ─────────────────────────────────────────────────────────────
+  // ── Drag state ────────────────────────────────────────────────────────────
   const [draggingOpp,    setDraggingOpp]    = useState<Opportunity | null>(null);
   const [dropTarget,     setDropTarget]     = useState<string | null>(null);
   const [moveBarVisible, setMoveBarVisible] = useState(false);
-
   const pendingMove  = useRef<{ opp: Opportunity; stage: string } | null>(null);
   const draggingRef  = useRef<Opportunity | null>(null);
   const columnBounds = useRef<Record<string, { left: number; right: number }>>({});
@@ -1019,18 +1152,18 @@ export default function PipelineScreen() {
   const animXY       = useRef(new Animated.ValueXY({ x: -9999, y: -9999 })).current;
   draggingRef.current = draggingOpp;
 
-  // ── Toast helper ───────────────────────────────────────────────────────────
+  // ── Toast helper ──────────────────────────────────────────────────────────
   const showToast = useCallback((message: string, type = "success") => {
     setToast({ message, type });
   }, []);
 
-  // ── Stages map ─────────────────────────────────────────────────────────────
+  // ── Stages map ────────────────────────────────────────────────────────────
   const stagesMap = React.useMemo<Record<string, StageMeta>>(
     () => Object.fromEntries(stages.map(s => [s.key, s])),
     [stages]
   );
 
-  // ── Fetch board ────────────────────────────────────────────────────────────
+  // ── Fetch board ───────────────────────────────────────────────────────────
   const fetchBoard = useCallback(async ({ page = 0, append = false } = {}) => {
     setError(null);
     if (!append) setLoading(true);
@@ -1042,10 +1175,7 @@ export default function PipelineScreen() {
       try {
         const pr = await api.get("/api/pipelines");
         pipelineList = normalizeList(pr.data).map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          defaultPipeline: p.defaultPipeline,
-          industryKey: p.industryKey,
+          id: p.id, name: p.name, defaultPipeline: p.defaultPipeline, industryKey: p.industryKey,
         }));
         setPipelines(pipelineList);
         if (!resolvedPipelineId) {
@@ -1053,9 +1183,7 @@ export default function PipelineScreen() {
           resolvedPipelineId = def?.id ?? null;
           setSelectedPipelineId(resolvedPipelineId);
         }
-      } catch (e) {
-        console.log("[Pipelines err]", e);
-      }
+      } catch (e) { console.log("[Pipelines err]", e); }
 
       // Parallel: stages, opps, stage counts, contacts, domain items
       const params: any = { page, size: OPPORTUNITY_PAGE_SIZE };
@@ -1070,10 +1198,9 @@ export default function PipelineScreen() {
       ]);
 
       // Stages
-      const nextStages: StageMeta[] =
-        stageRes.status === "fulfilled"
-          ? buildStages(normalizeList(stageRes.value.data))
-          : FALLBACK_STAGES;
+      const nextStages: StageMeta[] = stageRes.status === "fulfilled"
+        ? buildStages(normalizeList(stageRes.value.data))
+        : FALLBACK_STAGES;
       setStages(nextStages);
 
       // Opportunities
@@ -1107,7 +1234,6 @@ export default function PipelineScreen() {
       if (domainRes.status === "fulfilled") {
         setDomainItems(normalizeList(domainRes.value.data));
       }
-
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || "Failed to load pipeline");
     } finally {
@@ -1122,14 +1248,14 @@ export default function PipelineScreen() {
     fetchBoard();
   }, [fetchBoard]));
 
-  // ── Load next page ─────────────────────────────────────────────────────────
+  // ── Load next page ────────────────────────────────────────────────────────
   const loadNextPage = () => {
     if (loadingMore || !hasNextPage) return;
     setLoadingMore(true);
     fetchBoard({ page: currentPage + 1, append: true });
   };
 
-  // ── Move stage ─────────────────────────────────────────────────────────────
+  // ── Move stage ────────────────────────────────────────────────────────────
   const doMove = async (opp: Opportunity, stage: string, lostReason: string | null) => {
     setOpps(prev =>
       prev.map(o =>
@@ -1150,7 +1276,7 @@ export default function PipelineScreen() {
     }
   };
 
-  // ── Save (add / edit) ──────────────────────────────────────────────────────
+  // ── Save (add / edit) ─────────────────────────────────────────────────────
   const saveCard = async (form: OppFormState) => {
     setSaving(true);
     const payload = {
@@ -1264,7 +1390,7 @@ export default function PipelineScreen() {
     })
   ).current;
 
-  // ── Filter & group ─────────────────────────────────────────────────────────
+  // ── Filter & group ────────────────────────────────────────────────────────
   const filteredOpps = React.useMemo(() => {
     return opps.filter(o => {
       if (selectedPipelineId && String(o.pipelineId) !== String(selectedPipelineId)) return false;
@@ -1298,7 +1424,7 @@ export default function PipelineScreen() {
   const closeRate    = totalLoaded > 0 ? Math.round((wonCount / totalLoaded) * 100) : 0;
   const activeFilterCount = Object.values(filters).filter(v => v !== "" && v !== false).length;
 
-  // ── Open add/edit ──────────────────────────────────────────────────────────
+  // ── Open add/edit ─────────────────────────────────────────────────────────
   const openAdd = (stageKey: string) => {
     setEditCard(null);
     setActiveStage(stageKey);
@@ -1400,9 +1526,7 @@ export default function PipelineScreen() {
       {/* ── Hint ── */}
       <View style={s.hint}>
         <Text style={s.hintT}>
-          {draggingOpp
-            ? "🎯 Drag to target column and release"
-            : "⟺ Scroll between stages  ·  Tap card to view  ·  Hold to move"}
+          {draggingOpp ? "🎯 Drag to target column and release" : "⟺ Scroll between stages  ·  Tap card to view  ·  Hold to move"}
         </Text>
       </View>
 
@@ -1426,10 +1550,7 @@ export default function PipelineScreen() {
           {stages.map(stage => (
             <View
               key={stage.key}
-              ref={r => {
-                columnRefs.current[stage.key] = r;
-                if (r) setTimeout(measureAll, 150);
-              }}
+              ref={r => { columnRefs.current[stage.key] = r; if (r) setTimeout(measureAll, 150); }}
             >
               <KanbanColumn
                 stage={stage}
@@ -1514,18 +1635,13 @@ export default function PipelineScreen() {
       />
 
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </SafeAreaView>
   );
 }
 
-// ─── Root Styles ──────────────────────────────────────────────────────────────
-
+// ─── Root Styles ────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root:                 { flex: 1, backgroundColor: "#f1f5f9" },
   topBar:               { backgroundColor: "#fff", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", gap: 10 },

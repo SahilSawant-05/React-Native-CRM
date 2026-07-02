@@ -18,12 +18,15 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 
-// "RESOLVED" removed — these map to backend status filters
-const STATUS_TABS = ["", "OPEN"];
+// "RESOLVED" removed — these map to backend status filters.
+// "UNREAD" is a client-side-only pseudo-tab (see selectTab below) — it
+// doesn't hit the backend status filter, it just flips unreadOnly.
+const STATUS_TABS = ["", "OPEN", "UNREAD"];
 const STATUS_LABELS: Record<string, string> = {
   "": "All",
   OPEN: "Open",
   IN_PROGRESS: "Active",
+  UNREAD: "Unread",
 };
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -81,7 +84,9 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const agentDrawer = useContext(AgentDrawerCtx);
 
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [status, setStatus] = useState("");
+  // "" | "OPEN" | "UNREAD" — which tab is active. Mutually exclusive now,
+  // rather than a separate toggle layered on top of the status tabs.
+  const [activeTab, setActiveTab] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -93,7 +98,9 @@ export default function ChatInboxScreen({ navigation }: Props) {
   const [allItems, setAllItems] = useState<InboxItem[]>([]);
 
   const searchRef = useRef(search);
-  const statusRef = useRef(status);
+  // Backend status filter actually sent to fetchInbox — "" or "OPEN".
+  // UNREAD never gets sent to the backend, it's filtered client-side.
+  const statusRef = useRef("");
   const unreadOnlyRef = useRef(unreadOnly);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track if user is actively typing — suppress API results while typing
@@ -177,24 +184,28 @@ export default function ChatInboxScreen({ navigation }: Props) {
     }, [])
   );
 
-  function switchStatus(s: string) {
-    setStatus(s);
-    statusRef.current = s;
+  // Single entry point for the tab row now that Unread lives inside it.
+  // "" / "OPEN" hit the backend status filter and turn unreadOnly off.
+  // "UNREAD" doesn't touch the backend filter — it refetches with no
+  // status (so nothing is excluded server-side) and turns unreadOnly on
+  // so applyFilter narrows it down client-side.
+  function selectTab(tab: string) {
+    setActiveTab(tab);
     setSearch("");
     searchRef.current = "";
     isTypingRef.current = false;
-    load(0, s, "");
-  }
 
-  // Client-side toggle — unread state doesn't come from the backend status
-  // filter, it's derived from unreadCount on already-loaded items.
-  function toggleUnread() {
-    setUnreadOnly((prev) => {
-      const next = !prev;
-      unreadOnlyRef.current = next;
-      setItems(applyFilter(allItems, searchRef.current, next));
-      return next;
-    });
+    if (tab === "UNREAD") {
+      setUnreadOnly(true);
+      unreadOnlyRef.current = true;
+      statusRef.current = "";
+      load(0, "", "");
+    } else {
+      setUnreadOnly(false);
+      unreadOnlyRef.current = false;
+      statusRef.current = tab;
+      load(0, tab, "");
+    }
   }
 
   function handleSearch(text: string) {
@@ -248,30 +259,22 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          {STATUS_TABS.map((s) => (
+          {STATUS_TABS.map((tab) => (
             <TouchableOpacity
-              key={s || "ALL"}
-              style={[styles.chip, status === s && styles.chipActive]}
-              onPress={() => switchStatus(s)}
+              key={tab || "ALL"}
+              style={[styles.chip, activeTab === tab && styles.chipActive]}
+              onPress={() => selectTab(tab)}
             >
-              <Text style={[styles.chipText, status === s && styles.chipTextActive]}>
-                {STATUS_LABELS[s] ?? s}
+              <Text style={[styles.chipText, activeTab === tab && styles.chipTextActive]}>
+                {STATUS_LABELS[tab] ?? tab}
+                {tab === "UNREAD" && unreadTotal > 0 ? ` (${unreadTotal})` : ""}
               </Text>
             </TouchableOpacity>
           ))}
-
-          <TouchableOpacity
-            style={[styles.chip, unreadOnly && styles.chipActive]}
-            onPress={toggleUnread}
-          >
-            <Text style={[styles.chipText, unreadOnly && styles.chipTextActive]}>
-              Unread{unreadTotal > 0 ? ` (${unreadTotal})` : ""}
-            </Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
 
-      {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, status, search)} />}
+      {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, statusRef.current, search)} />}
 
       <FlatList
         data={items}
@@ -285,7 +288,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(0, status, search, true); }}
+            onRefresh={() => { setRefreshing(true); load(0, statusRef.current, search, true); }}
             tintColor="#0f766e"
           />
         }

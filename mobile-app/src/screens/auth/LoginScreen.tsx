@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from "react-native";
 import { useAuth } from "../../auth/AuthContext";
 import { loginRequest } from "../../api/auth";
@@ -58,9 +59,14 @@ export default function LoginScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Vistaar Flow</Text>
           <Text style={styles.headerSub}>Admin / Agent Portal</Text>
-          <View style={styles.waBadge}>
+          {/* <View style={styles.waBadge}>
             <Text style={styles.waBadgeText}>💬</Text>
-          </View>
+            
+         
+          </View> */}
+          <Image 
+            source={require('../../../assets/logo.png')}
+             style={styles.localImage} />
         </View>
 
         {/* Card */}
@@ -134,6 +140,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+    localImage: { width:50, height: 50 ,borderRadius:10},
+
   root: { flex: 1, backgroundColor: "#f1f5f9" },
   scroll: { flexGrow: 1 },
   header: {

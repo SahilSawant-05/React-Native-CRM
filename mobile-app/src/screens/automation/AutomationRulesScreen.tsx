@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -193,7 +195,7 @@ function RuleFormModal({
       notificationBody: form.notificationBody || null,
       delayInHours: form.delayInHours === "" ? null : Number(form.delayInHours) || null,
       requireNoResponse: Boolean(form.requireNoResponse),
-      dueInHours: form.dueInHours === "" ? null : Number(form.dueInHours) || 24,
+      // dueInHours: form.dueInHours === "" ? null : Number(form.dueInHours) || 24,
       taskTitle: form.taskTitle || null,
       taskDescription: form.taskDescription || null,
     };
@@ -232,145 +234,157 @@ function RuleFormModal({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={fs.body} keyboardShouldPersistTaps="handled">
-          {!!error && (
-            <View style={fs.errorBox}>
-              <Text style={fs.errorText}>{error}</Text>
+        {/* KeyboardAvoidingView wraps BOTH the scrollable form and the footer
+            so the Save button rides up above the keyboard along with the inputs. */}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <ScrollView
+            contentContainerStyle={fs.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            {!!error && (
+              <View style={fs.errorBox}>
+                <Text style={fs.errorText}>{error}</Text>
+              </View>
+            )}
+
+            {/* Name */}
+            <View style={fs.field}>
+              <Text style={fs.label}>Rule Name</Text>
+              <TextInput
+                style={fs.input}
+                placeholder="e.g. Follow up new lead"
+                placeholderTextColor="#94a3b8"
+                value={form.name}
+                onChangeText={(v) => set("name", v)}
+              />
             </View>
-          )}
 
-          {/* Name */}
-          <View style={fs.field}>
-            <Text style={fs.label}>Rule Name</Text>
-            <TextInput
-              style={fs.input}
-              placeholder="e.g. Follow up new lead"
-              placeholderTextColor="#94a3b8"
-              value={form.name}
-              onChangeText={(v) => set("name", v)}
+            {/* Active toggle */}
+            <View style={fs.switchRow}>
+              <Text style={fs.label}>Active</Text>
+              <Switch
+                value={form.active}
+                onValueChange={(v) => set("active", v)}
+                trackColor={{ true: "#0f766e", false: "#cbd5e1" }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {/* Trigger */}
+            <PickerRow
+              label="Trigger"
+              options={TRIGGERS}
+              value={form.triggerType}
+              onChange={(v) => set("triggerType", v)}
             />
-          </View>
 
-          {/* Active toggle */}
-          <View style={fs.switchRow}>
-            <Text style={fs.label}>Active</Text>
-            <Switch
-              value={form.active}
-              onValueChange={(v) => set("active", v)}
-              trackColor={{ true: "#0f766e", false: "#cbd5e1" }}
-              thumbColor="#fff"
+            {/* Lead source condition */}
+            <PickerRow
+              label="Condition: Lead Source (optional)"
+              options={[{ value: "", label: "Any" }, ...LEAD_SOURCES.map((s) => ({ value: s, label: s.replaceAll("_", " ") }))]}
+              value={form.conditionLeadSource ?? ""}
+              onChange={(v) => set("conditionLeadSource", v)}
             />
-          </View>
 
-          {/* Trigger */}
-          <PickerRow
-            label="Trigger"
-            options={TRIGGERS}
-            value={form.triggerType}
-            onChange={(v) => set("triggerType", v)}
-          />
+            {/* Delay */}
+            <View style={fs.field}>
+              <Text style={fs.label}>Delay (hours, optional)</Text>
+              <TextInput
+                style={fs.input}
+                placeholder="0"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                value={String(form.delayInHours ?? "")}
+                onChangeText={(v) => set("delayInHours", v)}
+              />
+            </View>
 
-          {/* Lead source condition */}
-          <PickerRow
-            label="Condition: Lead Source (optional)"
-            options={[{ value: "", label: "Any" }, ...LEAD_SOURCES.map((s) => ({ value: s, label: s.replaceAll("_", " ") }))]}
-            value={form.conditionLeadSource ?? ""}
-            onChange={(v) => set("conditionLeadSource", v)}
-          />
-
-          {/* Delay */}
-          <View style={fs.field}>
-            <Text style={fs.label}>Delay (hours, optional)</Text>
-            <TextInput
-              style={fs.input}
-              placeholder="0"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-              value={String(form.delayInHours ?? "")}
-              onChangeText={(v) => set("delayInHours", v)}
+            {/* Action */}
+            <PickerRow
+              label="Action"
+              options={ACTIONS}
+              value={form.actionType}
+              onChange={(v) => set("actionType", v)}
             />
-          </View>
 
-          {/* Action */}
-          <PickerRow
-            label="Action"
-            options={ACTIONS}
-            value={form.actionType}
-            onChange={(v) => set("actionType", v)}
-          />
-
-          {/* Action-specific fields */}
-          {(form.actionType === "CREATE_TASK" || form.actionType === "NOTIFY_AGENT") && (
-            <>
-              <View style={fs.field}>
-                <Text style={fs.label}>
-                  {form.actionType === "CREATE_TASK" ? "Task Title" : "Notification Title"}
-                </Text>
-                <TextInput
-                  style={fs.input}
-                  placeholder="Follow up with {{contactName}}"
-                  placeholderTextColor="#94a3b8"
-                  value={form.actionType === "CREATE_TASK" ? (form.taskTitle ?? "") : (form.notificationTitle ?? "")}
-                  onChangeText={(v) =>
-                    set(form.actionType === "CREATE_TASK" ? "taskTitle" : "notificationTitle", v)
-                  }
-                />
-              </View>
-              <View style={fs.field}>
-                <Text style={fs.label}>
-                  {form.actionType === "CREATE_TASK" ? "Task Description" : "Notification Body"}
-                </Text>
-                <TextInput
-                  style={[fs.input, { height: 80, textAlignVertical: "top" }]}
-                  placeholder="Description…"
-                  placeholderTextColor="#94a3b8"
-                  multiline
-                  value={form.actionType === "CREATE_TASK" ? (form.taskDescription ?? "") : (form.notificationBody ?? "")}
-                  onChangeText={(v) =>
-                    set(form.actionType === "CREATE_TASK" ? "taskDescription" : "notificationBody", v)
-                  }
-                />
-              </View>
-              {form.actionType === "CREATE_TASK" && (
+            {/* Action-specific fields */}
+            {(form.actionType === "CREATE_TASK" || form.actionType === "NOTIFY_AGENT") && (
+              <>
                 <View style={fs.field}>
-                  <Text style={fs.label}>Due in (hours)</Text>
+                  <Text style={fs.label}>
+                    {form.actionType === "CREATE_TASK" ? "Task Title" : "Notification Title"}
+                  </Text>
                   <TextInput
                     style={fs.input}
-                    placeholder="24"
+                    placeholder="Follow up with {{contactName}}"
                     placeholderTextColor="#94a3b8"
-                    keyboardType="numeric"
-                    value={String(form.dueInHours ?? 24)}
-                    onChangeText={(v) => set("dueInHours", Number(v) || 24)}
+                    value={form.actionType === "CREATE_TASK" ? (form.taskTitle ?? "") : (form.notificationTitle ?? "")}
+                    onChangeText={(v) =>
+                      set(form.actionType === "CREATE_TASK" ? "taskTitle" : "notificationTitle", v)
+                    }
                   />
                 </View>
-              )}
-            </>
-          )}
+                <View style={fs.field}>
+                  <Text style={fs.label}>
+                    {form.actionType === "CREATE_TASK" ? "Task Description" : "Notification Body"}
+                  </Text>
+                  <TextInput
+                    style={[fs.input, { height: 80, textAlignVertical: "top" }]}
+                    placeholder="Description…"
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                    value={form.actionType === "CREATE_TASK" ? (form.taskDescription ?? "") : (form.notificationBody ?? "")}
+                    onChangeText={(v) =>
+                      set(form.actionType === "CREATE_TASK" ? "taskDescription" : "notificationBody", v)
+                    }
+                  />
+                </View>
+                {form.actionType === "CREATE_TASK" && (
+                  <View style={fs.field}>
+                    <Text style={fs.label}>Due in (hours)</Text>
+                    <TextInput
+                      style={fs.input}
+                      placeholder="24"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="numeric"
+                      value={String(form.dueInHours ?? 24)}
+                      onChangeText={(v) => set("dueInHours", Number(v) || 24)}
+                    />
+                  </View>
+                )}
+              </>
+            )}
 
-          {form.actionType === "SEND_WHATSAPP_TEMPLATE" && (
-            <PickerRow
-              label="WhatsApp Template"
-              options={waOptions.length ? waOptions : [{ value: "", label: "No approved templates" }]}
-              value={String(form.whatsappTemplateId ?? "")}
-              onChange={(v) => set("whatsappTemplateId", v)}
-            />
-          )}
+            {form.actionType === "SEND_WHATSAPP_TEMPLATE" && (
+              <PickerRow
+                label="WhatsApp Template"
+                options={waOptions.length ? waOptions : [{ value: "", label: "No approved templates" }]}
+                value={String(form.whatsappTemplateId ?? "")}
+                onChange={(v) => set("whatsappTemplateId", v)}
+              />
+            )}
 
-          {form.actionType === "SEND_EMAIL" && (
-            <PickerRow
-              label="Email Template"
-              options={emailOptions.length ? emailOptions : [{ value: "", label: "No email templates" }]}
-              value={String(form.emailTemplateId ?? "")}
-              onChange={(v) => set("emailTemplateId", v)}
-            />
-          )}
-        </ScrollView>
+            {form.actionType === "SEND_EMAIL" && (
+              <PickerRow
+                label="Email Template"
+                options={emailOptions.length ? emailOptions : [{ value: "", label: "No email templates" }]}
+                value={String(form.emailTemplateId ?? "")}
+                onChange={(v) => set("emailTemplateId", v)}
+              />
+            )}
+          </ScrollView>
 
-        <View style={fs.footer}>
-          <TouchableOpacity style={fs.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={fs.saveBtnText}>Save Rule</Text>}
-          </TouchableOpacity>
-        </View>
+          <View style={fs.footer}>
+            <TouchableOpacity style={fs.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={fs.saveBtnText}>Save Rule</Text>}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

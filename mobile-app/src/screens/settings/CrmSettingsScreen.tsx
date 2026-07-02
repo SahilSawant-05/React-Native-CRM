@@ -15,7 +15,12 @@ import { useFocusEffect } from "@react-navigation/native";
 interface Pipeline {
   id: string;
   name: string;
-  stages: any[];
+  stages?: any;
+  stageCount?: number;
+  stageList?: any;
+  pipelineStages?: any;
+  numStages?: number;
+  totalStages?: number;
 }
 
 interface CustomField {
@@ -26,6 +31,47 @@ interface CustomField {
 
 interface CrmSettings {
   [key: string]: any;
+}
+
+// Normalizes the "list of pipelines" response the same way the calendar
+// screen normalizes events — some endpoints return a bare array, others
+// wrap it in { items }, { content }, or { data }.
+function normalizeList(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.content)) return data.content;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
+// Resolves a stage count for a pipeline no matter which shape the API
+// used. Previously this only read `p.stages?.length`, which assumes
+// `stages` is a plain array sitting directly on the pipeline object. If
+// the backend nests it (`stages: { items: [...] }` / `{ content: [...] }`),
+// paginates it, or just sends a precomputed count under a different field
+// name (`stageCount`, `numStages`, `totalStages`, `pipelineStages`), that
+// expression evaluates to `undefined` and silently falls back to the `?? 0`
+// default — so every pipeline shows "0 stages" even when it has stages.
+function getStageCount(p: Pipeline): number {
+  if (Array.isArray(p.stages)) return p.stages.length;
+
+  const nestedArray =
+    normalizeList(p.stages).length
+      ? normalizeList(p.stages)
+      : Array.isArray(p.stageList)
+      ? p.stageList
+      : normalizeList(p.stageList).length
+      ? normalizeList(p.stageList)
+      : Array.isArray(p.pipelineStages)
+      ? p.pipelineStages
+      : normalizeList(p.pipelineStages);
+
+  if (nestedArray && nestedArray.length) return nestedArray.length;
+
+  const explicitCount = p.stageCount ?? p.numStages ?? p.totalStages;
+  if (typeof explicitCount === "number") return explicitCount;
+
+  return 0;
 }
 
 export default function CrmSettingsScreen() {
@@ -45,8 +91,8 @@ export default function CrmSettingsScreen() {
         api.get<CustomField[]>("/api/crm-config/custom-fields"),
       ]);
       setSettings(settingsRes.data);
-      setPipelines(pipelinesRes.data);
-      setCustomFields(fieldsRes.data);
+      setPipelines(normalizeList(pipelinesRes.data));
+      setCustomFields(normalizeList(fieldsRes.data));
     } catch (e: any) {
       setError(e?.message || "Failed to load settings");
     } finally {
@@ -98,7 +144,7 @@ export default function CrmSettingsScreen() {
             <View style={styles.row}>
               <Text style={styles.itemName}>{p.name}</Text>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{p.stages?.length ?? 0} stages</Text>
+                <Text style={styles.badgeText}>{getStageCount(p)} stages</Text>
               </View>
             </View>
           </View>
