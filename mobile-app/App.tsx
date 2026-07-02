@@ -5,14 +5,17 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthContext";
 import RootNavigator from "./src/navigation/RootNavigator";
+import PushNotificationProvider from "./src/notifications/PushNotificationProvider";
 
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <RootNavigator />
-          <StatusBar style="auto" />
+          <PushNotificationProvider>
+            <RootNavigator />
+            <StatusBar style="auto" />
+          </PushNotificationProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

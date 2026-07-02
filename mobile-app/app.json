@@ -17,12 +17,21 @@
     },
 
     "android": {
-  "package": "com.crmagent"
-}
-,
+      "package": "com.crmagent",
+      "googleServicesFile": "./google-services.json"
+    },
 
     "plugins": [
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0f766e",
+          "androidMode": "default",
+          "androidCollapsedTitle": "CRM Agent",
+          "iosDisplayInForeground": true
+        }
+      ]
     ],
 
     "web": {},
