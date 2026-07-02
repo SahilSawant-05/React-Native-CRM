@@ -12,6 +12,7 @@ import { fetchOpportunities } from "../../api/opportunities";
 import { Opportunity } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+import AiAssistPanel from "../../components/ai/AiAssistPanel";
 
 const STAGES = ["", "NEW", "QUALIFIED", "FOLLOW_UP", "WON", "LOST"];
 
@@ -30,23 +31,47 @@ function formatCurrency(amount?: number) {
 
 function OpportunityCard({ item }: { item: Opportunity }) {
   const sc = STAGE_COLORS[item.stage ?? ""] || { bg: "#f1f5f9", text: "#475569" };
+  const [aiOpen, setAiOpen] = useState(false);
   return (
     <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-        <View style={[styles.stageBadge, { backgroundColor: sc.bg }]}>
-          <Text style={[styles.stageText, { color: sc.text }]}>{item.stage || "—"}</Text>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => setAiOpen((v) => !v)}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+          <View style={[styles.stageBadge, { backgroundColor: sc.bg }]}>
+            <Text style={[styles.stageText, { color: sc.text }]}>{item.stage || "—"}</Text>
+          </View>
+          <Text style={styles.aiChevron}>{aiOpen ? "✨" : "✨"}</Text>
         </View>
-      </View>
-      {!!item.contactName && <Text style={styles.contact}>👤 {item.contactName}</Text>}
-      <View style={styles.cardFooter}>
-        {!!item.amount && (
-          <Text style={styles.amount}>{formatCurrency(item.amount)}</Text>
-        )}
-        {!!item.closeDate && (
-          <Text style={styles.date}>📅 {new Date(item.closeDate).toLocaleDateString()}</Text>
-        )}
-      </View>
+        {!!item.contactName && <Text style={styles.contact}>👤 {item.contactName}</Text>}
+        <View style={styles.cardFooter}>
+          {!!item.amount && (
+            <Text style={styles.amount}>{formatCurrency(item.amount)}</Text>
+          )}
+          {!!item.closeDate && (
+            <Text style={styles.date}>📅 {new Date(item.closeDate).toLocaleDateString()}</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+      {aiOpen && (
+        <View style={styles.aiWrap}>
+          <AiAssistPanel
+            contactId={item.contactId}
+            title="AI Opportunity Summary"
+            contextPrompt={
+              `Opportunity: ${item.title}. Stage: ${item.stage || "N/A"}. ` +
+              `Contact: ${item.contactName || "N/A"}. ` +
+              `Value: ${item.amount ? formatCurrency(item.amount) : "N/A"}. ` +
+              `Close Date: ${item.closeDate ? new Date(item.closeDate).toLocaleDateString() : "N/A"}. ` +
+              `Recommend the next best CRM action for this opportunity.`
+            }
+            replyPrompt={
+              `Opportunity: ${item.title}. Stage: ${item.stage || "N/A"}. ` +
+              `Contact: ${item.contactName || "N/A"}. ` +
+              `Write a short, warm follow-up message to advance this deal.`
+            }
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -156,6 +181,8 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   amount: { fontSize: 15, fontWeight: "800", color: "#0f766e" },
   date: { fontSize: 12, color: "#64748b" },
+  aiChevron: { fontSize: 14, marginLeft: 4 },
+  aiWrap: { marginTop: 10 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
   emptyText: { color: "#94a3b8", fontSize: 15 },
 });

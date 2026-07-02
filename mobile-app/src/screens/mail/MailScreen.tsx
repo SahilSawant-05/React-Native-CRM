@@ -17,6 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+import AiAssistPanel from "../../components/ai/AiAssistPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,6 +144,21 @@ function ComposeModal({ visible, saving, composer, onChange, onClose, onSend }: 
               placeholderTextColor="#94a3b8"
               multiline
               textAlignVertical="top"
+            />
+            <AiAssistPanel
+              title="AI Email Assistant"
+              contextPrompt={
+                `To: ${composer.toEmail}\nSubject: ${composer.subject}\n` +
+                `Current draft:\n${composer.bodyText}\n\n` +
+                `Draft a professional CRM follow-up email matching the subject and context above.`
+              }
+              replyPrompt={
+                `To: ${composer.toEmail}\nSubject: ${composer.subject}\n` +
+                `Draft:\n${composer.bodyText}\n\n` +
+                `Write a clear, concise email body with one next-step CTA.`
+              }
+              onApply={(t) => onChange("bodyText", composer.bodyText ? composer.bodyText + "\n\n" + t : t)}
+              applyLabel="Use in email"
             />
           </ScrollView>
           <View style={styles.modalFooter}>

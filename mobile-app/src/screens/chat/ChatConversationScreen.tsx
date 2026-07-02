@@ -21,6 +21,7 @@ import { fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import AiAssistPanel from "../../components/ai/AiAssistPanel";
 
 type Props = {
   route: RouteProp<{ ChatConversation: { inbox: InboxItem } }, "ChatConversation">;
@@ -850,6 +851,7 @@ export default function ChatConversationScreen({ route }: Props) {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
@@ -1091,6 +1093,38 @@ export default function ChatConversationScreen({ route }: Props) {
           }
         />
 
+        {/* AI panel (collapsible) */}
+        {aiPanelOpen && (
+          <View style={styles.aiPanelWrap}>
+            <AiAssistPanel
+              contactId={inbox.contactId}
+              title="AI Chat Assistant"
+              contextPrompt={
+                `Contact: ${inbox.contactName || ""}. ` +
+                `Last messages:\n` +
+                messages
+                  .slice(0, 12)
+                  .reverse()
+                  .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
+                  .join("\n") +
+                `\n\nSummarise this WhatsApp conversation and recommend the next best CRM action.`
+              }
+              replyPrompt={
+                `Contact: ${inbox.contactName || ""}.\n` +
+                `Last messages:\n` +
+                messages
+                  .slice(0, 12)
+                  .reverse()
+                  .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
+                  .join("\n") +
+                `\n\nWrite a short, warm WhatsApp reply to continue this conversation. Keep it human and helpful.`
+              }
+              onApply={(t) => setText((prev) => prev ? prev + "\n" + t : t)}
+              applyLabel="Use in message"
+            />
+          </View>
+        )}
+
         {/* Input bar */}
         <View style={styles.inputBar}>
           <TouchableOpacity
@@ -1108,6 +1142,12 @@ export default function ChatConversationScreen({ route }: Props) {
             multiline
             maxLength={4096}
           />
+          <TouchableOpacity
+            style={[styles.aiToggleBtn, aiPanelOpen && styles.aiToggleBtnActive]}
+            onPress={() => setAiPanelOpen((v) => !v)}
+          >
+            <Text style={styles.aiToggleIcon}>✨</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.sendBtn,
@@ -1256,4 +1296,18 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: "#cbd5e1" },
   sendIcon: { color: "#fff", fontSize: 18, marginLeft: 2 },
+  aiPanelWrap: { paddingHorizontal: 8, paddingBottom: 6 },
+  aiToggleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#f0fdfa",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#99f6e4",
+    marginRight: 4,
+  },
+  aiToggleBtnActive: { backgroundColor: "#ccfbf1", borderColor: "#0f766e" },
+  aiToggleIcon: { fontSize: 18 },
 });
