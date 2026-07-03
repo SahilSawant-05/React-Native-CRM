@@ -13,7 +13,8 @@
 
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.techoceanhub.crmagent"
+      "bundleIdentifier": "com.techoceanhub.crmagent",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
 
     "android": {
@@ -22,15 +23,8 @@
     },
 
     "plugins": [
-      [
-        "expo-notifications",
-        {
-          "color": "#0f766e",
-          "androidMode": "default",
-          "androidCollapsedTitle": "CRM Agent",
-          "iosDisplayInForeground": true
-        }
-      ]
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
 
     "web": {},
