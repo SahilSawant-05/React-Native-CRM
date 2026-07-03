@@ -4,7 +4,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import api from "../api/client";
 
-// Show notifications even while the app is in the foreground
+// Show banners / play sound even while the app is in the foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -15,81 +15,128 @@ Notifications.setNotificationHandler({
   }),
 });
 
-async function registerForPushNotificationsAsync(): Promise<string | null> {
+async function setupAndroidChannel() {
+  await Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#0f766e",
+    sound: "default",
+    enableVibrate: true,
+    showBadge: true,
+  });
+
+  // Separate high-priority channel for chat messages
+  await Notifications.setNotificationChannelAsync("chat", {
+    name: "Chat Messages",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 200],
+    lightColor: "#0f766e",
+    sound: "default",
+    showBadge: true,
+  });
+}
+
+async function requestPermission(): Promise<boolean> {
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === "granted") return true;
+  const { status } = await Notifications.requestPermissionsAsync({
+    ios: {
+      allowAlert: true,
+      allowBadge: true,
+      allowSound: true,
+      allowProvisional: false,
+    },
+  });
+  return status === "granted";
+}
+
+async function getFcmToken(): Promise<string | null> {
+  // Physical device only — emulators can't receive FCM
   if (!Device.isDevice) {
-    // Simulators/emulators cannot receive push notifications
+    console.warn("[FCM] Running on emulator — push notifications disabled.");
     return null;
   }
 
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "Default",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#0f766e",
-      sound: "default",
-    });
+    await setupAndroidChannel();
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") {
+  const granted = await requestPermission();
+  if (!granted) {
+    console.warn("[FCM] Push notification permission denied.");
     return null;
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-  return tokenData.data;
+  try {
+    // getDevicePushTokenAsync returns the raw FCM token on Android
+    // and the raw APNs token on iOS — your backend sends via Firebase Admin SDK
+    const { data } = await Notifications.getDevicePushTokenAsync();
+    return data;
+  } catch (err) {
+    console.warn("[FCM] Failed to get device push token:", err);
+    return null;
+  }
 }
 
+async function registerTokenWithBackend(token: string) {
+  await api.post("/api/users/push-token", {
+    token,
+    platform: Platform.OS,           // "android" | "ios"
+    tokenType: Platform.OS === "android" ? "FCM" : "APNS",
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface Options {
-  /** Called when user taps a notification — use to navigate */
+  /** Called when the user taps a notification (foreground or background) */
   onNotificationTapped?: (notification: Notifications.Notification) => void;
-  /** Whether the user is currently logged in; skips registration when false */
+  /** Only register when the user is logged in */
   enabled?: boolean;
 }
 
 export function usePushNotifications({ onNotificationTapped, enabled = true }: Options = {}) {
-  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const receivedListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  const tokenRefreshListener = useRef<Notifications.EventSubscription | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     let cancelled = false;
 
+    // Initial token registration
     (async () => {
-      const expoPushToken = await registerForPushNotificationsAsync();
-      if (!expoPushToken || cancelled) return;
-
+      const token = await getFcmToken();
+      if (!token || cancelled) return;
       try {
-        await api.post("/api/users/push-token", {
-          token: expoPushToken,
-          platform: Platform.OS,
-        });
+        await registerTokenWithBackend(token);
       } catch {
-        // Non-fatal — registration failures shouldn't break the app
+        // Non-fatal — app works fine even if token registration fails
       }
     })();
 
-    // Fires while the app is foregrounded
-    notificationListener.current = Notifications.addNotificationReceivedListener((_notification) => {
-      // expo-notifications already shows the banner; nothing extra needed here
+    // FCM tokens can rotate — re-register whenever the token changes
+    tokenRefreshListener.current = Notifications.addPushTokenListener((pushToken) => {
+      if (cancelled) return;
+      registerTokenWithBackend(pushToken.data).catch(() => {});
     });
 
-    // Fires when the user taps a notification (foreground or background/killed)
+    // Foreground notification received — banner is shown automatically
+    receivedListener.current = Notifications.addNotificationReceivedListener(() => {
+      // Nothing extra needed; setNotificationHandler above handles display
+    });
+
+    // User tapped a notification (any app state)
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       onNotificationTapped?.(response.notification);
     });
 
     return () => {
       cancelled = true;
-      notificationListener.current?.remove();
+      tokenRefreshListener.current?.remove();
+      receivedListener.current?.remove();
       responseListener.current?.remove();
     };
   }, [enabled]);
