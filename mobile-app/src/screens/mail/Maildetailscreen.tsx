@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import RenderHtml from "react-native-render-html";
 import api from "../../api/client";
@@ -110,7 +111,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Mail</Text>
+          <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <View style={styles.centered}>
           <Text style={styles.errorText}>
@@ -272,7 +273,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
     return (
       <SafeAreaView style={styles.container}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Mail</Text>
+          <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error || "Email not found."}</Text>
@@ -293,7 +294,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
   // ── Derived values ─────────────────────────────────────────────────────────
   const isInbound = email.direction === "INBOUND";
   const contact   = isInbound ? email.fromEmail : email.toEmail;
-  const htmlContentWidth = width - 64;
+  const htmlContentWidth = width - 32;
 
   // ── Render: email ──────────────────────────────────────────────────────────
   return (
@@ -302,26 +303,16 @@ export default function MailDetailScreen({ route, navigation }: any) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        {/* ── Header ── */}
+        {/* ── Header (Gmail-style: back arrow only, status pill right) ── */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Mail</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <View
-            style={[
-              styles.statusBadge,
-              email.status === "FAILED" ? styles.badgeFailed : styles.badgeDefault,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                email.status === "FAILED" ? styles.statusFailed : styles.statusDefault,
-              ]}
-            >
-              {email.status || email.direction}
-            </Text>
-          </View>
+          {email.status === "FAILED" && (
+            <View style={[styles.statusBadge, styles.badgeFailed]}>
+              <Text style={[styles.statusText, styles.statusFailed]}>Failed</Text>
+            </View>
+          )}
         </View>
 
         <ScrollView
@@ -329,40 +320,42 @@ export default function MailDetailScreen({ route, navigation }: any) {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Subject ── */}
+          {/* ── Subject (Gmail: large, plain, top) ── */}
           <Text style={styles.subject}>{email.subject || "(No subject)"}</Text>
-          <Text style={styles.subMeta}>
-            {isInbound ? "Received" : "Sent"} · {formatDate(email.createdAt)}
-          </Text>
 
-          {/* ── Sender row ── */}
+          {/* ── Sender row (Gmail anatomy) ── */}
           <View style={styles.senderRow}>
             <View
               style={[
                 styles.avatar,
-                { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" },
+                { backgroundColor: isInbound ? "#dbeafe" : "#ccfbf1" },
               ]}
             >
               <Text
                 style={[
                   styles.avatarText,
-                  { color: isInbound ? "#3b82f6" : "#0f766e" },
+                  { color: isInbound ? "#2563eb" : "#0f766e" },
                 ]}
               >
-                {initials(contact)}
+                {initials(contact)[0] ?? "?"}
               </Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.senderName} numberOfLines={1}>
-                {contact || "Unknown"}
-              </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={styles.senderTopRow}>
+                <Text style={styles.senderName} numberOfLines={1}>
+                  {(contact || "Unknown").split("@")[0]}
+                </Text>
+                <Text style={styles.senderDate}>{formatDate(email.createdAt)}</Text>
+              </View>
               <Text style={styles.senderMeta} numberOfLines={1}>
-                From: {email.fromEmail || "—"}  ·  To: {email.toEmail || "—"}
+                {isInbound ? `to me · ${email.fromEmail || ""}` : `to ${email.toEmail || ""}`}
               </Text>
             </View>
           </View>
 
-          {/* ── Body ── */}
+          <View style={styles.bodyDivider} />
+
+          {/* ── Body (full-bleed like Gmail; clipped so HTML can't break layout) ── */}
           <View style={styles.bodyCard}>
             {email.body ? (
               isHtml(email.body) ? (
@@ -371,7 +364,8 @@ export default function MailDetailScreen({ route, navigation }: any) {
                   source={{ html: sanitizeEmailHtml(email.body) }}
                   tagsStyles={{
                     body:       { margin: 0, padding: 0 },
-                    p:          { fontSize: 14, color: "#334155", lineHeight: 22, marginTop: 0, marginBottom: 8 },
+                    div:        { maxWidth: htmlContentWidth },
+                    p:          { fontSize: 14, color: "#374151", lineHeight: 21, marginTop: 0, marginBottom: 8 },
                     a:          { color: "#0f766e", textDecorationLine: "underline" },
                     h1:         { fontSize: 20, color: "#0f172a", fontWeight: "700" },
                     h2:         { fontSize: 17, color: "#0f172a", fontWeight: "700" },
@@ -387,7 +381,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
                     th:         { backgroundColor: "#f8fafc", padding: 8, fontWeight: "700", fontSize: 13 },
                     td:         { padding: 8, fontSize: 13, color: "#334155" },
                   }}
-                  baseStyle={{ fontSize: 14, color: "#334155", lineHeight: 22 }}
+                  baseStyle={{ fontSize: 14, color: "#374151", lineHeight: 21 }}
                 />
               ) : (
                 <Text style={styles.bodyText}>{email.body}</Text>
@@ -419,7 +413,10 @@ export default function MailDetailScreen({ route, navigation }: any) {
 )}
           {/* ── Reply ── */}
           <View style={styles.replyCard}>
-            <Text style={styles.replyLabel}>↩ Reply</Text>
+            <View style={styles.replyLabelRow}>
+              <Ionicons name="arrow-undo-outline" size={16} color="#4b5563" />
+              <Text style={styles.replyLabel}>Reply</Text>
+            </View>
             <TextInput
               style={styles.replyInput}
               value={replyBody}
@@ -437,9 +434,14 @@ export default function MailDetailScreen({ route, navigation }: any) {
                 (!replyBody.trim() || saving) && styles.sendBtnDisabled,
               ]}
             >
-              <Text style={styles.sendBtnText}>
-                {saving ? "Sending..." : "Send Reply"}
-              </Text>
+              {saving ? (
+                <Text style={styles.sendBtnText}>Sending...</Text>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="send" size={15} color="#fff" />
+                  <Text style={styles.sendBtnText}>Send</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -451,50 +453,113 @@ export default function MailDetailScreen({ route, navigation }: any) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: "#f1f5f9" },
+  container:   { flex: 1, backgroundColor: "#fff" },
   centered:    { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  loadingText: { marginTop: 12, fontSize: 14, color: "#64748b" },
+  loadingText: { marginTop: 12, fontSize: 13, color: "#6b7280" },
 
-  header:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
-  backBtn:      { paddingVertical: 4, paddingRight: 12 },
-  backText:     { fontSize: 15, color: "#0f766e", fontWeight: "700" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+  },
+  backBtn:      { padding: 6 },
   statusBadge:  { borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
   badgeFailed:  { backgroundColor: "#fee2e2" },
-  badgeDefault: { backgroundColor: "#f1f5f9" },
-  statusText:   { fontSize: 12, fontWeight: "700" },
-  statusFailed: { color: "#ef4444" },
-  statusDefault:{ color: "#475569" },
+  statusText:   { fontSize: 11, fontWeight: "700" },
+  statusFailed: { color: "#dc2626" },
 
-  scrollContent: { padding: 16, gap: 14, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-  subject: { fontSize: 20, fontWeight: "800", color: "#0f172a", lineHeight: 28 },
-  subMeta: { fontSize: 13, color: "#64748b", marginTop: 4 },
+  subject: {
+    fontSize: 19,
+    fontWeight: "500",
+    color: "#111827",
+    lineHeight: 26,
+    letterSpacing: Platform.OS === "ios" ? -0.4 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    marginBottom: 16,
+  },
 
-  senderRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 14, padding: 14, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
-  avatar:    { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  avatarText:  { fontSize: 14, fontWeight: "800" },
-  senderName:  { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  senderMeta:  { fontSize: 12, color: "#64748b", marginTop: 2 },
+  senderRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  avatarText: {
+    fontSize: 16, fontWeight: "600",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  senderTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  senderName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  senderDate: { fontSize: 11.5, color: "#6b7280" },
+  senderMeta: { fontSize: 12, color: "#6b7280", marginTop: 2 },
 
-  bodyCard: { backgroundColor: "#fff", borderRadius: 14, padding: 16, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
-  bodyText: { fontSize: 14, color: "#334155", lineHeight: 22 },
+  bodyDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(60,60,67,0.12)",
+    marginVertical: 14,
+  },
 
-  errorCard:     { backgroundColor: "#fef2f2", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#fecaca" },
-  errorCardText: { fontSize: 13, color: "#b91c1c" },
+  // overflow: "hidden" is what stops rogue email HTML (wide tables,
+  // fixed-width images) from breaking the whole screen sideways.
+  bodyCard: { overflow: "hidden" },
+  bodyText: { fontSize: 14, color: "#374151", lineHeight: 21 },
 
-  successBanner:   { backgroundColor: "#d1fae5", borderRadius: 10, padding: 12 },
-  successText:     { fontSize: 13, color: "#065f46", fontWeight: "600" },
-  errorBanner:     { backgroundColor: "#fee2e2", borderRadius: 10, padding: 12 },
-  errorBannerText: { fontSize: 13, color: "#b91c1c", fontWeight: "600" },
+  errorCard:     { backgroundColor: "#fef2f2", borderRadius: 12, padding: 12, marginTop: 14 },
+  errorCardText: { fontSize: 12.5, color: "#b91c1c" },
 
-  replyCard:    { backgroundColor: "#fff", borderRadius: 14, padding: 16, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
-  replyLabel:   { fontSize: 12, fontWeight: "800", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
-  replyInput:   { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, fontSize: 14, color: "#1e293b", minHeight: 120 },
-  sendBtn:         { marginTop: 12, backgroundColor: "#0f766e", borderRadius: 10, paddingVertical: 13, alignItems: "center" },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText:     { color: "#fff", fontWeight: "700", fontSize: 14 },
+  successBanner:   { backgroundColor: "#d1fae5", borderRadius: 10, padding: 12, marginTop: 14 },
+  successText:     { fontSize: 12.5, color: "#065f46", fontWeight: "600" },
+  errorBanner:     { backgroundColor: "#fee2e2", borderRadius: 10, padding: 12, marginTop: 14 },
+  errorBannerText: { fontSize: 12.5, color: "#b91c1c", fontWeight: "600" },
 
-  errorText: { fontSize: 14, color: "#ef4444", textAlign: "center", marginBottom: 16 },
+  replyCard: {
+    marginTop: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(60,60,67,0.12)",
+    paddingTop: 16,
+  },
+  replyLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
+  replyLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4b5563",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  replyInput: {
+    backgroundColor: "rgba(118,118,128,0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(60,60,67,0.2)",
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: "#111827",
+    minHeight: 110,
+    lineHeight: 20,
+  },
+  sendBtn: {
+    marginTop: 12,
+    alignSelf: "flex-end",
+    backgroundColor: "#0f766e",
+    borderRadius: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  sendBtnDisabled: { opacity: 0.4 },
+  sendBtnText: {
+    color: "#fff", fontWeight: "600", fontSize: 14,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+
+  errorText: { fontSize: 13.5, color: "#dc2626", textAlign: "center", marginBottom: 16 },
   retryBtn:  { backgroundColor: "#0f766e", borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
-  retryText: { color: "#fff", fontWeight: "700" },
+  retryText: { color: "#fff", fontWeight: "600", fontSize: 14 },
 });

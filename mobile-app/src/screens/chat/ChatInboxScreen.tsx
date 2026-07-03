@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { fetchInbox, InboxItem } from "../../api/chat";
@@ -300,7 +301,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>💬</Text>
+            <Ionicons name="chatbubbles-outline" size={52} color="#d1d5db" />
             <Text style={styles.emptyTitle}>
               {unreadOnly ? "No unread conversations" : "No conversations"}
             </Text>
@@ -333,8 +334,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === "ios" ? 10 : 8,
-    fontSize: 16,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontSize: 15,
+    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
     color: "#111827",
   },
   filterWrap: {},
@@ -347,7 +348,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: "#0f766e" },
   chipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#4b5563",
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
@@ -364,15 +365,15 @@ const styles = StyleSheet.create({
   },
   avatarWrap: { position: "relative" },
   avatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: "#ccfbf1",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
     color: "#0f766e",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
@@ -395,7 +396,7 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   name: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
     flex: 1,
@@ -403,10 +404,10 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
   nameBold: { fontWeight: "700" },
-  time: { fontSize: 13, color: "#9ca3af", marginLeft: 8 },
+  time: { fontSize: 12, color: "#9ca3af", marginLeft: 8 },
   timeUnread: { color: "#0f766e", fontWeight: "700" },
   preview: {
-    fontSize: 14.5,
+    fontSize: 13.5,
     color: "#8e8e93",
     marginTop: 3,
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
@@ -425,10 +426,9 @@ const styles = StyleSheet.create({
   separator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(60,60,67,0.12)",
-    marginLeft: 84,
+    marginLeft: 80,
   },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-  emptyIcon: { fontSize: 52 },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "700",

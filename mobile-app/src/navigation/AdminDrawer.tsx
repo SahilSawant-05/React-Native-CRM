@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 
 // Existing screens
@@ -62,42 +63,42 @@ const HEADER_OPTS = {
   headerShadowVisible: false,
 };
 
-interface NavItem { name: string; label: string; emoji: string }
+interface NavItem { name: string; label: string; icon: string }
 interface NavSection { title: string; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
   {
     title: "Workspace",
     items: [
-      { name: "Dashboard",     label: "Dashboard",        emoji: "📊" },
-      { name: "Queue",         label: "Work Queue",      emoji: "📋" },
-      { name: "Chat",          label: "Messages",         emoji: "💬" },
-      { name: "Mail",          label: "Mail",             emoji: "✉️" },
-      { name: "Tasks",         label: "Tasks",            emoji: "✅" },
-      { name: "Calendar",      label: "Calendar",         emoji: "📅" },
-      { name: "Notifications", label: "Notifications",    emoji: "🔔" },
+      { name: "Dashboard",     label: "Dashboard",        icon: "grid-outline" },
+      { name: "Queue",         label: "Work Queue",      icon: "list-outline" },
+      { name: "Chat",          label: "Messages",         icon: "chatbubbles-outline" },
+      { name: "Mail",          label: "Mail",             icon: "mail-outline" },
+      { name: "Tasks",         label: "Tasks",            icon: "checkbox-outline" },
+      { name: "Calendar",      label: "Calendar",         icon: "calendar-outline" },
+      { name: "Notifications", label: "Notifications",    icon: "notifications-outline" },
     ],
   },
   {
     title: "CRM",
     items: [
-      { name: "Contacts",      label: "Contacts",         emoji: "👥" },
-      { name: "Pipeline",      label: "Pipeline",         emoji: "🔀" },
-      { name: "DomainCatalog", label: "Domain Catalog",   emoji: "🗂️" },
-      { name: "MediaLibrary",  label: "Media Library",    emoji: "🖼️" },
+      { name: "Contacts",      label: "Contacts",         icon: "people-outline" },
+      { name: "Pipeline",      label: "Pipeline",         icon: "git-branch-outline" },
+      { name: "DomainCatalog", label: "Domain Catalog",   icon: "albums-outline" },
+      { name: "MediaLibrary",  label: "Media Library",    icon: "images-outline" },
     ],
   },
   {
     title: "Admin",
     items: [
-      { name: "AutomationRules",  label: "Automation Rules",   emoji: "⚡" },
-      { name: "LeadAssignment",   label: "Lead Assignment",    emoji: "🎯" },
-      { name: "FacebookLeads",    label: "Facebook Leads",     emoji: "📘" },
-      { name: "AiSettings",       label: "AI Settings",        emoji: "🤖" },
-      { name: "CrmSettings",      label: "CRM Settings",       emoji: "⚙️" },
-      { name: "WhatsAppSetup",    label: "WhatsApp Setup",     emoji: "📱" },
-      { name: "Billing",          label: "Billing",            emoji: "💳" },
-      { name: "Profile",          label: "Profile",            emoji: "👤" },
+      { name: "AutomationRules",  label: "Automation Rules",   icon: "flash-outline" },
+      { name: "LeadAssignment",   label: "Lead Assignment",    icon: "locate-outline" },
+      { name: "FacebookLeads",    label: "Facebook Leads",     icon: "logo-facebook" },
+      { name: "AiSettings",       label: "AI Settings",        icon: "sparkles-outline" },
+      { name: "CrmSettings",      label: "CRM Settings",       icon: "settings-outline" },
+      { name: "WhatsAppSetup",    label: "WhatsApp Setup",     icon: "logo-whatsapp" },
+      { name: "Billing",          label: "Billing",            icon: "card-outline" },
+      { name: "Profile",          label: "Profile",            icon: "person-circle-outline" },
     ],
   },
 ];
@@ -198,7 +199,7 @@ function DrawerPanel({
                     onPress={() => { onNavigate(item.name); onClose(); }}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.navEmoji}>{item.emoji}</Text>
+                    <Ionicons name={item.icon as any} size={21} color={focused ? "#0f766e" : "#6b7280"} style={styles.navIcon} />
                     <Text style={[styles.navLabel, focused && styles.navLabelActive]}>{item.label}</Text>
                     {focused && <View style={styles.activeDot} />}
                   </TouchableOpacity>
@@ -215,7 +216,7 @@ function DrawerPanel({
           onPress={() => { onClose(); logout(); }}
           activeOpacity={0.7}
         >
-          <Text style={styles.signOutEmoji}>🚪</Text>
+          <Ionicons name="log-out-outline" size={20} color="#ef4444" />
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -396,7 +397,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10,
   },
   navItemActive: { backgroundColor: "#f0fdfa" },
-  navEmoji: { fontSize: 18, width: 24, textAlign: "center" },
+  navIcon: { width: 24, textAlign: "center" },
   navLabel: { flex: 1, fontSize: 15, fontWeight: "600", color: "#374151", letterSpacing: Platform.OS === "ios" ? -0.24 : 0, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   navLabelActive: { color: "#0f766e", fontWeight: "700" },
   activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0f766e" },
@@ -404,7 +405,6 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 12,
     paddingHorizontal: 22, paddingVertical: 14,
   },
-  signOutEmoji: { fontSize: 18 },
   signOutText: { fontSize: 14, fontWeight: "600", color: "#ef4444" },
   hamburger: { marginLeft: Platform.OS === "ios" ? 16 : 4, gap: 5, paddingVertical: 4 },
   line: { width: 22, height: 2.5, borderRadius: 2, backgroundColor: "#0f766e" },

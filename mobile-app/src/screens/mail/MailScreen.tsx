@@ -13,6 +13,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -482,7 +483,7 @@ export default function MailScreen({ navigation }: any) {
         onPress={() => setComposeOpen(true)}
         activeOpacity={0.85}
       >
-        <Text style={styles.fabIcon}>✏️</Text>
+        <Ionicons name="pencil" size={20} color="#0f766e" />
         <Text style={styles.fabLabel}>Compose</Text>
       </TouchableOpacity>
     </SafeAreaView>
@@ -497,9 +498,9 @@ const styles = StyleSheet.create({
   // Search + compose
   searchRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10 },
   searchInput: {
-    flex: 1, height: 40, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
+    flex: 1, height: 38, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
     paddingHorizontal: 14,
-    fontSize: 16, letterSpacing: Platform.OS === "ios" ? -0.32 : 0, color: "#111827",
+    fontSize: 15, letterSpacing: Platform.OS === "ios" ? -0.24 : 0, color: "#111827",
   },
   fab: {
     position: "absolute",
@@ -518,7 +519,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-  fabIcon: { fontSize: 18 },
   fabLabel: {
     fontSize: 15,
     fontWeight: "600",
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   tab: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 7, borderRadius: 99, backgroundColor: "rgba(118,118,128,0.08)" },
   tabActive: { backgroundColor: "#0f766e" },
   tabText: {
-    fontSize: 14, fontWeight: "600", color: "#4b5563",
+    fontSize: 13, fontWeight: "600", color: "#4b5563",
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
@@ -563,14 +563,14 @@ const styles = StyleSheet.create({
   cardRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   avatar: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
   avatarText: {
-    fontSize: 19, fontWeight: "600",
+    fontSize: 17, fontWeight: "600",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
   cardContent: { flex: 1 },
   cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
   cardTopLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, marginRight: 8 },
   contactText: {
-    fontSize: 16, flex: 1, marginRight: 8,
+    fontSize: 15, flex: 1, marginRight: 8,
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
   },
   contactUnread: {
@@ -578,10 +578,10 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
   contactRead: { color: "#4b5563", fontWeight: "400" },
-  dateText: { fontSize: 12, color: "#6b7280", flexShrink: 0 },
+  dateText: { fontSize: 11.5, color: "#6b7280", flexShrink: 0 },
   dateUnread: { color: "#0f766e", fontWeight: "700" },
   subjectText: {
-    fontSize: 14.5, lineHeight: 19, marginBottom: 1,
+    fontSize: 13.5, lineHeight: 18, marginBottom: 1,
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
   subjectUnread: {
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
   },
   subjectRead: { color: "#4b5563", fontWeight: "400" },
   snippetRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  snippetText: { flex: 1, fontSize: 14, color: "#9ca3af", lineHeight: 19 },
+  snippetText: { flex: 1, fontSize: 13, color: "#9ca3af", lineHeight: 18 },
   failedBadge: { backgroundColor: "#fee2e2", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
   failedBadgeText: { fontSize: 11, fontWeight: "700", color: "#dc2626" },
 

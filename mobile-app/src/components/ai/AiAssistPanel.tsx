@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 
 function aiError(err: any): string {
@@ -86,7 +87,7 @@ export default function AiAssistPanel({
     <View style={styles.panel}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={styles.sparkle}>✨</Text>
+          <Ionicons name="sparkles" size={16} color="#0f766e" style={{ marginTop: 1 }} />
           <View>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>Each successful AI action uses 0.25 credits.</Text>
@@ -100,7 +101,12 @@ export default function AiAssistPanel({
           >
             {loadingType === "summary"
               ? <ActivityIndicator size="small" color="#0f766e" />
-              : <Text style={styles.btnOutlineText}>✨ AI Summary</Text>}
+              : (
+                <View style={styles.btnInner}>
+                  <Ionicons name="sparkles-outline" size={13} color="#0f766e" />
+                  <Text style={styles.btnOutlineText}>AI Summary</Text>
+                </View>
+              )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.btnFill, busy && styles.btnDisabled]}
@@ -109,7 +115,12 @@ export default function AiAssistPanel({
           >
             {loadingType === "reply"
               ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.btnFillText}>🪄 AI Reply</Text>}
+              : (
+                <View style={styles.btnInner}>
+                  <Ionicons name="color-wand-outline" size={13} color="#fff" />
+                  <Text style={styles.btnFillText}>AI Reply</Text>
+                </View>
+              )}
           </TouchableOpacity>
         </View>
       </View>
@@ -125,7 +136,10 @@ export default function AiAssistPanel({
           <Text style={styles.resultText}>{result}</Text>
           <View style={styles.resultActions}>
             <TouchableOpacity style={styles.copyBtn} onPress={copyResult}>
-              <Text style={styles.copyBtnText}>📋 Copy</Text>
+              <View style={styles.btnInner}>
+                <Ionicons name="copy-outline" size={13} color="#4b5563" />
+                <Text style={styles.copyBtnText}>Copy</Text>
+              </View>
             </TouchableOpacity>
             {onApply && (
               <TouchableOpacity style={styles.applyBtn} onPress={() => onApply(result)}>
@@ -150,7 +164,7 @@ const styles = StyleSheet.create({
   },
   header: { gap: 8 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  sparkle: { fontSize: 16, marginTop: 1 },
+  btnInner: { flexDirection: "row", alignItems: "center", gap: 5 },
   title: { fontSize: 13, fontWeight: "800", color: "#134e4a" },
   subtitle: { fontSize: 10, color: "#0f766e", marginTop: 1 },
   btnGroup: { flexDirection: "row", gap: 8 },

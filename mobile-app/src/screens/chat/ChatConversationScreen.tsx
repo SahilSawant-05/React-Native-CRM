@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  ImageBackground,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import { RouteProp } from "@react-navigation/native";
@@ -87,9 +89,9 @@ function messageTime(m?: Message): number {
 
 function StatusTick({ status }: { status?: string }) {
   const s = (status ?? "").toUpperCase();
-  if (s === "READ") return <Text style={[styles.statusIcon, { color: "#53bdeb" }]}> ✓✓</Text>;
-  if (s === "DELIVERED") return <Text style={[styles.statusIcon, { color: "#8696a0" }]}> ✓✓</Text>;
-  return <Text style={[styles.statusIcon, { color: "#8696a0" }]}> ✓</Text>;
+  if (s === "READ") return <Ionicons name="checkmark-done" size={15} color="#53bdeb" style={styles.statusIcon} />;
+  if (s === "DELIVERED") return <Ionicons name="checkmark-done" size={15} color="#8696a0" style={styles.statusIcon} />;
+  return <Ionicons name="checkmark" size={15} color="#8696a0" style={styles.statusIcon} />;
 }
 
 function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
@@ -102,10 +104,10 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
       <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
     );
   }
-  const emoji = mt === "VIDEO" ? "🎬" : mt === "AUDIO" ? "🎵" : "📎";
+  const iconName = mt === "VIDEO" ? "videocam" : mt === "AUDIO" ? "musical-notes" : "document-text";
   return (
     <View style={styles.mediaFile}>
-      <Text style={{ fontSize: 22 }}>{emoji}</Text>
+      <Ionicons name={iconName as any} size={22} color={isOut ? "#3b4a54" : "#54656f"} />
       <Text
         style={[styles.mediaFileName, isOut && { color: "#3b4a54" }]}
         numberOfLines={1}
@@ -519,7 +521,9 @@ function AttachMenu({
             onTemplate();
           }}
         >
-          <Text style={amStyles.emoji}>📝</Text>
+          <View style={[amStyles.iconCircle, { backgroundColor: "#e7f5ff" }]}>
+            <Ionicons name="document-text-outline" size={22} color="#1971c2" />
+          </View>
           <View>
             <Text style={amStyles.label}>Send Template</Text>
             <Text style={amStyles.sublabel}>WhatsApp approved templates</Text>
@@ -532,7 +536,9 @@ function AttachMenu({
             onMediaLibrary();
           }}
         >
-          <Text style={amStyles.emoji}>🖼️</Text>
+          <View style={[amStyles.iconCircle, { backgroundColor: "#f3f0ff" }]}>
+            <Ionicons name="images-outline" size={22} color="#7048e8" />
+          </View>
           <View>
             <Text style={amStyles.label}>Send Media</Text>
             <Text style={amStyles.sublabel}>Images, videos, documents from CRM library</Text>
@@ -545,7 +551,9 @@ function AttachMenu({
             onUploadDevice();
           }}
         >
-          <Text style={amStyles.emoji}>📂</Text>
+          <View style={[amStyles.iconCircle, { backgroundColor: "#ebfbee" }]}>
+            <Ionicons name="folder-open-outline" size={22} color="#2f9e44" />
+          </View>
           <View>
             <Text style={amStyles.label}>Upload from Device</Text>
             <Text style={amStyles.sublabel}>Pick a file from your phone and send</Text>
@@ -586,18 +594,24 @@ const amStyles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(60,60,67,0.12)",
   },
-  emoji: { fontSize: 24 },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   label: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  sublabel: { fontSize: 12.5, color: "#9ca3af", marginTop: 2 },
+  sublabel: { fontSize: 12, color: "#9ca3af", marginTop: 2 },
   cancel: { marginTop: 10, alignItems: "center", paddingVertical: 13, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 14 },
   cancelText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#dc2626",
     fontWeight: "600",
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
@@ -1068,6 +1082,11 @@ export default function ChatConversationScreen({ route }: Props) {
 
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
+      <ImageBackground
+        source={require("../../../assets/chat-wallpaper.png")}
+        resizeMode="repeat"
+        style={{ flex: 1 }}
+      >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1155,16 +1174,16 @@ export default function ChatConversationScreen({ route }: Props) {
               maxLength={4096}
             />
             <TouchableOpacity
-              style={[styles.pillIconBtn, aiPanelOpen && styles.pillIconBtnActive]}
+              style={styles.pillIconBtn}
               onPress={() => setAiPanelOpen((v) => !v)}
             >
-              <Text style={styles.pillIcon}>✨</Text>
+              <Ionicons name="sparkles-outline" size={21} color={aiPanelOpen ? "#0f766e" : "#54656f"} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.pillIconBtn}
               onPress={() => setAttachOpen(true)}
             >
-              <Text style={styles.attachIcon}>📎</Text>
+              <Ionicons name="attach" size={24} color="#54656f" />
             </TouchableOpacity>
           </View>
           <TouchableOpacity
@@ -1178,11 +1197,12 @@ export default function ChatConversationScreen({ route }: Props) {
             {sending ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.sendIcon}>➤</Text>
+              <Ionicons name="send" size={20} color="#fff" style={{ marginLeft: 2 }} />
             )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      </ImageBackground>
 
       <AttachMenu
         visible={attachOpen}
@@ -1233,7 +1253,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   dateSepText: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: "#64748b",
     fontWeight: "600",
     letterSpacing: 0.2,
@@ -1269,9 +1289,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   bubbleText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#111b21",
-    lineHeight: 22,
+    lineHeight: 20,
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
   },
   bubbleTextOut: { color: "#111b21" },
@@ -1281,9 +1301,9 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     marginTop: 1,
   },
-  bubbleTime: { fontSize: 11, color: "#667781", letterSpacing: 0.1 },
+  bubbleTime: { fontSize: 10.5, color: "#667781", letterSpacing: 0.1 },
   bubbleTimeOut: { color: "#667781" },
-  statusIcon: { fontSize: 11 },
+  statusIcon: { marginLeft: 3, marginBottom: -2 },
   mediaImage: { width: 230, height: 172, borderRadius: 12, marginBottom: 4 },
   mediaFile: {
     flexDirection: "row",
@@ -1328,8 +1348,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: Platform.OS === "ios" ? 13 : 11,
     paddingBottom: Platform.OS === "ios" ? 13 : 11,
-    fontSize: 16,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontSize: 15,
+    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
     color: "#111b21",
     maxHeight: 110,
   },
