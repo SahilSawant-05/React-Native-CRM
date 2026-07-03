@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import messaging from "@react-native-firebase/messaging";
 import api from "../api/client";
 
 async function registerTokenWithBackend(token: string) {
@@ -15,16 +14,14 @@ async function registerTokenWithBackend(token: string) {
   }
 }
 
-async function requestPermissionAndGetToken(): Promise<string | null> {
-  const authStatus = await messaging().requestPermission();
-  const allowed =
-    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-    authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-
-  if (!allowed) return null;
-
-  const token = await messaging().getToken();
-  return token;
+async function getMessaging() {
+  try {
+    const mod = await import("@react-native-firebase/messaging");
+    return mod.default();
+  } catch {
+    // Native module not available (Expo Go, web, etc.)
+    return null;
+  }
 }
 
 interface Options {
@@ -40,30 +37,37 @@ export function usePushNotifications({ onNotificationTapped, enabled = true }: O
     let unsubscribeForeground: (() => void) | undefined;
 
     (async () => {
-      const token = await requestPermissionAndGetToken();
-      if (token) await registerTokenWithBackend(token);
+      try {
+        const msg = await getMessaging();
+        if (!msg) return;
 
-      // Re-register whenever FCM rotates the token
-      unsubscribeTokenRefresh = messaging().onTokenRefresh((newToken) => {
-        registerTokenWithBackend(newToken);
-      });
+        const authStatus = await msg.requestPermission();
+        const allowed =
+          authStatus === 1 /* AUTHORIZED */ ||
+          authStatus === 2 /* PROVISIONAL */;
 
-      // Foreground messages — app is open
-      unsubscribeForeground = messaging().onMessage(async (_remoteMessage) => {
-        // Foreground messages are silently received; the app can display
-        // an in-app banner here if needed. Background/quit messages are
-        // shown as system notifications automatically by FCM.
-      });
+        if (!allowed) return;
 
-      // Notification tapped while app was in background
-      messaging().onNotificationOpenedApp((remoteMessage) => {
-        onNotificationTapped?.(remoteMessage);
-      });
+        const token = await msg.getToken();
+        if (token) await registerTokenWithBackend(token);
 
-      // Notification tapped while app was fully quit
-      const initialMessage = await messaging().getInitialNotification();
-      if (initialMessage) {
-        onNotificationTapped?.(initialMessage);
+        unsubscribeTokenRefresh = msg.onTokenRefresh((newToken: string) => {
+          registerTokenWithBackend(newToken);
+        });
+
+        unsubscribeForeground = msg.onMessage(async (_msg: any) => {
+          // Foreground message received — FCM won't auto-display it
+          // Add an in-app toast here if needed
+        });
+
+        msg.onNotificationOpenedApp((remoteMessage: any) => {
+          onNotificationTapped?.(remoteMessage);
+        });
+
+        const initial = await msg.getInitialNotification();
+        if (initial) onNotificationTapped?.(initial);
+      } catch (err) {
+        console.warn("[FCM] Push notification setup failed:", err);
       }
     })();
 

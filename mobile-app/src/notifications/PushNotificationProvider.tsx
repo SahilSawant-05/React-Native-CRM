@@ -1,5 +1,4 @@
 import React, { useEffect } from "react";
-import messaging from "@react-native-firebase/messaging";
 import { useAuth } from "../auth/AuthContext";
 import { usePushNotifications } from "./usePushNotifications";
 
@@ -8,23 +7,25 @@ interface Props {
   children: React.ReactNode;
 }
 
-// Register a background handler at module level (outside any component).
-// FCM requires this to be set before the app renders.
-messaging().setBackgroundMessageHandler(async (_remoteMessage) => {
-  // Background/quit messages are displayed as system notifications by FCM
-  // automatically — no extra work needed here.
-});
+// Register the background handler once at startup.
+// Wrapped in try/catch — fails silently in Expo Go where native modules
+// are not available, but works correctly in a dev-client or production build.
+try {
+  const { default: messaging } = require("@react-native-firebase/messaging");
+  messaging().setBackgroundMessageHandler(async (_remoteMessage: any) => {
+    // FCM displays background/quit notifications automatically — nothing to do
+  });
+} catch {
+  // Firebase native module unavailable (Expo Go / web)
+}
 
 export default function PushNotificationProvider({ children }: Props) {
   const { user } = useAuth();
 
   usePushNotifications({
     enabled: !!user,
-    onNotificationTapped: (remoteMessage) => {
-      // remoteMessage.data?.screen tells you where to navigate, e.g.:
-      //   { screen: "Chat", contactId: "42" }
-      // Wire up a navigation ref here once one is exposed.
-      void remoteMessage;
+    onNotificationTapped: (_remoteMessage) => {
+      // Use remoteMessage.data?.screen to navigate when a nav ref is wired up
     },
   });
 
