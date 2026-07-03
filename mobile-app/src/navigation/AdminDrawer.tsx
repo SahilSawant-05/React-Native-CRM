@@ -39,6 +39,7 @@ import DashboardScreen from "../screens/dashboard/DashboardScreen";
 import AutomationRulesScreen from "../screens/automation/AutomationRulesScreen";
 import LeadAssignmentScreen from "../screens/leadassignment/LeadAssignmentScreen";
 import AiSettingsScreen from "../screens/ai/AiSettingsScreen";
+import FacebookLeadsScreen from "../screens/facebook/FacebookLeadsScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -87,7 +88,8 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { name: "AutomationRules",  label: "Automation Rules",   emoji: "⚡" },
       { name: "LeadAssignment",   label: "Lead Assignment",    emoji: "🎯" },
-      { name: "AiSettings",        label: "AI Settings",        emoji: "🤖" },
+      { name: "FacebookLeads",    label: "Facebook Leads",     emoji: "📘" },
+      { name: "AiSettings",       label: "AI Settings",        emoji: "🤖" },
       { name: "CrmSettings",      label: "CRM Settings",       emoji: "⚙️" },
       { name: "WhatsAppSetup",    label: "WhatsApp Setup",     emoji: "📱" },
       { name: "Billing",          label: "Billing",            emoji: "💳" },
@@ -308,6 +310,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   MediaLibrary:  withHeader(MediaLibraryScreen,  "Media Library"),
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
   AiSettings:      withHeader(AiSettingsScreen,       "AI Settings"),
+  FacebookLeads:   withHeader(FacebookLeadsScreen,    "Facebook Leads"),
   AutomationRules: withHeader(AutomationRulesScreen, "Automation Rules"),
   LeadAssignment:  withHeader(LeadAssignmentScreen,  "Lead Assignment"),
   CrmSettings:   withHeader(CrmSettingsScreen,   "CRM Settings"),
