@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1038314479392",
+    "project_id": "vistaar-flow",
+    "storage_bucket": "vistaar-flow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038314479392:android:7c5a0b78f4148e2dd10145",
+        "android_client_info": {
+          "package_name": "com.crmagent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc6IDccFtJ1H2rHB6X8UVjgj4-b9r2sB8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
