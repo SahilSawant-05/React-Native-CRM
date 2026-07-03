@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { WebView } from "react-native-webview";
+
 import api from "../../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +89,16 @@ function extractList(data: any): EmailLog[] {
 // remote images, and the injected script reports the content height so
 // the WebView fits inside the outer ScrollView without its own scrolling.
 
+// WebView is native-only — require it lazily so Expo web doesn't crash.
+let NativeWebView: any = null;
+if (Platform.OS !== "web") {
+  try {
+    NativeWebView = require("react-native-webview").WebView;
+  } catch {
+    NativeWebView = null;
+  }
+}
+
 function EmailWebView({ html }: { html: string }) {
   const [height, setHeight] = useState(200);
 
@@ -119,8 +129,35 @@ function EmailWebView({ html }: { html: string }) {
   setTimeout(post, 2500);
 </script></body></html>`;
 
+  // Web (Expo web / react-native-web): use a sandboxed iframe — same
+  // rendering fidelity, measures its own content height on load.
+  if (Platform.OS === "web") {
+    return React.createElement("iframe", {
+      srcDoc: doc,
+      sandbox: "allow-same-origin",
+      style: { border: "none", width: "100%", height, overflow: "hidden" },
+      onLoad: (e: any) => {
+        try {
+          const h = e.target?.contentDocument?.documentElement?.scrollHeight;
+          if (h && h > 0) setHeight(h + 16);
+        } catch {
+          setHeight(600);
+        }
+      },
+    });
+  }
+
+  if (!NativeWebView) {
+    // Native module unavailable (e.g. not yet installed) — plain-text fallback
+    return (
+      <Text style={{ fontSize: 14, color: "#374151", lineHeight: 21 }}>
+        {html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}
+      </Text>
+    );
+  }
+
   return (
-    <WebView
+    <NativeWebView
       source={{ html: doc }}
       originWhitelist={["*"]}
       scrollEnabled={false}
