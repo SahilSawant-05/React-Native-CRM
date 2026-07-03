@@ -1237,7 +1237,7 @@ export default function ChatConversationScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#efeae2" },
+  root: { flex: 1, backgroundColor: "#ece5dd" },
   messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8 },
   dateSep: {
     alignSelf: "center",

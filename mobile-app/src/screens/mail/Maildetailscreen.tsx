@@ -95,9 +95,6 @@ export default function MailDetailScreen({ route, navigation }: any) {
       ? Number(rawId)
       : undefined;
 
-  console.log("[MailDetail] route.params:", route?.params);
-  console.log("[MailDetail] emailId (coerced):", emailId, "| type:", typeof emailId);
-
   const [email,      setEmail]      = useState<EmailLog | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
@@ -129,51 +126,35 @@ export default function MailDetailScreen({ route, navigation }: any) {
 
     let found: EmailLog | null = null;
 
-    // ── Strategy 1: single-item endpoint ──────────────────────────────────
-    // Backend 500s here (lazy-load / missing join bug). Catch and fall through.
+    // ── Strategy 1: flat list endpoint ─────────────────────────────────────
+    // The direct GET /api/email/logs/{id} endpoint 500s on this backend
+    // (lazy-load / missing join bug), so go straight for the flat list the
+    // web app uses — it contains the full email body.
     try {
-      const res = await api.get(`/api/email/logs/${emailId}`);
-      found = res.data ?? null;
-      console.log("[MailDetail] single-item ok:", found?.id);
-    } catch (e1: any) {
-      console.log(
-        "[MailDetail] single-item failed:",
-        e1?.response?.status,
-        e1?.response?.data?.message ?? e1?.message,
-      );
+      const res = await api.get("/api/email/logs");
+      const list = extractList(res.data);
+      found = list.find((e) => Number(e.id) === emailId) ?? null;
+    } catch {
+      // fall through
     }
 
-    // ── Strategy 2: flat list endpoint (matches web behaviour) ────────────
-    // The web uses GET /api/email/logs (no pagination) and finds all emails
-    // here. Try this BEFORE the paginated endpoint because /api/email/logs/page
-    // only returns 17 items and email 474 is not among them.
+    // ── Strategy 2: single-item endpoint ───────────────────────────────────
     if (!found) {
-      console.log("[MailDetail] trying flat list /api/email/logs ...");
       try {
-        const res = await api.get("/api/email/logs");
-        const list = extractList(res.data);
-        console.log(`[MailDetail] /api/email/logs → ${list.length} items`);
-        found = list.find((e) => Number(e.id) === emailId) ?? null;
-        if (found) console.log("[MailDetail] found via flat list:", found.id);
-      } catch (e2: any) {
-        console.log(
-          "[MailDetail] /api/email/logs failed:",
-          e2?.response?.status,
-          e2?.response?.data?.message ?? e2?.message,
-        );
+        const res = await api.get(`/api/email/logs/${emailId}`);
+        found = res.data ?? null;
+      } catch {
+        // fall through
       }
     }
 
-    // ── Strategy 3: paginated list endpoint ───────────────────────────────
-    // Last resort — scan pages until we find the email (up to 10 pages).
+    // ── Strategy 3: paginated scan (up to 10 pages) ────────────────────────
     if (!found) {
-      console.log("[MailDetail] trying paginated /api/email/logs/page ...");
       try {
         const firstRes = await api.get("/api/email/logs/page", {
           params: { page: 0, size: 100 },
         });
         const firstList = extractList(firstRes.data);
-        console.log(`[MailDetail] /api/email/logs/page p0 → ${firstList.length} items`);
         found = firstList.find((e) => Number(e.id) === emailId) ?? null;
 
         if (!found) {
@@ -187,12 +168,8 @@ export default function MailDetailScreen({ route, navigation }: any) {
             found = l.find((e) => Number(e.id) === emailId) ?? null;
           }
         }
-      } catch (e3: any) {
-        console.log(
-          "[MailDetail] /api/email/logs/page failed:",
-          e3?.response?.status,
-          e3?.response?.data?.message ?? e3?.message,
-        );
+      } catch {
+        // fall through to error state
       }
     }
 
