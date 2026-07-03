@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchWorkQueue } from "../../api/workQueue";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -22,19 +24,21 @@ const SECTION_COLORS: Record<string, { bg: string; text: string; border: string 
   STALE_OPPORTUNITIES: { bg: "#faf5ff", text: "#6d28d9", border: "#ddd6fe" },
 };
 
-const SECTION_ICONS: Record<string, string> = {
-  OVERDUE_TASKS: "⚠️",
-  UNREAD_CHATS: "💬",
-  TODAY_TASKS: "⏰",
-  TODAY_APPOINTMENTS: "📅",
-  NEW_LEADS: "👤",
-  STALE_OPPORTUNITIES: "🎯",
+const SECTION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  OVERDUE_TASKS: "alert-circle-outline",
+  UNREAD_CHATS: "chatbubble-ellipses-outline",
+  TODAY_TASKS: "time-outline",
+  TODAY_APPOINTMENTS: "calendar-outline",
+  NEW_LEADS: "person-add-outline",
+  STALE_OPPORTUNITIES: "trending-down-outline",
 };
 
+const headingFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+
 function priorityColor(priority?: string) {
-  if (priority === "HIGH") return { bg: "#fef2f2", text: "#b91c1c" };
-  if (priority === "MEDIUM") return { bg: "#fffbeb", text: "#92400e" };
-  return { bg: "#f1f5f9", text: "#475569" };
+  if (priority === "HIGH") return { bg: "#fee2e2", text: "#dc2626" };
+  if (priority === "MEDIUM") return { bg: "#fef3c7", text: "#d97706" };
+  return { bg: "rgba(118,118,128,0.08)", text: "#6b7280" };
 }
 
 function formatDateTime(value?: string) {
@@ -83,13 +87,13 @@ function WorkItemCard({ item }: { item: WorkItem }) {
 
 function SectionCard({ section }: { section: WorkSection }) {
   const colors = SECTION_COLORS[section.key] || { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" };
-  const icon = SECTION_ICONS[section.key] || "📋";
+  const icon = SECTION_ICONS[section.key] || "list-outline";
 
   return (
     <View style={sectionStyles.card}>
       <View style={sectionStyles.header}>
-        <View style={[sectionStyles.iconBox, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-          <Text style={{ fontSize: 18 }}>{icon}</Text>
+        <View style={[sectionStyles.iconBox, { backgroundColor: colors.bg }]}>
+          <Ionicons name={icon} size={20} color={colors.text} />
         </View>
         <View style={sectionStyles.titleArea}>
           <Text style={sectionStyles.title}>{section.label}</Text>
@@ -115,7 +119,8 @@ function SectionCard({ section }: { section: WorkSection }) {
         </View>
       ) : (
         <View style={sectionStyles.empty}>
-          <Text style={sectionStyles.emptyText}>Nothing pending here ✓</Text>
+          <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+          <Text style={sectionStyles.emptyText}>Nothing pending here</Text>
         </View>
       )}
     </View>
@@ -181,7 +186,7 @@ export default function WorkQueueScreen() {
 
         {!error && !queue?.sections?.length && (
           <View style={styles.allClearCard}>
-            <Text style={styles.allClearIcon}>🎉</Text>
+            <Ionicons name="checkmark-circle" size={44} color="#16a34a" />
             <Text style={styles.allClearTitle}>All clear!</Text>
             <Text style={styles.allClearDesc}>No pending work for today.</Text>
           </View>
@@ -192,80 +197,123 @@ export default function WorkQueueScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f1f5f9" },
+  root: { flex: 1, backgroundColor: "#f8f9fb" },
   scroll: { padding: 16, gap: 12, paddingBottom: 32 },
   summaryCard: {
     backgroundColor: "#0f766e",
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  summaryLabel: { color: "#99f6e4", fontSize: 11, fontWeight: "700", letterSpacing: 1.5, textTransform: "uppercase" },
-  summaryTitle: { color: "#fff", fontSize: 22, fontWeight: "800", marginTop: 2 },
-  summaryDesc: { color: "#ccfbf1", fontSize: 13, marginTop: 4, maxWidth: 220 },
+  summaryLabel: {
+    color: "#99f6e4",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    fontFamily: headingFont,
+  },
+  summaryTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 2,
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  summaryDesc: { color: "#ccfbf1", fontSize: 13, marginTop: 4, maxWidth: 220, letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
   summaryBadge: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 12, padding: 12 },
-  summaryCount: { color: "#fff", fontSize: 28, fontWeight: "900" },
-  summaryPending: { color: "#99f6e4", fontSize: 12, fontWeight: "600" },
+  summaryCount: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  summaryPending: { color: "#99f6e4", fontSize: 11, fontWeight: "600" },
   allClearCard: { alignItems: "center", paddingVertical: 60, gap: 8 },
-  allClearIcon: { fontSize: 48 },
-  allClearTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
-  allClearDesc: { fontSize: 14, color: "#64748b" },
+  allClearTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  allClearDesc: { fontSize: 13, color: "#6b7280", letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
 });
 
 const sectionStyles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
     padding: 16,
     gap: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   header: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   iconBox: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   titleArea: { flex: 1 },
-  title: { fontSize: 15, fontWeight: "800", color: "#0f172a" },
-  desc: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  countBadge: { backgroundColor: "#f1f5f9", borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
-  countText: { fontSize: 12, fontWeight: "800", color: "#475569" },
-  items: { gap: 8 },
-  moreText: { fontSize: 12, color: "#94a3b8", textAlign: "center" },
+  title: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  desc: { fontSize: 12.5, color: "#6b7280", marginTop: 2 },
+  countBadge: { backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
+  countText: { fontSize: 12, fontWeight: "600", color: "#6b7280" },
+  items: { gap: 0 },
+  moreText: { fontSize: 12, color: "#9ca3af", textAlign: "center", paddingTop: 10 },
   empty: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f8f9fb",
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderStyle: "dashed",
     padding: 20,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
   },
-  emptyText: { color: "#94a3b8", fontSize: 13 },
+  emptyText: { color: "#9ca3af", fontSize: 13, letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
 });
 
 const itemStyles = StyleSheet.create({
   card: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    padding: 12,
+    paddingVertical: 12,
     gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(60,60,67,0.12)",
   },
   row: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
   info: { flex: 1 },
-  title: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  desc: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  title: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  desc: { fontSize: 13, color: "#6b7280", marginTop: 2, letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
   badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3, alignSelf: "flex-start" },
-  badgeText: { fontSize: 11, fontWeight: "700" },
+  badgeText: { fontSize: 11, fontWeight: "600" },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  tag: { backgroundColor: "#f1f5f9", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
-  tagText: { fontSize: 11, color: "#475569" },
+  tag: { backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
+  tagText: { fontSize: 11, color: "#6b7280" },
 });

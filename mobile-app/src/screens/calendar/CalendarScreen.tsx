@@ -6,7 +6,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
+
+// Platform typography helpers (styling only)
+const MEDIUM_FONT = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+const LS_LG = Platform.OS === "ios" ? -0.32 : 0; // 15-16pt
+const LS_SM = Platform.OS === "ios" ? -0.15 : 0; // 13-14pt
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,13 +159,19 @@ function EventCard({ event, showDate }: { event: CalEvent; showDate?: boolean })
         <Text style={s.taskTitle} numberOfLines={2}>{event.title}</Text>
         <View style={s.taskMeta}>
           {showDate && event.startAt && (
-            <Text style={s.taskMetaText}>
-              📅 {new Date(event.startAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-              {fmtTime(event.startAt) ? `  ${fmtTime(event.startAt)}` : ""}
-            </Text>
+            <View style={s.metaItem}>
+              <Ionicons name="calendar-outline" size={13} color="#9ca3af" />
+              <Text style={s.taskMetaText}>
+                {new Date(event.startAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                {fmtTime(event.startAt) ? `  ${fmtTime(event.startAt)}` : ""}
+              </Text>
+            </View>
           )}
           {!showDate && event.startAt && fmtTime(event.startAt) && (
-            <Text style={s.taskMetaText}>🕐 {fmtTime(event.startAt)}</Text>
+            <View style={s.metaItem}>
+              <Ionicons name="time-outline" size={13} color="#9ca3af" />
+              <Text style={s.taskMetaText}>{fmtTime(event.startAt)}</Text>
+            </View>
           )}
           {!!event.description && (
             <Text style={s.taskMetaText} numberOfLines={1}>{event.description}</Text>
@@ -252,7 +264,12 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
         <TouchableOpacity style={s.modalScrim} activeOpacity={1} onPress={onClose} />
         <View style={s.modalSheet}>
           <View style={s.modalHandle} />
-          <Text style={s.modalTitle}>New Event</Text>
+          <View style={s.modalHeaderRow}>
+            <Text style={s.modalTitle}>New Event</Text>
+            <TouchableOpacity onPress={onClose} style={s.modalCloseBtn} hitSlop={8}>
+              <Ionicons name="close" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
           <Text style={s.modalSub}>
             {defaultDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
           </Text>
@@ -273,10 +290,10 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
               {CATEGORIES.map(cat => (
                 <TouchableOpacity
                   key={cat.id}
-                  style={[s.pill, categoryId === cat.id && { backgroundColor: cat.color, borderColor: cat.color }]}
+                  style={[s.pill, categoryId === cat.id && { backgroundColor: cat.bg }]}
                   onPress={() => setCategoryId(cat.id)}
                 >
-                  <Text style={[s.pillText, categoryId === cat.id && s.pillTextOn]}>{cat.name}</Text>
+                  <Text style={[s.pillText, categoryId === cat.id && { color: cat.color }]}>{cat.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -284,7 +301,7 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
             {/* All Day toggle */}
             <TouchableOpacity style={s.allDayRow} onPress={() => setAllDay(v => !v)} activeOpacity={0.7}>
               <View style={[s.checkbox, allDay && s.checkboxOn]}>
-                {allDay && <Text style={s.checkmark}>✓</Text>}
+                {allDay && <Ionicons name="checkmark" size={15} color="#fff" />}
               </View>
               <Text style={s.allDayLabel}>All day</Text>
             </TouchableOpacity>
@@ -407,12 +424,12 @@ export default function CalendarScreen() {
       >
         {/* ── Month navigator ── */}
         <View style={s.monthNav}>
-          <TouchableOpacity onPress={() => setCursor(new Date(year, month - 1, 1))} style={s.navBtn}>
-            <Text style={s.navArrow}>‹</Text>
+          <TouchableOpacity onPress={() => setCursor(new Date(year, month - 1, 1))} style={s.navBtn} hitSlop={8}>
+            <Ionicons name="chevron-back" size={20} color="#0f766e" />
           </TouchableOpacity>
           <Text style={s.monthTitle}>{fmtMonthYear(cursor)}</Text>
-          <TouchableOpacity onPress={() => setCursor(new Date(year, month + 1, 1))} style={s.navBtn}>
-            <Text style={s.navArrow}>›</Text>
+          <TouchableOpacity onPress={() => setCursor(new Date(year, month + 1, 1))} style={s.navBtn} hitSlop={8}>
+            <Ionicons name="chevron-forward" size={20} color="#0f766e" />
           </TouchableOpacity>
         </View>
 
@@ -453,13 +470,10 @@ export default function CalendarScreen() {
               ? `  ·  ${selectedDayEvents.length} event${selectedDayEvents.length > 1 ? "s" : ""}`
               : ""}
           </Text>
-          <TouchableOpacity style={s.createBtn} onPress={() => setShowCreate(true)}>
-            <Text style={s.createBtnText}>+ Event</Text>
-          </TouchableOpacity>
         </View>
 
         {selectedDayEvents.length === 0 && (
-          <Text style={s.emptyText}>Nothing scheduled — tap + Event to add one.</Text>
+          <Text style={s.emptyText}>Nothing scheduled — tap + to add an event.</Text>
         )}
         {selectedDayEvents.map(e => <EventCard key={e.id} event={e} />)}
 
@@ -471,6 +485,10 @@ export default function CalendarScreen() {
           </>
         )}
       </ScrollView>
+
+      <TouchableOpacity style={s.fab} onPress={() => setShowCreate(true)} activeOpacity={0.85}>
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
 
       <CreateEventModal
         visible={showCreate}
@@ -485,99 +503,131 @@ export default function CalendarScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#f8f9fb" },
 
   monthNav: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingVertical: 12,
   },
   navBtn: { padding: 8 },
-  navArrow: { fontSize: 28, color: "#0f766e", fontWeight: "600", lineHeight: 30 },
-  monthTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
+  monthTitle: {
+    fontSize: 17, fontWeight: "600", color: "#111827",
+    fontFamily: MEDIUM_FONT, letterSpacing: LS_LG,
+  },
 
   calCard: {
-    backgroundColor: "#fff", marginHorizontal: 12, borderRadius: 16, padding: 12,
-    elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07, shadowRadius: 4,
+    backgroundColor: "#fff", marginHorizontal: 12, borderRadius: 14, padding: 12,
+    elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 8,
   },
   weekRow: { flexDirection: "row", marginBottom: 4 },
-  weekDay: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "700", color: "#94a3b8", paddingVertical: 4 },
+  weekDay: {
+    flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600", color: "#9ca3af",
+    paddingVertical: 4, textTransform: "uppercase", letterSpacing: 0.5,
+    fontFamily: MEDIUM_FONT,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap" },
 
   dayCell: { width: `${100 / 7}%` as any, alignItems: "center", paddingVertical: 4 },
-  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  dayCircleToday: { backgroundColor: "#f0fdfa" },
-  dayCircleSelected: { backgroundColor: "#0f766e" },
-  dayNum: { fontSize: 14, color: "#374151" },
-  dayNumToday: { color: "#0f766e", fontWeight: "700" },
-  dayNumSelected: { color: "#fff", fontWeight: "700" },
-  dotRow: { flexDirection: "row", gap: 2, marginTop: 2 },
+  dayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  dayCircleToday: { borderWidth: StyleSheet.hairlineWidth * 2, borderColor: "#0f766e" },
+  dayCircleSelected: { backgroundColor: "#0f766e", borderWidth: 0 },
+  dayNum: { fontSize: 14, color: "#374151", fontFamily: MEDIUM_FONT, letterSpacing: LS_SM },
+  dayNumToday: { color: "#0f766e", fontWeight: "600" },
+  dayNumSelected: { color: "#fff", fontWeight: "600" },
+  dotRow: { flexDirection: "row", gap: 3, marginTop: 3 },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#0f766e" },
 
   dayHeaderRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6,
+    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8,
   },
-  dayHeaderText: { fontSize: 13, fontWeight: "700", color: "#0f766e", flex: 1 },
-  createBtn: {
-    backgroundColor: "#0f766e", borderRadius: 8,
-    paddingHorizontal: 14, paddingVertical: 7,
+  dayHeaderText: {
+    fontSize: 13, fontWeight: "600", color: "#6b7280", flex: 1,
+    fontFamily: MEDIUM_FONT, letterSpacing: LS_SM,
   },
-  createBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 
   sectionHeader: {
-    fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase",
-    letterSpacing: 1, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6,
+    fontSize: 11, fontWeight: "600", color: "#9ca3af", textTransform: "uppercase",
+    letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8,
+    fontFamily: MEDIUM_FONT,
   },
-  emptyText: { fontSize: 13, color: "#94a3b8", paddingHorizontal: 16, paddingBottom: 8 },
+  emptyText: { fontSize: 13, color: "#9ca3af", paddingHorizontal: 16, paddingBottom: 8, letterSpacing: LS_SM },
 
   taskCard: {
-    flexDirection: "row", alignItems: "center", gap: 10,
+    flexDirection: "row", alignItems: "center", gap: 12,
     backgroundColor: "#fff", marginHorizontal: 12, marginBottom: 8,
-    borderRadius: 12, padding: 12, elevation: 1,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2,
+    borderRadius: 14, padding: 14, elevation: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3,
   },
-  priorityBar: { width: 3, height: 40, borderRadius: 2 },
-  taskTitle: { fontSize: 14, fontWeight: "600", color: "#1e293b", marginBottom: 4 },
-  taskMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  taskMetaText: { fontSize: 12, color: "#64748b" },
-  statusBadge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { fontSize: 10, fontWeight: "700" },
+  priorityBar: { width: 3.5, height: 40, borderRadius: 2 },
+  taskTitle: {
+    fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 4,
+    fontFamily: MEDIUM_FONT, letterSpacing: LS_SM,
+  },
+  taskMeta: { flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  taskMetaText: { fontSize: 12, color: "#6b7280" },
+  statusBadge: { borderRadius: 99, paddingHorizontal: 9, paddingVertical: 4 },
+  statusText: { fontSize: 10, fontWeight: "600", letterSpacing: 0.4, fontFamily: MEDIUM_FONT },
+
+  fab: {
+    position: "absolute", right: 20, bottom: 24,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: "#0f766e",
+    alignItems: "center", justifyContent: "center",
+    elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8,
+  },
 
   // Modal
   modalScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, paddingBottom: 36, maxHeight: "85%",
+    backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingTop: 12, paddingBottom: 36, maxHeight: "85%",
   },
   modalHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: "#e2e8f0",
+    width: 36, height: 4, borderRadius: 2, backgroundColor: "#d1d5db",
     alignSelf: "center", marginBottom: 16,
   },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a", marginBottom: 2 },
-  modalSub: { fontSize: 13, color: "#64748b", marginBottom: 20 },
-  fieldLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", marginBottom: 6, textTransform: "uppercase" },
+  modalHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  modalTitle: {
+    fontSize: 17, fontWeight: "600", color: "#111827", marginBottom: 2,
+    fontFamily: MEDIUM_FONT, letterSpacing: LS_LG,
+  },
+  modalCloseBtn: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(118,118,128,0.08)",
+    alignItems: "center", justifyContent: "center",
+  },
+  modalSub: { fontSize: 13, color: "#6b7280", marginBottom: 20, letterSpacing: LS_SM },
+  fieldLabel: {
+    fontSize: 12, fontWeight: "600", color: "#6b7280", marginBottom: 6,
+    textTransform: "uppercase", letterSpacing: 0.4, fontFamily: MEDIUM_FONT,
+  },
   input: {
-    borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#0f172a",
-    marginBottom: 16, backgroundColor: "#f8fafc",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#111827",
+    marginBottom: 16, backgroundColor: "rgba(118,118,128,0.06)", letterSpacing: LS_LG,
   },
-  pillRow: { flexDirection: "row", gap: 6, marginBottom: 16, flexWrap: "wrap" },
+  pillRow: { flexDirection: "row", gap: 8, marginBottom: 16, flexWrap: "wrap" },
   pill: {
-    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1,
-    borderColor: "#e2e8f0", alignItems: "center",
+    paddingVertical: 7, paddingHorizontal: 14, borderRadius: 99,
+    backgroundColor: "rgba(118,118,128,0.06)", alignItems: "center",
   },
-  pillText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
-  pillTextOn: { color: "#fff" },
+  pillText: { fontSize: 12.5, fontWeight: "600", color: "#6b7280", fontFamily: MEDIUM_FONT },
   allDayRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "#d1d5db",
+    width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: "rgba(60,60,67,0.3)",
     alignItems: "center", justifyContent: "center",
   },
   checkboxOn: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
-  checkmark: { color: "#fff", fontSize: 13, fontWeight: "800" },
-  allDayLabel: { fontSize: 14, fontWeight: "600", color: "#374151" },
-  saveBtn: { backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 8 },
-  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  allDayLabel: { fontSize: 14, fontWeight: "500", color: "#374151", letterSpacing: LS_SM },
+  saveBtn: {
+    backgroundColor: "#0f766e", borderRadius: 12, height: 48,
+    alignItems: "center", justifyContent: "center", marginTop: 8,
+  },
+  saveBtnText: {
+    color: "#fff", fontWeight: "600", fontSize: 15,
+    fontFamily: MEDIUM_FONT, letterSpacing: LS_LG,
+  },
 });

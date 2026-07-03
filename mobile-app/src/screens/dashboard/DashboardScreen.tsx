@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
@@ -30,9 +31,14 @@ function formatLabel(v?: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent: string }) {
+function StatCard({ label, value, sub, accent, icon }: { label: string; value: string | number; sub?: string; accent: string; icon?: keyof typeof Ionicons.glyphMap }) {
   return (
-    <View style={[c.statCard, { borderLeftColor: accent, borderLeftWidth: 4 }]}>
+    <View style={c.statCard}>
+      {!!icon && (
+        <View style={[c.statIconCircle, { backgroundColor: `${accent}1A` }]}>
+          <Ionicons name={icon} size={18} color={accent} />
+        </View>
+      )}
       <Text style={c.statLabel}>{label}</Text>
       <Text style={c.statValue}>{value}</Text>
       {!!sub && <Text style={c.statSub}>{sub}</Text>}
@@ -109,7 +115,7 @@ export default function DashboardScreen() {
     return (
       <SafeAreaView edges={["bottom"]} style={c.container}>
         <View style={c.errorWrap}>
-          <Text style={c.errorIcon}>📊</Text>
+          <Ionicons name="stats-chart-outline" size={44} color="#9ca3af" style={c.errorIcon} />
           <Text style={c.errorTitle}>Dashboard Unavailable</Text>
           <Text style={c.errorMsg}>{error}</Text>
           <TouchableOpacity style={c.retryBtn} onPress={() => { setLoading(true); fetchData(); }}>
@@ -150,30 +156,35 @@ export default function DashboardScreen() {
             value={fmtNum(contacts.totalContacts)}
             sub={`${fmtNum(contacts.assignedToMeCount)} assigned to me`}
             accent="#3b82f6"
+            icon="people-outline"
           />
           <StatCard
             label="Unread Inbox"
             value={fmtNum(inbox.unreadConversations)}
             sub={`${fmtNum(inbox.openConversations)} open`}
             accent="#f59e0b"
+            icon="mail-unread-outline"
           />
           <StatCard
             label="My Open Tasks"
             value={fmtNum(tasks.myOpenCount)}
             sub={`${fmtNum(tasks.todayCount)} due today`}
             accent="#22c55e"
+            icon="checkbox-outline"
           />
           <StatCard
             label="Notifications"
             value={fmtNum(notifications.unreadCount)}
             sub="Unread alerts"
             accent="#ef4444"
+            icon="notifications-outline"
           />
           <StatCard
             label="Pipeline"
             value={fmtNum(reports?.totalOpportunities)}
             sub={`${fmtCurrency(reports?.totalPipelineValue)} value`}
             accent="#0f766e"
+            icon="trending-up-outline"
           />
           {campaigns.available !== false && (
             <StatCard
@@ -181,6 +192,7 @@ export default function DashboardScreen() {
               value={fmtNum(campaigns.totalCampaigns)}
               sub={`${fmtNum(campaigns.sendingCount)} sending`}
               accent="#8b5cf6"
+              icon="megaphone-outline"
             />
           )}
         </View>
@@ -260,56 +272,94 @@ export default function DashboardScreen() {
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
+const headingFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+
 const c = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#f8f9fb" },
 
   sectionTitle: {
-    fontSize: 11, fontWeight: "700", color: "#94a3b8",
-    textTransform: "uppercase", letterSpacing: 1, paddingVertical: 10,
+    fontSize: 12, fontWeight: "600", color: "#6b7280",
+    fontFamily: headingFont,
+    textTransform: "uppercase", letterSpacing: 0.6, paddingVertical: 10,
   },
 
-  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
+  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 4 },
   statCard: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 14,
+    backgroundColor: "#fff", borderRadius: 16, padding: 14,
     flex: 1, minWidth: "47%",
-    elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  statLabel: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", marginBottom: 6 },
-  statValue: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
-  statSub: { fontSize: 11, color: "#64748b", marginTop: 3 },
+  statIconCircle: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center", marginBottom: 10,
+  },
+  statLabel: {
+    fontSize: 11, fontWeight: "600", color: "#6b7280",
+    textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 25, fontWeight: "700", color: "#111827",
+    fontFamily: headingFont,
+  },
+  statSub: { fontSize: 12, color: "#9ca3af", marginTop: 3 },
 
   card: {
-    backgroundColor: "#fff", borderRadius: 14, padding: 14, marginBottom: 4,
-    elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 3,
+    backgroundColor: "#fff", borderRadius: 16, padding: 14, marginBottom: 4,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
 
   infoRow: {
-    flexDirection: "row", justifyContent: "space-between",
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f1f5f9",
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    minHeight: 44, paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.12)",
   },
-  infoLabel: { fontSize: 14, color: "#64748b" },
-  infoVal: { fontSize: 14, fontWeight: "700" },
+  infoLabel: {
+    fontSize: 14, color: "#374151",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
+  infoVal: {
+    fontSize: 14, fontWeight: "600", fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
 
   barRow: { marginBottom: 14 },
-  barTopRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-  barLabel: { fontSize: 13, color: "#475569", flex: 1, marginRight: 8 },
-  barCount: { fontSize: 12, color: "#64748b", fontWeight: "600" },
-  barTrack: { height: 6, backgroundColor: "#e2e8f0", borderRadius: 3, overflow: "hidden" },
+  barTopRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 5 },
+  barLabel: {
+    fontSize: 13, color: "#374151", flex: 1, marginRight: 8,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
+  barCount: { fontSize: 12.5, color: "#6b7280", fontWeight: "600" },
+  barTrack: { height: 6, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 3, overflow: "hidden" },
   barFill: { height: "100%", backgroundColor: "#0f766e", borderRadius: 3 },
 
-  notifRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 10 },
-  notifBorder: { borderTopWidth: 1, borderTopColor: "#f1f5f9" },
-  notifDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#e2e8f0", marginTop: 4 },
+  notifRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 12, minHeight: 44 },
+  notifBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)" },
+  notifDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#e5e7eb", marginTop: 4 },
   notifDotUnread: { backgroundColor: "#0f766e" },
-  notifTitle: { fontSize: 13, fontWeight: "600", color: "#1e293b" },
-  notifBody: { fontSize: 12, color: "#64748b", marginTop: 2 },
+  notifTitle: {
+    fontSize: 14, fontWeight: "600", color: "#111827",
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
+  notifBody: { fontSize: 12.5, color: "#6b7280", marginTop: 2 },
 
   errorWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-  errorIcon: { fontSize: 48, marginBottom: 16 },
-  errorTitle: { fontSize: 20, fontWeight: "700", color: "#1e293b", marginBottom: 8 },
-  errorMsg: { fontSize: 14, color: "#64748b", textAlign: "center", marginBottom: 24 },
-  retryBtn: { backgroundColor: "#0f766e", borderRadius: 10, paddingHorizontal: 28, paddingVertical: 12 },
-  retryBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  errorIcon: { marginBottom: 16 },
+  errorTitle: {
+    fontSize: 16, fontWeight: "600", color: "#111827", marginBottom: 8,
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  errorMsg: { fontSize: 14, color: "#6b7280", textAlign: "center", marginBottom: 24 },
+  retryBtn: {
+    backgroundColor: "#0f766e", borderRadius: 99, paddingHorizontal: 28,
+    minHeight: 44, justifyContent: "center",
+  },
+  retryBtnText: {
+    color: "#fff", fontWeight: "600", fontSize: 15,
+    fontFamily: headingFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
 });

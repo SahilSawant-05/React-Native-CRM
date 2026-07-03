@@ -5,8 +5,10 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -99,6 +101,23 @@ export default function NotificationsScreen() {
     }
   };
 
+  const iconForType = (
+    type: string
+  ): { name: keyof typeof Ionicons.glyphMap; color: string; bg: string } => {
+    const t = (type || "").toUpperCase();
+    if (t.includes("CHAT") || t.includes("MESSAGE"))
+      return { name: "chatbubble-outline", color: "#0f766e", bg: "#ccfbf1" };
+    if (t.includes("MAIL") || t.includes("EMAIL"))
+      return { name: "mail-outline", color: "#1d4ed8", bg: "#dbeafe" };
+    if (t.includes("TASK") || t.includes("TODO"))
+      return { name: "checkbox-outline", color: "#7c3aed", bg: "#ede9fe" };
+    if (t.includes("ALERT") || t.includes("WARN") || t.includes("ERROR"))
+      return { name: "alert-circle-outline", color: "#b45309", bg: "#fef3c7" };
+    if (t.includes("LEAD") || t.includes("CONTACT") || t.includes("USER"))
+      return { name: "person-add-outline", color: "#be185d", bg: "#fce7f3" };
+    return { name: "notifications-outline", color: "#0f766e", bg: "#ccfbf1" };
+  };
+
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return (
@@ -128,73 +147,124 @@ export default function NotificationsScreen() {
           notifications.length === 0 ? styles.emptyContainer : { paddingBottom: 16 }
         }
         ListEmptyComponent={<Text style={styles.emptyText}>No notifications</Text>}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => markRead(item.id)} activeOpacity={0.8}>
-            <View style={styles.card}>
-              <View style={styles.row}>
-                {!item.readAt && <View style={styles.unreadDot} />}
-                <View style={{ flex: 1, marginLeft: !item.readAt ? 8 : 0 }}>
-                  <Text style={[styles.title, !item.readAt && styles.unreadTitle]}>
-                    {item.title}
-                  </Text>
-                  <Text style={[styles.message, !item.readAt && styles.unreadMessage]}>
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        renderItem={({ item }) => {
+          const icon = iconForType(item.type);
+          return (
+            <TouchableOpacity onPress={() => markRead(item.id)} activeOpacity={0.7}>
+              <View style={[styles.row, !item.readAt && styles.rowUnread]}>
+                <View style={styles.dotColumn}>
+                  {!item.readAt && <View style={styles.unreadDot} />}
+                </View>
+                <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
+                  <Ionicons name={icon.name} size={20} color={icon.color} />
+                </View>
+                <View style={styles.textColumn}>
+                  <View style={styles.titleLine}>
+                    <Text
+                      style={[styles.title, !item.readAt && styles.unreadTitle]}
+                      numberOfLines={1}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+                  </View>
+                  <Text style={styles.message} numberOfLines={2}>
                     {item.body}
                   </Text>
-                  <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
                 </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        )}
+            </TouchableOpacity>
+          );
+        }}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#ffffff" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 16, color: "#94a3b8", marginTop: 40 },
+  emptyText: { fontSize: 15, color: "#9ca3af", marginTop: 40 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingRight: 16,
+    paddingRight: 12,
+    backgroundColor: "#ffffff",
   },
   sectionHeader: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.6,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  markAllBtn: { padding: 8 },
-  markAllText: { fontSize: 13, color: "#0f766e", fontWeight: "600" },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
+  markAllBtn: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 8,
   },
-  row: { flexDirection: "row", alignItems: "flex-start" },
+  markAllText: {
+    fontSize: 13.5,
+    color: "#0f766e",
+    fontWeight: "600",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(60,60,67,0.12)",
+    marginLeft: 76,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    paddingVertical: 12,
+    paddingRight: 16,
+    minHeight: 64,
+  },
+  rowUnread: { backgroundColor: "#f0fdfa" },
+  dotColumn: {
+    width: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#f97316",
-    marginTop: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#0f766e",
   },
-  title: { fontSize: 13, color: "#94a3b8", fontWeight: "500", marginBottom: 2 },
-  unreadTitle: { color: "#0f766e", fontWeight: "700" },
-  message: { fontSize: 14, color: "#475569", lineHeight: 20 },
-  unreadMessage: { color: "#1e293b", fontWeight: "600" },
-  date: { fontSize: 11, color: "#94a3b8", marginTop: 4 },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  textColumn: { flex: 1 },
+  titleLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  title: {
+    flex: 1,
+    fontSize: 15,
+    color: "#111827",
+    fontWeight: "600",
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    marginRight: 8,
+  },
+  unreadTitle: { fontWeight: "700" },
+  message: { fontSize: 13.5, color: "#374151", lineHeight: 19 },
+  date: { fontSize: 11.5, color: "#9ca3af" },
 });

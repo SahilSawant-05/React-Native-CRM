@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,6 +9,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+
+const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
 import { RouteProp } from "@react-navigation/native";
 import { fetchContactById, fetchContactTimeline } from "../../api/contacts";
 import { Contact } from "../../types";
@@ -106,30 +110,36 @@ try {
         <View style={styles.actions}>
           {!!contact.phone && (
             <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: "#dcfce7" }]}
+              style={styles.actionBtn}
               onPress={() => Linking.openURL(`tel:${contact.phone}`)}
             >
-              <Text style={styles.actionIcon}>📞</Text>
+              <View style={[styles.actionCircle, { backgroundColor: "#dcfce7" }]}>
+                <Ionicons name="call" size={22} color="#15803d" />
+              </View>
               <Text style={[styles.actionLabel, { color: "#15803d" }]}>Call</Text>
             </TouchableOpacity>
           )}
           {/* WhatsApp → opens CRM Chat for this specific contact */}
           {!!contact.phone && (
             <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: "#f0fdf4" }]}
+              style={styles.actionBtn}
               onPress={openContactChat}
             >
-              <Text style={styles.actionIcon}>💬</Text>
+              <View style={[styles.actionCircle, { backgroundColor: "#ccfbf1" }]}>
+                <Ionicons name="chatbubble-ellipses" size={22} color="#0f766e" />
+              </View>
               <Text style={[styles.actionLabel, { color: "#0f766e" }]}>Chat</Text>
             </TouchableOpacity>
           )}
           {/* Email → opens CRM Mail (not phone mail app) */}
           {!!contact.email && (
             <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: "#eff6ff" }]}
+              style={styles.actionBtn}
               onPress={() => navigateToTab("Mail")}
             >
-              <Text style={styles.actionIcon}>✉️</Text>
+              <View style={[styles.actionCircle, { backgroundColor: "#dbeafe" }]}>
+                <Ionicons name="mail" size={22} color="#1d4ed8" />
+              </View>
               <Text style={[styles.actionLabel, { color: "#1d4ed8" }]}>Mail</Text>
             </TouchableOpacity>
           )}
@@ -180,55 +190,120 @@ try {
   );
 }
 
+const iosTight = Platform.OS === "ios" ? -0.32 : undefined;
+const iosTightSm = Platform.OS === "ios" ? -0.15 : undefined;
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f1f5f9" },
-  scroll: { gap: 12, paddingBottom: 32 },
+  root: { flex: 1, backgroundColor: "#f8fafc" },
+  scroll: { gap: 16, paddingBottom: 32 },
   hero: {
     backgroundColor: "#fff",
     alignItems: "center",
-    paddingVertical: 28,
+    paddingTop: 28,
+    paddingBottom: 24,
     paddingHorizontal: 20,
-    gap: 8,
+    gap: 10,
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: "#ccfbf1",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 26, fontWeight: "800", color: "#0f766e" },
-  name: { fontSize: 22, fontWeight: "800", color: "#0f172a", textAlign: "center" },
+  avatarText: {
+    fontSize: 28,
+    fontWeight: "600",
+    color: "#0f766e",
+    fontFamily: mediumFont,
+  },
+  name: {
+    fontSize: 21,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    fontFamily: mediumFont,
+    letterSpacing: iosTight,
+  },
   tagsRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6 },
-  tag: { backgroundColor: "#eff6ff", borderRadius: 99, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { fontSize: 12, color: "#1d4ed8", fontWeight: "600" },
+  tag: {
+    backgroundColor: "rgba(15,118,110,0.08)",
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  tagText: { fontSize: 12, color: "#0f766e", fontWeight: "600", fontFamily: mediumFont },
   actions: {
     flexDirection: "row",
+    justifyContent: "center",
     marginHorizontal: 16,
-    gap: 10,
+    gap: 28,
   },
   actionBtn: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    minWidth: 56,
+    minHeight: 44,
   },
-  actionIcon: { fontSize: 22 },
-  actionLabel: { fontSize: 12, fontWeight: "700" },
+  actionCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionLabel: {
+    fontSize: 11.5,
+    fontWeight: "600",
+    fontFamily: mediumFont,
+  },
   card: {
     backgroundColor: "#fff",
     marginHorizontal: 16,
     borderRadius: 14,
-    padding: 16,
-    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardTitle: { fontSize: 15, fontWeight: "800", color: "#0f172a", marginBottom: 4 },
-  field: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  fieldLabel: { fontSize: 13, color: "#64748b", fontWeight: "500" },
-  fieldValue: { fontSize: 13, color: "#0f172a", fontWeight: "600", maxWidth: "60%", textAlign: "right" },
-  timelineItem: { flexDirection: "row", gap: 12 },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 6,
+    fontFamily: mediumFont,
+  },
+  field: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.12)",
+  },
+  fieldLabel: { fontSize: 12, color: "#6b7280", fontWeight: "500", letterSpacing: iosTightSm },
+  fieldValue: {
+    fontSize: 14,
+    color: "#111827",
+    fontWeight: "500",
+    fontFamily: mediumFont,
+    maxWidth: "60%",
+    textAlign: "right",
+    letterSpacing: iosTightSm,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.12)",
+  },
   timelineDot: {
     width: 8,
     height: 8,
@@ -237,7 +312,13 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   timelineContent: { flex: 1, gap: 2 },
-  timelineType: { fontSize: 13, fontWeight: "700", color: "#0f172a" },
-  timelineDesc: { fontSize: 12, color: "#475569" },
-  timelineDate: { fontSize: 11, color: "#94a3b8" },
+  timelineType: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: mediumFont,
+    letterSpacing: iosTightSm,
+  },
+  timelineDesc: { fontSize: 12.5, color: "#374151" },
+  timelineDate: { fontSize: 11.5, color: "#9ca3af" },
 });

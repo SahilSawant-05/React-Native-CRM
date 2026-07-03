@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,28 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+
+const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+
+// iOS-style pastel avatar palette, hashed by name
+const AVATAR_PALETTE = [
+  { bg: "#fee2e2", fg: "#b91c1c" },
+  { bg: "#ffedd5", fg: "#c2410c" },
+  { bg: "#fef3c7", fg: "#a16207" },
+  { bg: "#dcfce7", fg: "#15803d" },
+  { bg: "#ccfbf1", fg: "#0f766e" },
+  { bg: "#dbeafe", fg: "#1d4ed8" },
+  { bg: "#ede9fe", fg: "#6d28d9" },
+  { bg: "#fce7f3", fg: "#be185d" },
+];
+
+function avatarColors(name: string) {
+  let hash = 0;
+  const s = name || "?";
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) | 0;
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+}
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { fetchContacts } from "../../api/contacts";
 import api from "../../api/client";
@@ -133,7 +156,7 @@ function AddContactModal({ visible, onClose, onSaved }: {
                   <Text style={addStyles.countryBtnText}>
                     {COUNTRY_CODES.find((c) => c.code === form.countryCode)?.flag} {form.countryCode}
                   </Text>
-                  <Text style={addStyles.countryBtnCaret}>▾</Text>
+                  <Ionicons name="chevron-down" size={14} color="#6b7280" style={{ marginLeft: "auto" }} />
                 </TouchableOpacity>
 
                 {showCountryDropdown && (
@@ -301,11 +324,12 @@ function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => voi
     .join("")
     .toUpperCase();
   const tags = normalizeTags(contact.tags);
+  const colors = avatarColors(contact.name || "?");
 
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
+      <View style={[styles.avatar, { backgroundColor: colors.bg }]}>
+        <Text style={[styles.avatarText, { color: colors.fg }]}>{initials}</Text>
       </View>
       <View style={styles.rowInfo}>
         <Text style={styles.name}>{contact.name}</Text>
@@ -429,17 +453,20 @@ export default function ContactsScreen({ navigation }: Props) {
       />
 
       <View style={styles.searchBar}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search contacts…"
-          placeholderTextColor="#94a3b8"
-          value={search}
-          onChangeText={handleSearch}
-          clearButtonMode="while-editing"
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
+        <View style={styles.searchField}>
+          <Ionicons name="search" size={17} color="#9ca3af" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts…"
+            placeholderTextColor="#9ca3af"
+            value={search}
+            onChangeText={handleSearch}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+        </View>
       </View>
 
       {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, search)} />}
@@ -470,60 +497,91 @@ export default function ContactsScreen({ navigation }: Props) {
 
       {/* Add Contact FAB */}
       <TouchableOpacity style={styles.fab} onPress={() => setAddOpen(true)} activeOpacity={0.85}>
-        <Text style={styles.fabText}>＋</Text>
+        <Ionicons name="person-add" size={24} color="#fff" />
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f1f5f9" },
+  root: { flex: 1, backgroundColor: "#fff" },
   searchBar: {
     backgroundColor: "#fff",
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  searchField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(118,118,128,0.08)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    minHeight: 40,
   },
   searchInput: {
-    backgroundColor: "#f1f5f9",
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    flex: 1,
     paddingVertical: 9,
     fontSize: 15,
-    color: "#0f172a",
+    color: "#111827",
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 11,
+    minHeight: 64,
     gap: 12,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#ccfbf1",
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 16, fontWeight: "700", color: "#0f766e" },
+  avatarText: {
+    fontSize: 17,
+    fontWeight: "600",
+    fontFamily: mediumFont,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
   rowInfo: { flex: 1 },
-  name: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
-  sub: { fontSize: 13, color: "#64748b", marginTop: 1 },
-  tagBadge: { backgroundColor: "#eff6ff", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
-  tagText: { fontSize: 11, color: "#1d4ed8", fontWeight: "600" },
-  separator: { height: 1, backgroundColor: "#f1f5f9" },
+  name: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111827",
+    fontFamily: mediumFont,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+  },
+  sub: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : undefined,
+  },
+  tagBadge: {
+    backgroundColor: "rgba(15,118,110,0.08)",
+    borderRadius: 99,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  tagText: { fontSize: 11.5, color: "#0f766e", fontWeight: "600", fontFamily: mediumFont },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(60,60,67,0.12)",
+    marginLeft: 74,
+  },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyText: { color: "#94a3b8", fontSize: 15 },
+  emptyText: { color: "#9ca3af", fontSize: 15 },
   fab: {
     position: "absolute", bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
-    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
   },
-  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });

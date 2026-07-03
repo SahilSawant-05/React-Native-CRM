@@ -12,7 +12,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
+
+const HFONT = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+const LS16 = Platform.OS === "ios" ? -0.32 : 0;
+const LS14 = Platform.OS === "ios" ? -0.15 : 0;
 import { Contact, Task, User } from "../../types";
 
 type StatusKey = "OPEN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
@@ -134,8 +139,9 @@ type ToastType = "success" | "error" | "info";
 
 function Toast({ msg, type, onDone }: { msg: string; type: ToastType; onDone: () => void }) {
   useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
-  const clr = { success: { bg:"#dcfce7", border:"#166534", text:"#166534" }, error: { bg:"#fee2e2", border:"#991b1b", text:"#991b1b" }, info: { bg:"#dbeafe", border:"#1e40af", text:"#1e40af" } }[type];
-  return <View style={[s.toast,{backgroundColor:clr.bg,borderColor:clr.border}]}><Text style={{color:clr.text,fontWeight:"700",fontSize:13}}>{type==="success"?"✓":type==="error"?"✕":"ℹ"}  {msg}</Text></View>;
+  const clr = { success: { bg:"#dcfce7", text:"#166534" }, error: { bg:"#fee2e2", text:"#991b1b" }, info: { bg:"#dbeafe", text:"#1e40af" } }[type];
+  const icon = type==="success"?"checkmark-circle":type==="error"?"alert-circle-outline":"information-circle-outline";
+  return <View style={[s.toast,{backgroundColor:clr.bg}]}><Ionicons name={icon as any} size={16} color={clr.text} style={{marginRight:8}}/><Text style={{color:clr.text,fontWeight:"600",fontSize:13,fontFamily:HFONT,letterSpacing:LS14}}>{msg}</Text></View>;
 }
 
 /* ─── Move-to-Column Sheet ── */
@@ -208,7 +214,8 @@ function DraggableList({ data, onReorder, renderItem, emptyComponent }: {
       })}
       {draggingKey !== null && (
         <TouchableOpacity style={s.dropZone} onPress={() => commit(data.length)} activeOpacity={0.6}>
-          <Text style={s.dropZoneText}>↓ Drop here (end of list)</Text>
+          <Ionicons name="arrow-down-circle-outline" size={14} color="#0f766e" style={{marginRight:6}}/>
+          <Text style={s.dropZoneText}>Drop here (end of list)</Text>
         </TouchableOpacity>
       )}
     </>
@@ -231,7 +238,7 @@ function ContactPickerModal({ visible, onClose, onSelect }: { visible:boolean; o
       <SafeAreaView style={{flex:1,backgroundColor:"#fff"}}>
         <View style={s.modalHeader}>
           <Text style={s.modalTitle}>Select Contact</Text>
-          <TouchableOpacity onPress={onClose} style={s.modalClose}><Text style={{fontSize:18,color:"#475569"}}>✕</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={s.modalClose}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
         </View>
         <View style={{paddingHorizontal:16,paddingBottom:8}}>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search contacts…" placeholderTextColor="#94a3b8" style={s.searchInput} />
@@ -286,7 +293,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
       <SafeAreaView style={{flex:1,backgroundColor:"#fff"}}>
         <View style={s.modalHeader}>
           <Text style={s.modalTitle}>{initial?"Edit Task":"New Task"}</Text>
-          <TouchableOpacity onPress={onClose} style={s.modalClose}><Text style={{fontSize:18,color:"#475569"}}>✕</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={s.modalClose}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{padding:16}} keyboardShouldPersistTaps="handled">
           <Text style={s.fieldLabel}>TASK NAME *</Text>
@@ -301,7 +308,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
           <View style={{flexDirection:"row",gap:8}}>
             {(["low","medium","high"] as const).map(p => {
               const meta=PRIORITY_META[p]; const active=form.priority===p;
-              return <TouchableOpacity key={p} onPress={()=>set("priority",p)} style={[s.priorityBtn,{backgroundColor:active?meta.bg:"#f8fafc",borderColor:active?meta.dot:"#e2e8f0"}]}><View style={[s.dot,{backgroundColor:meta.dot}]}/><Text style={{fontSize:12,fontWeight:"700",color:active?meta.text:"#64748b"}}>{meta.label}</Text></TouchableOpacity>;
+              return <TouchableOpacity key={p} onPress={()=>set("priority",p)} style={[s.priorityBtn,{backgroundColor:active?meta.bg:"rgba(118,118,128,0.08)"}]}><View style={[s.dot,{backgroundColor:meta.dot}]}/><Text style={{fontSize:13,fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14,color:active?meta.text:"#6b7280"}}>{meta.label}</Text></TouchableOpacity>;
             })}
           </View>
 
@@ -309,7 +316,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
           <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
             {columns.map(col => {
               const active=form.colId===col.id; const color=COLUMN_COLORS[col.id];
-              return <TouchableOpacity key={col.id} onPress={()=>set("colId",col.id)} style={[s.chip,{backgroundColor:active?color+"18":"#f8fafc",borderColor:active?color:"#e2e8f0"}]}><Text style={{fontSize:12,fontWeight:"700",color:active?color:"#64748b"}}>{col.name}</Text></TouchableOpacity>;
+              return <TouchableOpacity key={col.id} onPress={()=>set("colId",col.id)} style={[s.chip,{backgroundColor:active?color+"18":"rgba(118,118,128,0.08)"}]}><Text style={{fontSize:13,fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14,color:active?color:"#6b7280"}}>{col.name}</Text></TouchableOpacity>;
             })}
           </View>
 
@@ -318,7 +325,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {[{id:"",email:"Unassigned",role:"AGENT" as const,tenantId:""},...users].map((u,i) => {
                 const active=form.assignedUserId===String(u.id);
-                return <TouchableOpacity key={u.id===""?"unassigned":String(u.id)} onPress={()=>set("assignedUserId",String(u.id))} style={[s.chip,{marginLeft:i===0?0:8,borderColor:active?"#0f766e":"#e2e8f0",backgroundColor:active?"#f0fdfa":"#f8fafc"}]}><Text style={{fontSize:12,color:active?"#0f766e":"#64748b",fontWeight:"600"}}>{u.email}</Text></TouchableOpacity>;
+                return <TouchableOpacity key={u.id===""?"unassigned":String(u.id)} onPress={()=>set("assignedUserId",String(u.id))} style={[s.chip,{marginLeft:i===0?0:8,backgroundColor:active?"#0f766e":"rgba(118,118,128,0.08)"}]}><Text style={{fontSize:13,color:active?"#fff":"#6b7280",fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14}}>{u.email}</Text></TouchableOpacity>;
               })}
             </ScrollView>
           </>)}
@@ -327,7 +334,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
           <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
             {TAGS.map(t => {
               const active=form.tags.includes(t);
-              return <TouchableOpacity key={t} onPress={()=>toggleTag(t)} style={[s.tagChip,{backgroundColor:active?"#f0fdfa":"#f8fafc",borderColor:active?"#0f766e":"#e2e8f0"}]}><Text style={{fontSize:11,color:active?"#0f766e":"#64748b",fontWeight:active?"700":"400"}}>{active?"✓ ":""}{t}</Text></TouchableOpacity>;
+              return <TouchableOpacity key={t} onPress={()=>toggleTag(t)} style={[s.tagChip,{backgroundColor:active?"#0f766e":"rgba(118,118,128,0.08)",flexDirection:"row",alignItems:"center"}]}>{active&&<Ionicons name="checkmark" size={12} color="#fff" style={{marginRight:3}}/>}<Text style={{fontSize:12,color:active?"#fff":"#6b7280",fontWeight:"600",fontFamily:HFONT}}>{t}</Text></TouchableOpacity>;
             })}
           </View>
 
@@ -348,14 +355,14 @@ function TaskCardView({ card, isDragging, onEdit, onDelete, onMove }: {
   const due = dueMeta(card.date || card.dueAt);
   const confirmDelete = () => Alert.alert("Delete Task", `Delete "${card.title}"?`, [{ text:"Cancel",style:"cancel" },{ text:"Delete",style:"destructive",onPress:onDelete }]);
   return (
-    <View style={[s.card, isDragging&&s.cardActive, { borderLeftColor: pri.dot }]}>
+    <View style={[s.card, isDragging&&s.cardActive]}>
       <View style={s.cardHeader}>
-        <Text style={s.dragIcon}>⠿</Text>
+        <Ionicons name="reorder-three-outline" size={16} color="#9ca3af"/>
         <Text style={s.cardId}>#{safeId(card.id??card._id).slice(-4)}</Text>
         <View style={{flex:1}}/>
-        <TouchableOpacity onPress={onMove} style={s.cardAction}><Text style={{fontSize:11}}>↔️</Text></TouchableOpacity>
-        <TouchableOpacity onPress={onEdit} style={[s.cardAction,{marginLeft:4}]}><Text style={{fontSize:11}}>✏️</Text></TouchableOpacity>
-        <TouchableOpacity onPress={confirmDelete} style={[s.cardAction,{marginLeft:4}]}><Text style={{fontSize:11}}>🗑</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onMove} style={s.cardAction}><Ionicons name="swap-horizontal-outline" size={15} color="#6b7280"/></TouchableOpacity>
+        <TouchableOpacity onPress={onEdit} style={[s.cardAction,{marginLeft:4}]}><Ionicons name="pencil-outline" size={14} color="#6b7280"/></TouchableOpacity>
+        <TouchableOpacity onPress={confirmDelete} style={[s.cardAction,{marginLeft:4}]}><Ionicons name="trash-outline" size={14} color="#b91c1c"/></TouchableOpacity>
       </View>
       <Text style={s.cardTitle} numberOfLines={2}>{card.title}</Text>
       <View style={s.infoChip}>
@@ -375,7 +382,7 @@ function TaskCardView({ card, isDragging, onEdit, onDelete, onMove }: {
         <View style={{flex:1}}/>
         <Text style={[s.dueLabel,{color:due.color}]}>{due.label}</Text>
       </View>
-      <Text style={s.dateText}>📅 {displayDate(card.dueAt??card.date)}</Text>
+      <View style={{flexDirection:"row",alignItems:"center",gap:4}}><Ionicons name="calendar-outline" size={11} color="#9ca3af"/><Text style={s.dateText}>{displayDate(card.dueAt??card.date)}</Text></View>
     </View>
   );
 }
@@ -406,7 +413,7 @@ function KanbanColumnView({ col, onAddCard, onEditCard, onDeleteCard, onReorder,
         emptyComponent={<View style={s.emptyCol}><Text style={s.emptyColText}>No tasks · long-press to reorder</Text></View>}
       />
       <TouchableOpacity onPress={()=>onAddCard(col.id)} style={[s.addMoreBtn,{borderColor:accent+"60"}]}>
-        <Text style={[s.addMoreText,{color:accent}]}>+ Add Task</Text>
+        <Ionicons name="add" size={15} color={accent}/><Text style={[s.addMoreText,{color:accent,marginLeft:4}]}>Add Task</Text>
       </TouchableOpacity>
     </View>
   );
@@ -414,10 +421,10 @@ function KanbanColumnView({ col, onAddCard, onEditCard, onDeleteCard, onReorder,
 
 /* ─── Filters ── */
 const FILTERS = [
-  { key:"team",     label:"Team",    icon:"👥", color:"#10b981" },
-  { key:"my-tasks", label:"Mine",    icon:"👤", color:"#8b5cf6" },
-  { key:"today",    label:"Today",   icon:"🗓", color:"#3b82f6" },
-  { key:"overdue",  label:"Overdue", icon:"⚠️",  color:"#ef4444" },
+  { key:"team",     label:"Team",    icon:"people-outline",       color:"#0f766e" },
+  { key:"my-tasks", label:"Mine",    icon:"person-outline",       color:"#0f766e" },
+  { key:"today",    label:"Today",   icon:"calendar-outline",     color:"#0f766e" },
+  { key:"overdue",  label:"Overdue", icon:"alert-circle-outline", color:"#0f766e" },
 ] as const;
 type FilterKey = typeof FILTERS[number]["key"];
 
@@ -427,10 +434,10 @@ function FilterPills({ active, loading, onSelect }: { active:FilterKey|null; loa
       {FILTERS.map(({key,label,icon,color})=>{
         const on=active===key;
         return (
-          <TouchableOpacity key={key} onPress={()=>onSelect(key)} style={[s.filterPill,{backgroundColor:on?color+"18":"#f8fafc",borderColor:on?color:"#e2e8f0"}]}>
-            <Text style={{fontSize:12}}>{loading&&on?"⟳":icon}</Text>
-            <Text style={{fontSize:12,fontWeight:"700",color:on?color:"#64748b",marginLeft:4}}>{label}</Text>
-            {on&&<Text style={{fontSize:10,color,marginLeft:2}}>×</Text>}
+          <TouchableOpacity key={key} onPress={()=>onSelect(key)} style={[s.filterPill,{backgroundColor:on?color:"rgba(118,118,128,0.08)"}]}>
+            <Ionicons name={(loading&&on?"sync-outline":icon) as any} size={14} color={on?"#fff":"#6b7280"}/>
+            <Text style={{fontSize:13,fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14,color:on?"#fff":"#6b7280",marginLeft:5}}>{label}</Text>
+            {on&&<Ionicons name="close" size={12} color="#fff" style={{marginLeft:4}}/>}
           </TouchableOpacity>
         );
       })}
@@ -545,19 +552,19 @@ export default function TaskKanbanScreen() {
     <SafeAreaView style={s.root} edges={["bottom"]}>
       <View style={s.header}>
         <View style={s.headerLeft}>
-          <View style={s.logoBox}><Text style={{color:"#fff",fontSize:14}}>✓</Text></View>
+          <View style={s.logoBox}><Ionicons name="checkmark-done-outline" size={17} color="#fff"/></View>
           <View><Text style={s.headerTitle}>TaskBoard</Text><Text style={s.headerSub}>{apiLoading?"Loading…":`${total} task${total!==1?"s":""} · ${columns.length} cols`}</Text></View>
         </View>
         <TouchableOpacity onPress={()=>setContactModal(true)} style={[s.contactBtn,contactId&&{borderColor:"#0f766e",backgroundColor:"#f0fdfa"}]}>
-          <Text style={{fontSize:12}}>👤</Text>
+          <Ionicons name="person-circle-outline" size={16} color={contactId?"#0f766e":"#9ca3af"}/>
           <Text style={[s.contactBtnText,contactId?{color:"#0f766e"}:null]} numberOfLines={1}>{contactName??"Select Contact"}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={s.searchBar}>
-        <Text style={{color:"#94a3b8",marginRight:6}}>🔍</Text>
-        <TextInput value={search} onChangeText={setSearch} placeholder="Search tasks…" placeholderTextColor="#94a3b8" style={s.searchBarInput}/>
-        {!!search && <TouchableOpacity onPress={()=>setSearch("")}><Text style={{color:"#94a3b8"}}>✕</Text></TouchableOpacity>}
+        <Ionicons name="search-outline" size={16} color="#9ca3af" style={{marginRight:6}}/>
+        <TextInput value={search} onChangeText={setSearch} placeholder="Search tasks…" placeholderTextColor="#9ca3af" style={s.searchBarInput}/>
+        {!!search && <TouchableOpacity onPress={()=>setSearch("")} hitSlop={{top:10,bottom:10,left:10,right:10}}><Ionicons name="close-circle" size={16} color="#9ca3af"/></TouchableOpacity>}
       </View>
 
       {(apiLoading||filterLoading) && <View style={{alignItems:"center",paddingVertical:4}}><ActivityIndicator size="small" color="#0f766e"/></View>}
@@ -566,10 +573,10 @@ export default function TaskKanbanScreen() {
 
       {!contactId&&!activeFilter&&!apiLoading ? (
         <View style={s.emptyState}>
-          <Text style={s.emptyStateIcon}>📋</Text>
+          <View style={s.emptyStateIconWrap}><Ionicons name="clipboard-outline" size={34} color="#0f766e"/></View>
           <Text style={s.emptyStateTitle}>Select a Contact</Text>
           <Text style={s.emptyStateSub}>Pick a contact or use a filter above to load tasks</Text>
-          <TouchableOpacity onPress={()=>setContactModal(true)} style={s.cta}><Text style={s.ctaText}>Choose Contact →</Text></TouchableOpacity>
+          <TouchableOpacity onPress={()=>setContactModal(true)} style={s.cta}><Text style={s.ctaText}>Choose Contact</Text><Ionicons name="arrow-forward" size={15} color="#fff" style={{marginLeft:6}}/></TouchableOpacity>
         </View>
       ) : (
         <ScrollView style={{flex:1}}>
@@ -639,7 +646,12 @@ const s = StyleSheet.create({
   dateText: { fontSize:10, color:"#94a3b8" },
   dot: { width:7, height:7, borderRadius:4 },
   emptyState: { flex:1, alignItems:"center", justifyContent:"center", gap:12, padding:32 },
-  emptyStateIcon: { fontSize:56 },
+  emptyStateIconWrap: {
+    width: 68, height: 68, borderRadius: 34,
+    backgroundColor: "#f0fdfa",
+    alignItems: "center", justifyContent: "center",
+    marginBottom: 4,
+  },
   emptyStateTitle: { fontSize:22, fontWeight:"800", color:"#0f172a", textAlign:"center" },
   emptyStateSub: { fontSize:13, color:"#64748b", textAlign:"center", lineHeight:20 },
   cta: { marginTop:8, paddingHorizontal:24, paddingVertical:12, borderRadius:12, backgroundColor:"#0f766e" },
