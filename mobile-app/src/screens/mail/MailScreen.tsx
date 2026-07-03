@@ -361,9 +361,6 @@ export default function MailScreen({ navigation }: any) {
           placeholderTextColor="#94a3b8"
           returnKeyType="search"
         />
-        <TouchableOpacity onPress={() => setComposeOpen(true)} style={styles.composeBtn}>
-          <Text style={styles.composeBtnText}>Compose</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Folder tabs */}
@@ -405,7 +402,7 @@ export default function MailScreen({ navigation }: any) {
         onRefresh={onRefresh}
         onEndReached={loadMore}
         onEndReachedThreshold={0.3}
-        contentContainerStyle={emails.length === 0 ? styles.emptyContainer : { paddingBottom: 16 }}
+        contentContainerStyle={emails.length === 0 ? styles.emptyContainer : { paddingBottom: 96 }}
         ListEmptyComponent={<Text style={styles.emptyText}>No emails found.</Text>}
         ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color="#0f766e" /> : null}
         renderItem={({ item }) => {
@@ -413,46 +410,64 @@ export default function MailScreen({ navigation }: any) {
           const unread = isInbound && !item.readAt;
           const contact = isInbound ? item.fromEmail : item.toEmail;
 
+          const snippet = (item.body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          const avatarPalette = [
+            { bg: "#fee2e2", fg: "#dc2626" },
+            { bg: "#ffedd5", fg: "#ea580c" },
+            { bg: "#fef3c7", fg: "#d97706" },
+            { bg: "#dcfce7", fg: "#16a34a" },
+            { bg: "#ccfbf1", fg: "#0f766e" },
+            { bg: "#dbeafe", fg: "#2563eb" },
+            { bg: "#ede9fe", fg: "#7c3aed" },
+            { bg: "#fce7f3", fg: "#db2777" },
+          ];
+          const hue = avatarPalette[(contact || "?").charCodeAt(0) % avatarPalette.length];
+
           return (
             <TouchableOpacity
-              activeOpacity={0.75}
+              activeOpacity={0.6}
               onPress={() => navigation?.navigate("MailDetail", { emailId: item.id })}
             >
               <View style={[styles.card, unread && styles.cardUnread]}>
                 <View style={styles.cardRow}>
-                  {/* Avatar */}
-                  <View style={[styles.avatar, { backgroundColor: isInbound ? "#dbeafe" : "#d1fae5" }]}>
-                    <Text style={[styles.avatarText, { color: isInbound ? "#3b82f6" : "#0f766e" }]}>
-                      {initials(contact)}
+                  {/* Gmail-style colored letter avatar */}
+                  <View style={[styles.avatar, { backgroundColor: hue.bg }]}>
+                    <Text style={[styles.avatarText, { color: hue.fg }]}>
+                      {initials(contact)[0] ?? "?"}
                     </Text>
                   </View>
 
                   {/* Content */}
                   <View style={styles.cardContent}>
                     <View style={styles.cardTopRow}>
-                      <View style={styles.cardTopLeft}>
-                        {unread && <View style={styles.unreadDot} />}
-                        <Text style={[styles.contactText, unread && styles.bold]} numberOfLines={1}>
-                          {contact || (isInbound ? "Unknown sender" : "Unknown recipient")}
-                        </Text>
-                      </View>
-                      <Text style={styles.dateText}>{shortDate(item.createdAt)}</Text>
+                      <Text
+                        style={[styles.contactText, unread ? styles.contactUnread : styles.contactRead]}
+                        numberOfLines={1}
+                      >
+                        {contact || (isInbound ? "Unknown sender" : "Unknown recipient")}
+                      </Text>
+                      <Text style={[styles.dateText, unread && styles.dateUnread]}>
+                        {shortDate(item.createdAt)}
+                      </Text>
                     </View>
-                    <Text style={[styles.subjectText, unread && styles.bold]} numberOfLines={1}>
+                    <Text
+                      style={[styles.subjectText, unread ? styles.subjectUnread : styles.subjectRead]}
+                      numberOfLines={1}
+                    >
                       {item.subject || "(No subject)"}
                     </Text>
-                    <View style={styles.badgeRow}>
-                      <View style={[styles.badge, { backgroundColor: isInbound ? "#dbeafe" : "#ccfbf1" }]}>
-                        <Text style={[styles.badgeText, { color: isInbound ? "#3b82f6" : "#0f766e" }]}>
-                          {isInbound ? "Inbox" : "Sent"}
+                    {(!!snippet || item.status === "FAILED" || !isInbound) && (
+                      <View style={styles.snippetRow}>
+                        <Text style={styles.snippetText} numberOfLines={1}>
+                          {snippet || (isInbound ? "" : "You sent this email")}
                         </Text>
+                        {item.status === "FAILED" && (
+                          <View style={styles.failedBadge}>
+                            <Text style={styles.failedBadgeText}>Failed</Text>
+                          </View>
+                        )}
                       </View>
-                      {item.status === "FAILED" && (
-                        <View style={[styles.badge, { backgroundColor: "#fee2e2", marginLeft: 6 }]}>
-                          <Text style={[styles.badgeText, { color: "#ef4444" }]}>Failed</Text>
-                        </View>
-                      )}
-                    </View>
+                    )}
                   </View>
                 </View>
               </View>
@@ -460,6 +475,16 @@ export default function MailScreen({ navigation }: any) {
           );
         }}
       />
+
+      {/* Gmail-style compose FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setComposeOpen(true)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabIcon}>✏️</Text>
+        <Text style={styles.fabLabel}>Compose</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -467,7 +492,7 @@ export default function MailScreen({ navigation }: any) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fb" },
+  container: { flex: 1, backgroundColor: "#fff" },
 
   // Search + compose
   searchRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10 },
@@ -476,14 +501,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 16, letterSpacing: Platform.OS === "ios" ? -0.32 : 0, color: "#111827",
   },
-  composeBtn: {
-    backgroundColor: "#0f766e", borderRadius: 20, paddingHorizontal: 16, height: 40, justifyContent: "center",
-    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 3,
+  fab: {
+    position: "absolute",
+    right: 16,
+    bottom: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    height: 56,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  composeBtnText: {
-    color: "#fff", fontWeight: "600", fontSize: 14,
+  fabIcon: { fontSize: 18 },
+  fabLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#0f766e",
+    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
-    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
 
   // Folder tabs
@@ -518,31 +559,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(60,60,67,0.12)",
   },
-  cardUnread: { backgroundColor: "#fbfefd" },
+  cardUnread: { backgroundColor: "#fff" },
   cardRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  avatar: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
   avatarText: {
-    fontSize: 15, fontWeight: "600",
+    fontSize: 19, fontWeight: "600",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
   cardContent: { flex: 1 },
   cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
   cardTopLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, marginRight: 8 },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0f766e" },
   contactText: {
-    fontSize: 15, color: "#111827", flex: 1, fontWeight: "600",
-    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
+    fontSize: 16, flex: 1, marginRight: 8,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  contactUnread: {
+    color: "#111827", fontWeight: "700",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  dateText: { fontSize: 13, color: "#9ca3af", flexShrink: 0 },
+  contactRead: { color: "#4b5563", fontWeight: "400" },
+  dateText: { fontSize: 12, color: "#6b7280", flexShrink: 0 },
+  dateUnread: { color: "#0f766e", fontWeight: "700" },
   subjectText: {
-    fontSize: 15, color: "#374151", marginBottom: 4, lineHeight: 20,
-    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
+    fontSize: 14.5, lineHeight: 19, marginBottom: 1,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
-  bold: { fontWeight: "700", color: "#111827" },
-  badgeRow: { flexDirection: "row", alignItems: "center" },
-  badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2.5 },
-  badgeText: { fontSize: 11, fontWeight: "600" },
+  subjectUnread: {
+    color: "#111827", fontWeight: "600",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  subjectRead: { color: "#4b5563", fontWeight: "400" },
+  snippetRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  snippetText: { flex: 1, fontSize: 14, color: "#9ca3af", lineHeight: 19 },
+  failedBadge: { backgroundColor: "#fee2e2", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
+  failedBadgeText: { fontSize: 11, fontWeight: "700", color: "#dc2626" },
 
   // Banners
   successBanner: { backgroundColor: "#d1fae5", paddingHorizontal: 16, paddingVertical: 10 },

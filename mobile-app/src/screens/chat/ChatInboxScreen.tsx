@@ -65,7 +65,9 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
           <Text style={[styles.name, (item.unreadCount ?? 0) > 0 && styles.nameBold]} numberOfLines={1}>
             {item.contactName}
           </Text>
-          <Text style={styles.time}>{timeAgo(item.lastMessageAt)}</Text>
+          <Text style={[styles.time, (item.unreadCount ?? 0) > 0 && styles.timeUnread]}>
+            {timeAgo(item.lastMessageAt)}
+          </Text>
         </View>
         <Text style={[styles.preview, (item.unreadCount ?? 0) > 0 && styles.previewBold]} numberOfLines={1}>
           {item.lastMessage || "No messages yet"}
@@ -402,6 +404,7 @@ const styles = StyleSheet.create({
   },
   nameBold: { fontWeight: "700" },
   time: { fontSize: 13, color: "#9ca3af", marginLeft: 8 },
+  timeUnread: { color: "#0f766e", fontWeight: "700" },
   preview: {
     fontSize: 14.5,
     color: "#8e8e93",

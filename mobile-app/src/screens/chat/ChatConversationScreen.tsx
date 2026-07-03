@@ -87,9 +87,9 @@ function messageTime(m?: Message): number {
 
 function StatusTick({ status }: { status?: string }) {
   const s = (status ?? "").toUpperCase();
-  if (s === "READ") return <Text style={[styles.statusIcon, { color: "#38bdf8" }]}> ✓✓</Text>;
-  if (s === "DELIVERED") return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.8)" }]}> ✓✓</Text>;
-  return <Text style={[styles.statusIcon, { color: "rgba(255,255,255,0.55)" }]}> ✓</Text>;
+  if (s === "READ") return <Text style={[styles.statusIcon, { color: "#53bdeb" }]}> ✓✓</Text>;
+  if (s === "DELIVERED") return <Text style={[styles.statusIcon, { color: "#8696a0" }]}> ✓✓</Text>;
+  return <Text style={[styles.statusIcon, { color: "#8696a0" }]}> ✓</Text>;
 }
 
 function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
@@ -107,7 +107,7 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
     <View style={styles.mediaFile}>
       <Text style={{ fontSize: 22 }}>{emoji}</Text>
       <Text
-        style={[styles.mediaFileName, isOut && { color: "rgba(255,255,255,0.85)" }]}
+        style={[styles.mediaFileName, isOut && { color: "#3b4a54" }]}
         numberOfLines={1}
       >
         {message.mediaFileName || "Attachment"}
@@ -1142,29 +1142,31 @@ export default function ChatConversationScreen({ route }: Props) {
           </View>
         )}
 
-        {/* Input bar */}
+        {/* Input bar — WhatsApp style: white pill with actions inside */}
         <View style={styles.inputBar}>
-          <TouchableOpacity
-            style={styles.attachBtn}
-            onPress={() => setAttachOpen(true)}
-          >
-            <Text style={styles.attachIcon}>＋</Text>
-          </TouchableOpacity>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message…"
-            placeholderTextColor="#94a3b8"
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={4096}
-          />
-          <TouchableOpacity
-            style={[styles.aiToggleBtn, aiPanelOpen && styles.aiToggleBtnActive]}
-            onPress={() => setAiPanelOpen((v) => !v)}
-          >
-            <Text style={styles.aiToggleIcon}>✨</Text>
-          </TouchableOpacity>
+          <View style={styles.inputPill}>
+            <TextInput
+              style={styles.input}
+              placeholder="Message"
+              placeholderTextColor="#8696a0"
+              value={text}
+              onChangeText={setText}
+              multiline
+              maxLength={4096}
+            />
+            <TouchableOpacity
+              style={[styles.pillIconBtn, aiPanelOpen && styles.pillIconBtnActive]}
+              onPress={() => setAiPanelOpen((v) => !v)}
+            >
+              <Text style={styles.pillIcon}>✨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.pillIconBtn}
+              onPress={() => setAttachOpen(true)}
+            >
+              <Text style={styles.attachIcon}>📎</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={[
               styles.sendBtn,
@@ -1215,11 +1217,11 @@ export default function ChatConversationScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#eef2f5" },
+  root: { flex: 1, backgroundColor: "#efeae2" },
   messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8 },
   dateSep: {
     alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "#ffffff",
     borderRadius: 99,
     paddingHorizontal: 14,
     paddingVertical: 5,
@@ -1241,46 +1243,46 @@ const styles = StyleSheet.create({
   bubbleRowIn: { alignItems: "flex-start" },
   bubbleRowOut: { alignItems: "flex-end" },
   bubble: {
-    maxWidth: "80%",
-    borderRadius: 18,
-    paddingHorizontal: 13,
-    paddingTop: 8,
-    paddingBottom: 6,
-    gap: 2,
+    maxWidth: "82%",
+    borderRadius: 13,
+    paddingHorizontal: 9,
+    paddingTop: 6,
+    paddingBottom: 5,
+    gap: 1,
   },
   bubbleIn: {
     backgroundColor: "#ffffff",
-    borderBottomLeftRadius: 5,
-    shadowColor: "#0f172a",
+    borderTopLeftRadius: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1.5,
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
     elevation: 1,
   },
   bubbleOut: {
-    backgroundColor: "#0f766e",
-    borderBottomRightRadius: 5,
-    shadowColor: "#0f766e",
+    backgroundColor: "#d9fdd3",
+    borderTopRightRadius: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
     elevation: 1,
   },
   bubbleText: {
     fontSize: 16,
-    color: "#111827",
+    color: "#111b21",
     lineHeight: 22,
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
   },
-  bubbleTextOut: { color: "#fff" },
+  bubbleTextOut: { color: "#111b21" },
   bubbleMeta: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-end",
     marginTop: 1,
   },
-  bubbleTime: { fontSize: 11, color: "#9ca3af", letterSpacing: 0.1 },
-  bubbleTimeOut: { color: "rgba(255,255,255,0.7)" },
+  bubbleTime: { fontSize: 11, color: "#667781", letterSpacing: 0.1 },
+  bubbleTimeOut: { color: "#667781" },
   statusIcon: { fontSize: 11 },
   mediaImage: { width: 230, height: 172, borderRadius: 12, marginBottom: 4 },
   mediaFile: {
@@ -1301,62 +1303,64 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 8 : 10,
-    backgroundColor: "#f8f9fb",
+    paddingTop: 6,
+    paddingBottom: Platform.OS === "ios" ? 6 : 8,
+    backgroundColor: "transparent",
     gap: 6,
   },
-  attachBtn: {
+  inputPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    paddingLeft: 6,
+    paddingRight: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1.5,
+    elevation: 1,
+    minHeight: 48,
+  },
+  input: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: Platform.OS === "ios" ? 13 : 11,
+    paddingBottom: Platform.OS === "ios" ? 13 : 11,
+    fontSize: 16,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    color: "#111b21",
+    maxHeight: 110,
+  },
+  pillIconBtn: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
   },
-  attachIcon: { fontSize: 26, color: "#0f766e", lineHeight: 30, fontWeight: "300" },
-  input: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === "ios" ? 11 : 9,
-    paddingBottom: Platform.OS === "ios" ? 11 : 9,
-    fontSize: 16,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
-    color: "#111827",
-    maxHeight: 110,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(60,60,67,0.15)",
-  },
+  pillIconBtnActive: { opacity: 1 },
+  pillIcon: { fontSize: 19 },
+  attachIcon: { fontSize: 19, color: "#54656f" },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#0f766e",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#0f766e",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
   },
   sendBtnDisabled: {
-    backgroundColor: "#d1d5db",
+    backgroundColor: "#0f766e",
+    opacity: 0.45,
     shadowOpacity: 0,
     elevation: 0,
   },
-  sendIcon: { color: "#fff", fontSize: 17, marginLeft: 2 },
-  aiPanelWrap: { paddingHorizontal: 10, paddingBottom: 6, backgroundColor: "#f8f9fb" },
-  aiToggleBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  aiToggleBtnActive: {
-    backgroundColor: "#ccfbf1",
-  },
-  aiToggleIcon: { fontSize: 19 },
+  sendIcon: { color: "#fff", fontSize: 19, marginLeft: 2 },
+  aiPanelWrap: { paddingHorizontal: 10, paddingBottom: 6 },
 });
