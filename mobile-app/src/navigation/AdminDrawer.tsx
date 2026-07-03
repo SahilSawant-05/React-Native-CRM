@@ -54,7 +54,11 @@ const DRAWER_WIDTH = Math.min(Dimensions.get("window").width * 0.82, 310);
 const HEADER_OPTS = {
   headerStyle: { backgroundColor: "#fff" },
   headerTintColor: "#0f766e",
-  headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
+  headerTitleStyle: {
+    fontWeight: "600" as const,
+    fontSize: 17,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
   headerShadowVisible: false,
 };
 
@@ -382,8 +386,9 @@ const styles = StyleSheet.create({
   emailText: { fontSize: 12, color: "#64748b", marginTop: 2 },
   divider: { height: 1, backgroundColor: "#f1f5f9" },
   sectionTitle: {
-    fontSize: 10, fontWeight: "700", color: "#94a3b8",
-    letterSpacing: 1.5, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4,
+    fontSize: 11, fontWeight: "600", color: "#9ca3af",
+    letterSpacing: 1.2, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 5,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
   navItem: {
     flexDirection: "row", alignItems: "center", gap: 12,
@@ -392,7 +397,7 @@ const styles = StyleSheet.create({
   },
   navItemActive: { backgroundColor: "#f0fdfa" },
   navEmoji: { fontSize: 18, width: 24, textAlign: "center" },
-  navLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#475569" },
+  navLabel: { flex: 1, fontSize: 15, fontWeight: "600", color: "#374151", letterSpacing: Platform.OS === "ios" ? -0.24 : 0, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   navLabelActive: { color: "#0f766e", fontWeight: "700" },
   activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0f766e" },
   signOutRow: {

@@ -467,55 +467,82 @@ export default function MailScreen({ navigation }: any) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#f8f9fb" },
 
   // Search + compose
-  searchRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+  searchRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10 },
   searchInput: {
-    flex: 1, height: 40, backgroundColor: "#fff", borderRadius: 20,
-    borderWidth: 1, borderColor: "#e2e8f0", paddingHorizontal: 16,
-    fontSize: 14, color: "#1e293b",
+    flex: 1, height: 40, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 16, letterSpacing: Platform.OS === "ios" ? -0.32 : 0, color: "#111827",
   },
-  composeBtn: { backgroundColor: "#0f766e", borderRadius: 20, paddingHorizontal: 16, height: 40, justifyContent: "center" },
-  composeBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  composeBtn: {
+    backgroundColor: "#0f766e", borderRadius: 20, paddingHorizontal: 16, height: 40, justifyContent: "center",
+    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 3,
+  },
+  composeBtnText: {
+    color: "#fff", fontWeight: "600", fontSize: 14,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
 
   // Folder tabs
   tabsScroll: { flexGrow: 0 },
-  tabs: { paddingHorizontal: 12, paddingVertical: 7, gap: 8, flexDirection: "row" },
-  tab: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: "#e2e8f0"},
+  tabs: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, flexDirection: "row" },
+  tab: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 7, borderRadius: 99, backgroundColor: "rgba(118,118,128,0.08)" },
   tabActive: { backgroundColor: "#0f766e" },
-  tabText: { fontSize: 13, fontWeight: "600", color: "#475569" },
+  tabText: {
+    fontSize: 14, fontWeight: "600", color: "#4b5563",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
   tabTextActive: { color: "#fff" },
-  tabCountPill: { marginLeft: 6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#cbd5e1", alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  tabCountPill: { marginLeft: 6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(60,60,67,0.12)", alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   tabCountPillActive: { backgroundColor: "rgba(255,255,255,0.25)" },
-  tabCountText: { fontSize: 11, fontWeight: "700", color: "#475569" },
+  tabCountText: { fontSize: 11, fontWeight: "700", color: "#4b5563" },
   tabCountTextActive: { color: "#fff" },
 
   // Count
   countRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 6 },
-  countText: { fontSize: 12, color: "#94a3b8", fontWeight: "500" },
+  countText: { fontSize: 12, color: "#9ca3af", fontWeight: "500" },
 
   // List
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 15, color: "#94a3b8", marginTop: 40 },
+  emptyText: { fontSize: 15, color: "#9ca3af", marginTop: 40 },
 
-  // Card
-  card: { backgroundColor: "#fff", marginHorizontal: 16, marginBottom: 8, borderRadius: 14, padding: 14, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3 },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: "#0f766e" },
+  // Row (native list style — full-bleed rows with hairline separators)
+  card: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.12)",
+  },
+  cardUnread: { backgroundColor: "#fbfefd" },
   cardRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 13, fontWeight: "800" },
+  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  avatarText: {
+    fontSize: 15, fontWeight: "600",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
   cardContent: { flex: 1 },
-  cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 3 },
+  cardTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
   cardTopLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, marginRight: 8 },
-  unreadDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#0f766e" },
-  contactText: { fontSize: 13, color: "#475569", flex: 1 },
-  dateText: { fontSize: 11, color: "#94a3b8", flexShrink: 0 },
-  subjectText: { fontSize: 14, color: "#1e293b", marginBottom: 6 },
-  bold: { fontWeight: "700" },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0f766e" },
+  contactText: {
+    fontSize: 15, color: "#111827", flex: 1, fontWeight: "600",
+    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  dateText: { fontSize: 13, color: "#9ca3af", flexShrink: 0 },
+  subjectText: {
+    fontSize: 15, color: "#374151", marginBottom: 4, lineHeight: 20,
+    letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
+  },
+  bold: { fontWeight: "700", color: "#111827" },
   badgeRow: { flexDirection: "row", alignItems: "center" },
-  badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 11, fontWeight: "700" },
+  badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2.5 },
+  badgeText: { fontSize: 11, fontWeight: "600" },
 
   // Banners
   successBanner: { backgroundColor: "#d1fae5", paddingHorizontal: 16, paddingVertical: 10 },
@@ -523,18 +550,50 @@ const styles = StyleSheet.create({
 
   // Modal
   modalSafe: { flex: 1, backgroundColor: "#fff" },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
-  modalTitle: { fontSize: 18, fontWeight: "800", color: "#0f172a" },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.15)",
+  },
+  modalTitle: {
+    fontSize: 17, fontWeight: "600", color: "#111827",
+    letterSpacing: Platform.OS === "ios" ? -0.4 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
   modalClose: { padding: 6 },
-  modalCloseText: { fontSize: 16, color: "#64748b" },
+  modalCloseText: { fontSize: 17, color: "#6b7280" },
   modalBody: { padding: 20, gap: 6 },
-  inputLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4, marginTop: 10 },
-  input: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: "#1e293b" },
-  textarea: { minHeight: 160, paddingTop: 12 },
-  modalFooter: { flexDirection: "row", gap: 10, padding: 20, borderTopWidth: 1, borderTopColor: "#e2e8f0" },
-  btnPrimary: { flex: 1, backgroundColor: "#0f766e", borderRadius: 10, paddingVertical: 13, alignItems: "center" },
-  btnPrimaryText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  btnSecondary: { flex: 1, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingVertical: 13, alignItems: "center" },
-  btnSecondaryText: { color: "#475569", fontWeight: "600", fontSize: 14 },
+  inputLabel: {
+    fontSize: 13, fontWeight: "600", color: "#6b7280",
+    marginBottom: 6, marginTop: 12,
+    letterSpacing: Platform.OS === "ios" ? -0.08 : 0.2,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  input: {
+    backgroundColor: "rgba(118,118,128,0.06)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)",
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 16, letterSpacing: Platform.OS === "ios" ? -0.32 : 0, color: "#111827",
+  },
+  textarea: { minHeight: 170, paddingTop: 12, lineHeight: 22 },
+  modalFooter: {
+    flexDirection: "row", gap: 10, padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.15)",
+  },
+  btnPrimary: {
+    flex: 1, backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 14, alignItems: "center",
+    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 3,
+  },
+  btnPrimaryText: {
+    color: "#fff", fontWeight: "600", fontSize: 16,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  btnSecondary: { flex: 1, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  btnSecondaryText: {
+    color: "#374151", fontWeight: "600", fontSize: 16,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
   btnDisabled: { opacity: 0.5 },
 });
