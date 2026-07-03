@@ -9,12 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import RenderHtml from "react-native-render-html";
+import { WebView } from "react-native-webview";
 import api from "../../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,11 +83,64 @@ function extractList(data: any): EmailLog[] {
   return [];
 }
 
+// ─── Email HTML body (Gmail approach: a self-sizing WebView) ─────────────────
+// RenderHtml chokes on real-world marketing emails (nested tables, CSS,
+// tracker images). A WebView renders them exactly like Gmail does, loads
+// remote images, and the injected script reports the content height so
+// the WebView fits inside the outer ScrollView without its own scrolling.
+
+function EmailWebView({ html }: { html: string }) {
+  const [height, setHeight] = useState(200);
+
+  const doc = `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  html, body { margin:0; padding:0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.55; color: #374151;
+    word-wrap: break-word; overflow-x: hidden;
+  }
+  img { max-width: 100% !important; height: auto !important; }
+  table { max-width: 100% !important; height: auto !important; }
+  * { box-sizing: border-box; }
+  a { color: #0f766e; }
+  blockquote { border-left: 3px solid #0f766e; margin-left: 0; padding-left: 12px; color: #6b7280; }
+</style></head><body>${html}
+<script>
+  function post() {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(String(document.documentElement.scrollHeight));
+    }
+  }
+  window.addEventListener("load", post);
+  setTimeout(post, 250);
+  setTimeout(post, 1000);
+  setTimeout(post, 2500);
+</script></body></html>`;
+
+  return (
+    <WebView
+      source={{ html: doc }}
+      originWhitelist={["*"]}
+      scrollEnabled={false}
+      javaScriptEnabled
+      domStorageEnabled
+      mixedContentMode="always"
+      androidLayerType="software"
+      setSupportMultipleWindows={false}
+      style={{ height, backgroundColor: "transparent", opacity: 0.99 }}
+      onMessage={(e: any) => {
+        const h = Number(e.nativeEvent.data);
+        if (Number.isFinite(h) && h > 0 && Math.abs(h - height) > 4) setHeight(h + 16);
+      }}
+    />
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MailDetailScreen({ route, navigation }: any) {
-  const { width } = useWindowDimensions();
-
   const rawId = route?.params?.emailId;
   const emailId: number | undefined =
     rawId !== undefined && rawId !== null && rawId !== ""
@@ -271,7 +323,6 @@ export default function MailDetailScreen({ route, navigation }: any) {
   // ── Derived values ─────────────────────────────────────────────────────────
   const isInbound = email.direction === "INBOUND";
   const contact   = isInbound ? email.fromEmail : email.toEmail;
-  const htmlContentWidth = width - 32;
 
   // ── Render: email ──────────────────────────────────────────────────────────
   return (
@@ -336,30 +387,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
           <View style={styles.bodyCard}>
             {email.body ? (
               isHtml(email.body) ? (
-                <RenderHtml
-                  contentWidth={htmlContentWidth}
-                  source={{ html: sanitizeEmailHtml(email.body) }}
-                  tagsStyles={{
-                    body:       { margin: 0, padding: 0 },
-                    div:        { maxWidth: htmlContentWidth },
-                    p:          { fontSize: 14, color: "#374151", lineHeight: 21, marginTop: 0, marginBottom: 8 },
-                    a:          { color: "#0f766e", textDecorationLine: "underline" },
-                    h1:         { fontSize: 20, color: "#0f172a", fontWeight: "700" },
-                    h2:         { fontSize: 17, color: "#0f172a", fontWeight: "700" },
-                    h3:         { fontSize: 15, color: "#0f172a", fontWeight: "600" },
-                    ul:         { paddingLeft: 16 },
-                    ol:         { paddingLeft: 16 },
-                    li:         { fontSize: 14, color: "#334155", lineHeight: 22 },
-                    blockquote: { borderLeftWidth: 3, borderLeftColor: "#0f766e", paddingLeft: 12, marginLeft: 0, color: "#64748b", fontStyle: "italic" },
-                    pre:        { backgroundColor: "#f1f5f9", padding: 10, borderRadius: 6 },
-                    code:       { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 13, color: "#0f172a", backgroundColor: "#f1f5f9" },
-                    img:        { maxWidth: htmlContentWidth },
-                    table:      { borderWidth: 1, borderColor: "#e2e8f0" },
-                    th:         { backgroundColor: "#f8fafc", padding: 8, fontWeight: "700", fontSize: 13 },
-                    td:         { padding: 8, fontSize: 13, color: "#334155" },
-                  }}
-                  baseStyle={{ fontSize: 14, color: "#374151", lineHeight: 21 }}
-                />
+                <EmailWebView html={sanitizeEmailHtml(email.body)} />
               ) : (
                 <Text style={styles.bodyText}>{email.body}</Text>
               )

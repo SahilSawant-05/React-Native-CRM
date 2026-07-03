@@ -47,37 +47,38 @@ function timeAgo(dateStr?: string) {
 function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
   const initials = (item.contactName || "?")
     .split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  const unread = (item.unreadCount ?? 0) > 0;
 
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.avatarWrap}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-        {(item.unreadCount ?? 0) > 0 && (
-          <View style={styles.unreadDot}>
-            <Text style={styles.unreadCount}>{item.unreadCount}</Text>
-          </View>
-        )}
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{initials}</Text>
       </View>
 
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text style={[styles.name, (item.unreadCount ?? 0) > 0 && styles.nameBold]} numberOfLines={1}>
+          <Text style={styles.name} numberOfLines={1}>
             {item.contactName}
           </Text>
-          <Text style={[styles.time, (item.unreadCount ?? 0) > 0 && styles.timeUnread]}>
+          <Text style={[styles.time, unread && styles.timeUnread]}>
             {timeAgo(item.lastMessageAt)}
           </Text>
         </View>
-        <Text style={[styles.preview, (item.unreadCount ?? 0) > 0 && styles.previewBold]} numberOfLines={1}>
-          {item.lastMessage || "No messages yet"}
-        </Text>
-        {!!item.status && (
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>{item.status}</Text>
-          </View>
-        )}
+        <View style={styles.rowBottom}>
+          <Text
+            style={[styles.preview, unread && styles.previewBold]}
+            numberOfLines={1}
+          >
+            {item.lastMessage || "No messages yet"}
+          </Text>
+          {unread && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadCount}>
+                {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -324,51 +325,53 @@ export default function ChatInboxScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
   searchWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 8,
     backgroundColor: "#fff",
   },
   searchInput: {
-    backgroundColor: "rgba(118,118,128,0.08)",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    backgroundColor: "#f0f2f5",
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 9 : 7,
     fontSize: 15,
     letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
-    color: "#111827",
+    color: "#111b21",
   },
   filterWrap: {},
-  filters: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  filters: { paddingHorizontal: 12, paddingBottom: 8, gap: 8 },
+  // WhatsApp filter chips: soft grey default, soft green when active
   chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 99,
-    backgroundColor: "rgba(118,118,128,0.08)",
+    backgroundColor: "#f0f2f5",
   },
-  chipActive: { backgroundColor: "#0f766e" },
+  chipActive: { backgroundColor: "#d9fdd3" },
   chipText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#4b5563",
-    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+    fontWeight: "500",
+    color: "#54656f",
+    letterSpacing: Platform.OS === "ios" ? -0.08 : 0,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  chipTextActive: { color: "#fff" },
+  chipTextActive: { color: "#15603e", fontWeight: "600" },
+
+  // Row — WhatsApp anatomy: avatar · (name+time / preview+badge)
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: "#fff",
-    gap: 14,
+    gap: 13,
   },
-  avatarWrap: { position: "relative" },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: "#ccfbf1",
+    backgroundColor: "#d9fdd3",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -378,62 +381,51 @@ const styles = StyleSheet.create({
     color: "#0f766e",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  unreadDot: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    backgroundColor: "#0f766e",
+  rowBody: { flex: 1, gap: 2 },
+  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  name: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111b21",
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    marginRight: 8,
+  },
+  time: { fontSize: 12, color: "#667781" },
+  timeUnread: { color: "#1daa61", fontWeight: "600" },
+  rowBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
+  preview: {
+    flex: 1,
+    fontSize: 13.5,
+    color: "#667781",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+    lineHeight: 18,
+  },
+  previewBold: { color: "#3b4a54", fontWeight: "500" },
+  // WhatsApp green unread counter, right side of the preview line
+  unreadBadge: {
+    backgroundColor: "#25d366",
     borderRadius: 99,
     minWidth: 20,
     height: 20,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 5,
-    borderWidth: 2,
-    borderColor: "#fff",
+    paddingHorizontal: 6,
   },
   unreadCount: { color: "#fff", fontSize: 11, fontWeight: "700" },
-  rowBody: { flex: 1 },
-  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  name: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    flex: 1,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
-    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
-  },
-  nameBold: { fontWeight: "700" },
-  time: { fontSize: 12, color: "#9ca3af", marginLeft: 8 },
-  timeUnread: { color: "#0f766e", fontWeight: "700" },
-  preview: {
-    fontSize: 13.5,
-    color: "#8e8e93",
-    marginTop: 3,
-    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
-    lineHeight: 19,
-  },
-  previewBold: { color: "#374151", fontWeight: "500" },
-  statusBadge: {
-    marginTop: 5,
-    alignSelf: "flex-start",
-    backgroundColor: "#f0fdf4",
-    borderRadius: 99,
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-  },
-  statusText: { fontSize: 11, color: "#15803d", fontWeight: "600" },
+
   separator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60,60,67,0.12)",
-    marginLeft: 80,
+    backgroundColor: "rgba(60,60,67,0.1)",
+    marginLeft: 77,
   },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: "700",
-    color: "#111827",
-    letterSpacing: Platform.OS === "ios" ? 0.35 : 0,
+    color: "#111b21",
+    letterSpacing: Platform.OS === "ios" ? 0.3 : 0,
   },
-  emptyDesc: { fontSize: 15, color: "#9ca3af" },
+  emptyDesc: { fontSize: 14, color: "#8696a0" },
 });
