@@ -43,6 +43,7 @@ const navSections = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/dashboard/setup", label: "Setup", icon: Settings },
       { to: "/dashboard/work-queue", label: "Work Queue", icon: ListTodo },
+      { to: "/dashboard/ai-work-queue", label: "AI Work Queue", icon: Bot },
       { to: "/dashboard/chat", label: "Chat", icon: MessageSquare },
       { to: "/dashboard/mail", label: "Mail", icon: Mail },
       { to: "/dashboard/task", label: "Tasks", icon: ListTodo },

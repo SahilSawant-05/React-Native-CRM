@@ -143,6 +143,7 @@ function ComposeModal({
 
           <AiAssistPanel
             contactId={composer.contactId || null}
+            opportunityId={composer.opportunityId || null}
             title="AI Email Assistant"
             contextPrompt={`Draft a professional CRM email.
 To: ${composer.toEmail || mergeData.contactEmail || ""}

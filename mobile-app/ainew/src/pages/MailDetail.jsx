@@ -201,6 +201,7 @@ export default function MailDetail() {
                 <div className="mb-3">
                   <AiAssistPanel
                     contactId={email.contactId || contact?.id || contact?._id || null}
+                    opportunityId={email.opportunityId || null}
                     title="AI Email Reply"
                     contextPrompt={`Summarize this email thread and suggest the best response.
 Subject: ${email.subject || ""}

@@ -20,6 +20,8 @@ export default function DuplicateCleanup() {
   const [targets, setTargets] = useState({});
   const [loading, setLoading] = useState(true);
   const [mergingKey, setMergingKey] = useState("");
+  const [aiLoadingKey, setAiLoadingKey] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -85,6 +87,24 @@ export default function DuplicateCleanup() {
     }
   };
 
+  const suggestMerge = async (group) => {
+    const key = groupKey(group);
+    setAiLoadingKey(key);
+    setError("");
+    try {
+      const response = await api.post("/api/ai/duplicate-merge-suggestion", {
+        duplicateType: group.duplicateType,
+        duplicateKey: group.duplicateKey,
+        contacts: group.contacts || [],
+      });
+      setAiSuggestions((current) => ({ ...current, [key]: response.data?.text || "No AI suggestion returned." }));
+    } catch (suggestError) {
+      setError(suggestError.response?.data?.message || suggestError.response?.data?.error || "AI merge suggestion failed.");
+    } finally {
+      setAiLoadingKey("");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -146,14 +166,28 @@ export default function DuplicateCleanup() {
                       ))}
                     </select>
                     <button
+                      type="button"
+                      onClick={() => suggestMerge(group)}
+                      disabled={aiLoadingKey === key}
+                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    >
+                      {aiLoadingKey === key ? "Asking AI..." : "AI Suggest"}
+                    </button>
+                    <button
                       onClick={() => mergeGroup(group)}
                       disabled={mergingKey === key || sourceCount === 0}
-                      className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                      className="w-full rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-indigo-300 sm:w-auto"
                     >
                       {mergingKey === key ? "Merging..." : `Merge ${sourceCount}`}
                     </button>
                   </div>
                 </div>
+
+                {aiSuggestions[key] && (
+                  <div className="mb-4 max-h-64 overflow-y-auto rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-sm leading-6 text-indigo-900 whitespace-pre-wrap break-words">
+                    {aiSuggestions[key]}
+                  </div>
+                )}
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">

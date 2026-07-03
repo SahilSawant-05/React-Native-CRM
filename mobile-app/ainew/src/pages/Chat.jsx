@@ -14,6 +14,7 @@ import {
   PanelRightOpen,
   Search,
   Send,
+  SlidersHorizontal,
   UserRound,
   X,
 } from "lucide-react";
@@ -368,6 +369,7 @@ export default function ChatApp() {
   const [activeCrmTab, setActiveCrmTab] = useState("contact");
   const [showCrmPanel, setShowCrmPanel] = useState(true);
   const [mobileCrmOpen, setMobileCrmOpen] = useState(false);
+  const [inboxFiltersOpen, setInboxFiltersOpen] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [updatingStage, setUpdatingStage] = useState(false);
   const [savingOpportunity, setSavingOpportunity] = useState(false);
@@ -396,8 +398,22 @@ export default function ChatApp() {
   }, [messages]);
 
   const filteredConversations = useMemo(() => {
-    return conversations;
-  }, [conversations]);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((conversation) => {
+      const searchable = [
+        conversation.contactName,
+        conversation.name,
+        conversation.contactPhone,
+        conversation.phone,
+        conversation.contactEmail,
+        conversation.email,
+        conversation.lastMessage,
+        conversation.lastMessageText,
+      ];
+      return searchable.some((value) => String(value || "").toLowerCase().includes(query));
+    });
+  }, [conversations, searchQuery]);
 
   const visibleMessages = useMemo(() => {
     const query = messageSearch.trim().toLowerCase();
@@ -1213,47 +1229,6 @@ export default function ChatApp() {
             </p>
           </div>
 
-          <div className="mb-3 grid shrink-0 gap-2">
-            <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700">
-              <input
-                type="checkbox"
-                checked={inboxFilters.assignedToMe}
-                onChange={(e) => setInboxFilters((current) => ({ ...current, assignedToMe: e.target.checked }))}
-              />
-              Assigned to me
-            </label>
-            <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700">
-              <input
-                type="checkbox"
-                checked={inboxFilters.unreadOnly}
-                onChange={(e) => setInboxFilters((current) => ({ ...current, unreadOnly: e.target.checked }))}
-              />
-              Unread only
-            </label>
-            <select
-              value={inboxFilters.status}
-              onChange={(e) => setInboxFilters((current) => ({ ...current, status: e.target.value }))}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="ALL">All statuses</option>
-              <option value="OPEN">Open</option>
-              <option value="CLOSED">Closed</option>
-            </select>
-          </div>
-
-          <div className="mb-3 shrink-0">
-            <DateRangeFilter
-              value={dateRange}
-              preset={datePreset}
-              onChange={(nextRange) => {
-                setDateRange(nextRange);
-                setInboxPageInfo((current) => ({ ...current, page: 0, hasNext: false }));
-              }}
-              onPresetChange={setDatePreset}
-              compact
-            />
-          </div>
-
           <label className="mb-4 flex shrink-0 items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 focus-within:ring-2 focus-within:ring-teal-500">
             <Search size={16} className="text-gray-400" />
             <input
@@ -1264,6 +1239,58 @@ export default function ChatApp() {
               className="w-full bg-transparent text-sm outline-none"
             />
           </label>
+
+          <button
+            type="button"
+            onClick={() => setInboxFiltersOpen((open) => !open)}
+            className="mb-3 flex shrink-0 items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:border-teal-200 hover:bg-teal-50"
+          >
+            <span className="inline-flex items-center gap-2">
+              <SlidersHorizontal size={16} className="text-teal-700" />
+              Filters
+            </span>
+            <span className="text-xs font-bold text-teal-700">{inboxFiltersOpen ? "Hide" : "Show"}</span>
+          </button>
+
+          {inboxFiltersOpen && (
+            <div className="mb-3 grid shrink-0 gap-2 rounded-2xl border border-gray-100 bg-gray-50 p-3">
+              <label className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={inboxFilters.assignedToMe}
+                  onChange={(e) => setInboxFilters((current) => ({ ...current, assignedToMe: e.target.checked }))}
+                />
+                Assigned to me
+              </label>
+              <label className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={inboxFilters.unreadOnly}
+                  onChange={(e) => setInboxFilters((current) => ({ ...current, unreadOnly: e.target.checked }))}
+                />
+                Unread only
+              </label>
+              <select
+                value={inboxFilters.status}
+                onChange={(e) => setInboxFilters((current) => ({ ...current, status: e.target.value }))}
+                className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="ALL">All statuses</option>
+                <option value="OPEN">Open</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+              <DateRangeFilter
+                value={dateRange}
+                preset={datePreset}
+                onChange={(nextRange) => {
+                  setDateRange(nextRange);
+                  setInboxPageInfo((current) => ({ ...current, page: 0, hasNext: false }));
+                }}
+                onPresetChange={setDatePreset}
+                compact
+              />
+            </div>
+          )}
 
           <div
             className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"

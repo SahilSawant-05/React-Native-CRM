@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, CheckCircle2, KeyRound, Sparkles, Wand2 } from "lucide-react";
+import { Bot, CheckCircle2, Eye, EyeOff, KeyRound, Sparkles, Wand2 } from "lucide-react";
 import api from "../api/axios";
 
 const PROVIDERS = [
@@ -47,15 +47,28 @@ const emptySettings = {
   model: "gpt-5.4-mini",
   active: false,
   hasApiKey: false,
+  maskSensitiveData: true,
+};
+
+const planFeatureEnabled = (plan, key) => {
+  if (!plan?.featuresJson) return false;
+  try {
+    const features = typeof plan.featuresJson === "string" ? JSON.parse(plan.featuresJson) : plan.featuresJson;
+    return Boolean(features?.[key]);
+  } catch {
+    return false;
+  }
 };
 
 export default function AiSettings() {
   const [settings, setSettings] = useState(emptySettings);
+  const [billingSummary, setBillingSummary] = useState(null);
   const [apiKey, setApiKey] = useState("");
   const [prompt, setPrompt] = useState("Write a friendly follow-up WhatsApp reply for a new real estate lead who asked for pricing.");
   const [result, setResult] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const selectedProvider = useMemo(
     () => PROVIDERS.find((provider) => provider.key === settings.provider) || PROVIDERS[0],
@@ -64,14 +77,27 @@ export default function AiSettings() {
 
   const modelOptions = MODEL_OPTIONS[selectedProvider.key] || [];
   const selectedModel = modelOptions.find((model) => model.value === settings.model) || modelOptions[0];
+  const currentPlan = useMemo(
+    () => (billingSummary?.plans || []).find((plan) => plan.planKey === billingSummary?.planKey) || null,
+    [billingSummary]
+  );
+  const aiAllowed = planFeatureEnabled(currentPlan, "ai");
+  const setupSteps = [
+    { label: "Choose provider", complete: Boolean(settings.provider) },
+    { label: "Select model", complete: Boolean(settings.model) },
+    { label: "Save API key", complete: Boolean(settings.hasApiKey || apiKey.trim()) },
+    { label: "Enable AI", complete: Boolean(settings.active) },
+  ];
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get("/api/ai/settings")
-      .then((response) => {
+    Promise.all([
+      api.get("/api/ai/settings"),
+      api.get("/api/billing/summary"),
+    ])
+      .then(([settingsResponse, billingResponse]) => {
         if (!cancelled) {
-          const nextSettings = { ...emptySettings, ...(response.data || {}) };
+          const nextSettings = { ...emptySettings, ...(settingsResponse.data || {}) };
           const provider = PROVIDERS.find((item) => item.key === nextSettings.provider) || PROVIDERS[0];
           const availableModels = MODEL_OPTIONS[provider.key] || [];
           const validModel = availableModels.some((model) => model.value === nextSettings.model);
@@ -80,6 +106,7 @@ export default function AiSettings() {
             provider: provider.key,
             model: validModel ? nextSettings.model : provider.defaultModel,
           });
+          setBillingSummary(billingResponse.data || null);
         }
       })
       .catch((error) => {
@@ -106,6 +133,7 @@ export default function AiSettings() {
         provider: settings.provider,
         model: settings.model,
         active: settings.active,
+        maskSensitiveData: settings.maskSensitiveData,
         apiKey: apiKey.trim() || null,
       });
       setSettings({ ...emptySettings, ...(response.data || {}) });
@@ -170,6 +198,26 @@ export default function AiSettings() {
           </div>
         </header>
 
+        <section className={`rounded-xl border p-4 shadow-sm ${
+          aiAllowed ? "border-teal-100 bg-teal-50 text-teal-900" : "border-amber-200 bg-amber-50 text-amber-900"
+        }`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-base font-black">
+                {aiAllowed ? "AI is available in your current plan" : "AI starts from Growth plan"}
+              </h2>
+              <p className="mt-1 text-sm font-semibold leading-6">
+                {aiAllowed
+                  ? "AI Summary, AI Reply, and AI Recommendation are enabled after setup. Each successful action uses 0.25 credits."
+                  : "Upgrade to Growth or higher to use AI Summary, AI Reply, and AI Recommendation across CRM screens."}
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-black">
+              Current plan: {billingSummary?.planKey || "STARTER"}
+            </span>
+          </div>
+        </section>
+
         {message && (
           <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">
             {message}
@@ -210,6 +258,15 @@ export default function AiSettings() {
               <KeyRound size={18} className="text-teal-700" />
               <h2 className="text-lg font-black">{selectedProvider.name} configuration</h2>
             </div>
+            <div className="mb-5 grid gap-2 sm:grid-cols-4">
+              {setupSteps.map((step, index) => (
+                <div key={step.label} className={`rounded-lg border px-3 py-2 text-xs font-black ${
+                  step.complete ? "border-teal-200 bg-teal-50 text-teal-800" : "border-slate-200 bg-slate-50 text-slate-500"
+                }`}>
+                  {index + 1}. {step.label}
+                </div>
+              ))}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Model</span>
@@ -230,13 +287,33 @@ export default function AiSettings() {
               </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">API key</span>
-                <input
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder={settings.hasApiKey ? "Saved. Enter new key to replace" : "Paste provider API key"}
-                  type="password"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                />
+                <div className="relative">
+                  <input
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder={settings.hasApiKey ? "••••••••••••••••••••••••  Saved key" : "Paste provider API key"}
+                    type={showApiKey ? "text" : "password"}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-11 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey((current) => !current)}
+                    disabled={!apiKey}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={showApiKey ? "Hide typed key" : "Show typed key"}
+                  >
+                    {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className={`mt-2 rounded-lg border px-3 py-2 text-xs font-semibold leading-5 ${
+                  settings.hasApiKey ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}>
+                  {settings.hasApiKey
+                    ? apiKey
+                      ? "You are replacing the saved encrypted key. Save settings to apply the new key."
+                      : "A key is already saved securely. Paste a new key only when you want to replace it."
+                    : "No API key saved yet. Paste your provider key, then save and test connection."}
+                </div>
               </label>
             </div>
             <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
@@ -247,11 +324,25 @@ export default function AiSettings() {
               />
               Enable this AI provider for CRM features
             </label>
+            <label className="mt-3 flex items-start gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm font-semibold text-teal-900">
+              <input
+                type="checkbox"
+                checked={!Boolean(settings.maskSensitiveData)}
+                onChange={(event) => setSettings((current) => ({ ...current, maskSensitiveData: !event.target.checked }))}
+                className="mt-1"
+              />
+              <span>
+                Send real phone/email to AI provider
+                <span className="mt-1 block text-xs font-semibold leading-5 text-teal-700">
+                  Recommended OFF. When unchecked, Vistaar Flow masks phone numbers and email addresses before AI requests.
+                </span>
+              </span>
+            </label>
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={save}
-                disabled={loading}
+                disabled={loading || !aiAllowed}
                 className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-60"
               >
                 {loading ? "Saving..." : "Save AI Settings"}
@@ -259,7 +350,7 @@ export default function AiSettings() {
               <button
                 type="button"
                 onClick={testConnection}
-                disabled={loading || !settings.active}
+                disabled={loading || !settings.active || !aiAllowed}
                 className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-bold text-teal-800 hover:bg-teal-100 disabled:opacity-60"
               >
                 Test Connection
@@ -281,7 +372,7 @@ export default function AiSettings() {
             <button
               type="button"
               onClick={generate}
-              disabled={loading || !settings.active || !prompt.trim()}
+              disabled={loading || !settings.active || !prompt.trim() || !aiAllowed}
               className="mt-3 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60"
             >
               <Sparkles size={16} />

@@ -45,6 +45,7 @@ import FacebookLeads from "./pages/FacebookLeads";
 import Billing from "./pages/Billing";
 import PlatformBillingAdmin from "./pages/PlatformBillingAdmin";
 import AiSettings from "./pages/AiSettings";
+import AiWorkQueue from "./pages/AiWorkQueue";
 
 /*
  * ROLE REFERENCE
@@ -90,6 +91,7 @@ export default function App() {
             {/* ✅ ALL ROLES */}
             <Route path="setup"          element={<SetupStatus />} />
             <Route path="work-queue"     element={<WorkQueue />} />
+            <Route path="ai-work-queue"  element={<AiWorkQueue />} />
             <Route path="contacts"       element={<Contacts />} />
             <Route path="pipeline"       element={<Pipeline />} />
             <Route path="opportunities/:id" element={<OpportunityDetail />} />

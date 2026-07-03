@@ -63,6 +63,7 @@ const loadRazorpayScript = () =>
 export default function Billing() {
   const [summary, setSummary] = useState(null);
   const [ledger, setLedger] = useState([]);
+  const [aiUsage, setAiUsage] = useState(null);
   const [packages, setPackages] = useState([]);
   const [storagePackages, setStoragePackages] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -91,15 +92,21 @@ export default function Billing() {
   const subscription = summary?.subscription || {};
   const paidPayments = useMemo(() => payments.filter((payment) => payment.status === "PAID"), [payments]);
   const warnings = useMemo(() => usageWarnings(summary, usage, subscription), [summary, usage, subscription]);
+  const currentPlan = useMemo(
+    () => plans.find((plan) => plan.planKey === summary?.planKey) || null,
+    [plans, summary?.planKey]
+  );
+  const currentPlanHasAi = planFeatureEnabled(currentPlan, "ai");
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoading(true);
     setRefreshing(quiet);
     setError("");
     try {
-      const [summaryResponse, ledgerResponse, packageResponse, paymentsResponse, billingProfileResponse] = await Promise.all([
+      const [summaryResponse, ledgerResponse, aiUsageResponse, packageResponse, paymentsResponse, billingProfileResponse] = await Promise.all([
         api.get("/api/billing/summary"),
         api.get("/api/billing/ledger"),
+        api.get("/api/billing/ai-usage"),
         api.get("/api/billing/topup-packages"),
         api.get("/api/billing/payments"),
         api.get("/api/tenant/billing-profile"),
@@ -107,6 +114,7 @@ export default function Billing() {
       const storagePackageResponse = await api.get("/api/billing/storage-packages");
       setSummary(summaryResponse.data);
       setLedger(Array.isArray(ledgerResponse.data) ? ledgerResponse.data : []);
+      setAiUsage(aiUsageResponse.data || null);
       setPackages(Array.isArray(packageResponse.data) ? packageResponse.data : []);
       setStoragePackages(Array.isArray(storagePackageResponse.data) ? storagePackageResponse.data : []);
       setPayments(Array.isArray(paymentsResponse.data) ? paymentsResponse.data : []);
@@ -323,6 +331,93 @@ export default function Billing() {
         <MetricCard icon={CreditCard} label="Current Plan" value={summary?.planKey || "STARTER"} helper={`${summary?.subscriptionStatus || "TRIAL"} until ${formatDate(subscription.currentPeriodEnd || summary?.currentPeriodEnd)}`} />
         <MetricCard icon={History} label="Payment Records" value={payments.length} helper="Latest 100 shown" />
       </div>
+
+      <section className="mt-5 rounded-lg border border-teal-100 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-teal-50 p-2 text-teal-700">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <h2 className="text-base font-extrabold text-slate-950">AI Usage</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Track AI Summary, AI Reply, and AI Recommendation usage for this tenant.
+              </p>
+            </div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+            currentPlanHasAi ? "border-teal-200 bg-teal-50 text-teal-800" : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}>
+            {currentPlanHasAi ? "AI is included in your current plan" : "AI starts from Growth plan"}
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricCard icon={Sparkles} label="AI Actions This Month" value={formatCredits(aiUsage?.actionsThisMonth)} helper="Successful AI requests only" />
+          <MetricCard icon={WalletCards} label="AI Credits Used" value={formatCredits(aiUsage?.creditsUsedThisMonth)} helper={`${aiUsage?.pointsUsedThisMonth || 0} points this month`} />
+          <MetricCard icon={ShieldCheck} label="AI Rate" value="0.25" helper="credits per successful AI action" />
+        </div>
+        {!currentPlanHasAi && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            Upgrade to Growth or higher to unlock AI Summary, AI Reply, and AI Recommendation tools.
+          </div>
+        )}
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-sm" style={{ minWidth: "680px" }}>
+            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Agent</th>
+                <th className="px-4 py-3">Actions This Month</th>
+                <th className="px-4 py-3">Credits Used</th>
+                <th className="px-4 py-3">Last AI Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(aiUsage?.usageByUser || []).length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No agent AI usage this month.</td>
+                </tr>
+              )}
+              {(aiUsage?.usageByUser || []).map((entry) => (
+                <tr key={entry.userId || entry.userEmail} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-bold text-slate-800">{entry.userEmail || `User ${entry.userId}`}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.actionsThisMonth)}</td>
+                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(entry.creditsUsedThisMonth)}</td>
+                  <td className="px-4 py-3 text-slate-700">{entry.lastActionAt ? new Date(entry.lastActionAt).toLocaleString() : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-sm" style={{ minWidth: "720px" }}>
+            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">AI Action</th>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Credits</th>
+                <th className="px-4 py-3">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(aiUsage?.recentActions || []).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No AI actions yet.</td>
+                </tr>
+              )}
+              {(aiUsage?.recentActions || []).map((entry) => (
+                <tr key={entry.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 text-slate-700">{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}</td>
+                  <td className="px-4 py-3 font-bold text-slate-800">{aiPurposeLabel(entry.referenceId)}</td>
+                  <td className="px-4 py-3 text-slate-700">{entry.userId || "-"}</td>
+                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(Math.abs(Number(entry.creditsChange || 0)))}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.balanceAfterCredits)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="mt-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -652,6 +747,18 @@ export default function Billing() {
 function normalizedPromoCode(value) {
   const normalized = String(value || "").trim().toUpperCase();
   return normalized || null;
+}
+
+function aiPurposeLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const labels = {
+    contact_summary: "Contact Summary",
+    contact_recommendation: "Lead Score / Follow-up Recommendation",
+    ai_reply: "AI Reply",
+    manual_test: "Manual Test Prompt",
+    connection_test: "Connection Test",
+  };
+  return labels[normalized] || value || "AI Action";
 }
 
 function usageWarnings(summary, usage, subscription) {

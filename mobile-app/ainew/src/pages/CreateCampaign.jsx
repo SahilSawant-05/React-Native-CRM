@@ -2943,6 +2943,8 @@ export default function CreateCampaign() {
   const [submitError,      setSubmitError]      = useState("");
   const [submitSuccess,    setSubmitSuccess]    = useState("");
   const [audienceGuideOpen, setAudienceGuideOpen] = useState(false);
+  const [aiCopyLoading, setAiCopyLoading] = useState(false);
+  const [aiCopyResult, setAiCopyResult] = useState("");
 
   const [sendNow,     setSendNow]     = useState(true);
   const [scheduledAt, setScheduledAt] = useState("");
@@ -3360,6 +3362,28 @@ export default function CreateCampaign() {
     : "No direct contacts";
   const totalContactLibrary = contactPageMeta.totalElements;
 
+  const generateCampaignCopy = async () => {
+    setAiCopyLoading(true);
+    setSubmitError("");
+    try {
+      const response = await api.post("/api/ai/campaign-copy", {
+        campaignName: name,
+        selectedTemplate: selectedTemplate?.metaTemplateName || selectedTemplate?.name || "",
+        templateStatus: selectedTemplateStatus || "",
+        audience: selectedSegmentId
+          ? `Segment #${selectedSegmentId}${selectedContacts.length ? ` plus ${selectedContacts.length} direct contacts` : ""}`
+          : `${selectedContacts.length} direct contacts`,
+        schedule: scheduleLabel,
+        headerMediaRequired: selectedTemplateHeaderFormat || "",
+      });
+      setAiCopyResult(response.data?.text || "No AI campaign copy returned.");
+    } catch (error) {
+      setSubmitError(apiErrorMessage(error, "AI campaign copy failed."));
+    } finally {
+      setAiCopyLoading(false);
+    }
+  };
+
   const histCounts = history.reduce((a, c) => { a[c.status] = (a[c.status] || 0) + 1; return a; }, {});
 
   const histFiltered = [...history].sort((a, b) => {
@@ -3500,6 +3524,31 @@ export default function CreateCampaign() {
                   </p>
                 </div>
               )}
+
+              <div className="card">
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 220, flex: "1 1 280px" }}>
+                    <p className="card-title" style={{ marginBottom: 4 }}>AI Campaign Copy</p>
+                    <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
+                      Generate WhatsApp and email copy ideas from your selected template, audience, and schedule.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generateCampaignCopy}
+                    disabled={aiCopyLoading}
+                    className="inline-flex w-full items-center justify-center rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    style={{ whiteSpace: "nowrap", maxWidth: "100%" }}
+                  >
+                    {aiCopyLoading ? "Generating..." : "Generate AI Copy"}
+                  </button>
+                </div>
+                {aiCopyResult && (
+                  <div style={{ marginTop: 14, border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 14, padding: 14 }}>
+                    <pre style={{ margin: 0, maxHeight: 280, overflowY: "auto", overflowX: "hidden", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit", fontSize: 13, lineHeight: 1.6 }}>{aiCopyResult}</pre>
+                  </div>
+                )}
+              </div>
 
               <div className="card">
                 <p className="card-title">Send Readiness</p>

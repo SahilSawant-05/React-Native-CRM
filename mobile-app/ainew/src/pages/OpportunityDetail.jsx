@@ -83,6 +83,7 @@ function EmailComposeModal({
 
           <AiAssistPanel
             contactId={opportunity.contactId}
+            opportunityId={opportunity.id}
             title="AI Opportunity Email"
             contextPrompt={`Draft a professional follow-up email for this opportunity.
 Opportunity: ${opportunity.title || ""}
@@ -1236,6 +1237,7 @@ export default function OpportunityDetail() {
                 <div className="lg:col-span-3">
                   <AiAssistPanel
                     contactId={opportunity.contactId}
+                    opportunityId={opportunity.id}
                     title="AI Opportunity Summary"
                     contextPrompt={`Summarize this opportunity for an agent and recommend the next best action.
 Opportunity: ${opportunity.title || ""}

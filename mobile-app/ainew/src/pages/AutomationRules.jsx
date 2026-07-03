@@ -77,6 +77,7 @@ const actionLabels = {
   SEND_EMAIL: "Send email",
   SEND_WHATSAPP_TEMPLATE: "Send WhatsApp template",
   NOTIFY_AGENT: "Notify agent",
+  AI_LEAD_SCORE: "AI lead score",
 };
 
 const panelIcons = {
@@ -779,6 +780,7 @@ function PanelFields({ panel, form, setValue, stageOptions, pipelines, emailTemp
             <option value="SEND_EMAIL">Send email</option>
             <option value="SEND_WHATSAPP_TEMPLATE">Send WhatsApp template</option>
             <option value="NOTIFY_AGENT">Notify agent</option>
+            <option value="AI_LEAD_SCORE">Run AI lead score</option>
             {form.triggerType === "OPPORTUNITY_STAGE_CHANGED" && (
               <option value="MOVE_OPPORTUNITY_STAGE">Move opportunity stage</option>
             )}
@@ -837,6 +839,7 @@ function ActionQuickPicks({ form, setValue }) {
     ["SEND_EMAIL", "Email"],
     ["SEND_WHATSAPP_TEMPLATE", "WhatsApp"],
     ["NOTIFY_AGENT", "Notify"],
+    ["AI_LEAD_SCORE", "AI score"],
   ];
   if (form.triggerType === "OPPORTUNITY_STAGE_CHANGED") actions.push(["MOVE_OPPORTUNITY_STAGE", "Move stage"]);
 
@@ -955,6 +958,22 @@ function ActionDetailFields({ form, setValue, stageOptions, pipelines, emailTemp
     );
   }
 
+  if (form.actionType === "AI_LEAD_SCORE") {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+          <h4 className="text-sm font-extrabold text-indigo-950">AI lead scoring automation</h4>
+          <p className="mt-2 text-sm leading-6 text-indigo-800">
+            When this rule runs, Vistaar Flow sends the contact context to the configured AI provider, saves a 0-100 lead score, adds an AI note to the contact timeline, and notifies the owner.
+          </p>
+        </div>
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-800">
+          Requires Growth plan or higher, active AI settings, and available AI credits. Failed setup or low credits will appear in execution logs.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Field label="Notification title">
@@ -986,6 +1005,9 @@ function detailSummary(form, stageOptions, pipelines = []) {
   if (form.actionType === "NOTIFY_AGENT") {
     return form.notificationTitle || "Notify owner";
   }
+  if (form.actionType === "AI_LEAD_SCORE") {
+    return "Score lead and save reason";
+  }
   return labelFor(form.actionType);
 }
 
@@ -999,6 +1021,7 @@ function isFormValid(form) {
   }
   if (form.actionType === "SEND_WHATSAPP_TEMPLATE") return Boolean(form.whatsappTemplateId);
   if (form.actionType === "NOTIFY_AGENT") return Boolean(form.notificationTitle.trim() || form.notificationBody.trim());
+  if (form.actionType === "AI_LEAD_SCORE") return true;
   return true;
 }
 

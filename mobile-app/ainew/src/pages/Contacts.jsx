@@ -246,14 +246,20 @@ const ContactSidebar = ({
   customFields,
   customFieldValues,
   opportunities,
+  leadScoreHistory,
+  aiInsights,
+  aiInsightLoading,
+  onRunAiInsight,
   loading,
   error,
   onClose,
   onEditContact,
   onOpenTask,
   onOpenFlow,
+  onContactUpdated,
 }) => {
   const navigate = useNavigate();
+  const [aiInsightsOpen, setAiInsightsOpen] = useState(false);
 
   if (!contact) return null;
 
@@ -336,6 +342,7 @@ const ContactSidebar = ({
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 text-sm">
         <AiAssistPanel
           contactId={contact.id || contact._id}
+          onContactUpdated={onContactUpdated}
           title="AI Contact Assistant"
           contextPrompt={`Write a short, friendly follow-up for this CRM contact.
 Name: ${contact.name || ""}
@@ -403,6 +410,22 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
           <span className="text-gray-400 flex-shrink-0">Lead Score</span>
           <ScoreBadge score={contact.lead_score} />
         </div>
+
+        {(contact.lead_score_reason || contact.lead_score_updated_at) && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-indigo-500">Score Reason</span>
+              {contact.lead_score_updated_at && (
+                <span className="text-[11px] font-semibold text-indigo-500">
+                  {fmtDate(contact.lead_score_updated_at)} {fmtTime(contact.lead_score_updated_at)}
+                </span>
+              )}
+            </div>
+            {contact.lead_score_reason && (
+              <p className="mt-2 line-clamp-4 text-xs leading-5 text-indigo-800">{contact.lead_score_reason}</p>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-between gap-2">
           <span className="text-gray-400 flex-shrink-0">Role</span>
@@ -536,6 +559,57 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
           )}
         </div>
 
+        <div className="border-t border-gray-100 pt-3">
+          <button
+            type="button"
+            onClick={() => setAiInsightsOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-100"
+          >
+            <span>AI Insights</span>
+            <span className="text-[11px] normal-case tracking-normal text-slate-400">
+              {aiInsightsOpen ? "Hide" : "Show"}
+            </span>
+          </button>
+          {aiInsightsOpen && (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => onRunAiInsight?.("bestTime")}
+                  disabled={aiInsightLoading === "bestTime"}
+                  className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                >
+                  {aiInsightLoading === "bestTime" ? "Thinking..." : "Best Time"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRunAiInsight?.("sentiment")}
+                  disabled={aiInsightLoading === "sentiment"}
+                  className="rounded-xl bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-60"
+                >
+                  {aiInsightLoading === "sentiment" ? "Reading..." : "Sentiment"}
+                </button>
+              </div>
+              {(aiInsights?.bestTime || aiInsights?.sentiment) && (
+                <div className="space-y-2">
+                  {aiInsights.bestTime && (
+                    <div className="max-h-44 overflow-y-auto rounded-xl border border-indigo-100 bg-indigo-50 p-3">
+                      <p className="text-xs font-bold text-indigo-800">Best follow-up time</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-indigo-700">{aiInsights.bestTime}</p>
+                    </div>
+                  )}
+                  {aiInsights.sentiment && (
+                    <div className="max-h-44 overflow-y-auto rounded-xl border border-teal-100 bg-teal-50 p-3">
+                      <p className="text-xs font-bold text-teal-800">Conversation sentiment</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-teal-700">{aiInsights.sentiment}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {!loading && !error && notes.length > 0 && (
           <div className="border-t border-gray-100 pt-3">
             <SectionTitle>Latest Notes</SectionTitle>
@@ -546,6 +620,30 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
                   <p className="mt-1 text-[11px] text-gray-400">
                     {note.createdByUserEmail || "Unknown"} · {fmtDate(note.createdAt)}{" "}
                     {fmtTime(note.createdAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && leadScoreHistory?.length > 0 && (
+          <div className="border-t border-gray-100 pt-3">
+            <SectionTitle>Lead Score History</SectionTitle>
+            <div className="space-y-2">
+              {leadScoreHistory.slice(0, 5).map((history) => (
+                <div key={history.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-gray-700">
+                      {history.oldScore ?? "—"} → {history.newScore}
+                    </p>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
+                      {String(history.source || "MANUAL").replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  {history.reason && <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-500">{history.reason}</p>}
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {history.actorEmail || "System"} · {fmtDate(history.createdAt)} {fmtTime(history.createdAt)}
                   </p>
                 </div>
               ))}
@@ -699,6 +797,9 @@ export default function Contacts() {
   const [workspace, setWorkspace] = useState({ timeline: null, notes: [], tasks: [] });
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [leadScoreHistory, setLeadScoreHistory] = useState([]);
+  const [aiInsights, setAiInsights] = useState({});
+  const [aiInsightLoading, setAiInsightLoading] = useState("");
   const [customFields, setCustomFields] = useState([]);
   const [editCustomFieldValues, setEditCustomFieldValues] = useState({});
   const [selectedCustomFieldValues, setSelectedCustomFieldValues] = useState({});
@@ -800,6 +901,8 @@ export default function Contacts() {
   useEffect(() => {
     if (!showSidebar || !selectedId) {
       setWorkspace({ timeline: null, notes: [], tasks: [] });
+      setLeadScoreHistory([]);
+      setAiInsights({});
       setSelectedCustomFieldValues({});
       setSelectedOpportunities([]);
       setWorkspaceError("");
@@ -813,10 +916,11 @@ export default function Contacts() {
       setWorkspaceLoading(true);
       setWorkspaceError("");
 
-      const [timelineResult, notesResult, tasksResult] = await Promise.allSettled([
+      const [timelineResult, notesResult, tasksResult, scoreHistoryResult] = await Promise.allSettled([
         api.get(`/api/contacts/${selectedId}/timeline`),
         api.get(`/api/contacts/${selectedId}/notes`),
         api.get(`/api/contacts/${selectedId}/tasks`),
+        api.get(`/api/contacts/${selectedId}/lead-score-history`),
       ]);
 
       if (cancelled) return;
@@ -834,6 +938,11 @@ export default function Contacts() {
       };
 
       setWorkspace(nextWorkspace);
+      setLeadScoreHistory(
+        scoreHistoryResult.status === "fulfilled"
+          ? listFromPayload(scoreHistoryResult.value.data, "data", "history")
+          : []
+      );
 
       if (customFields.length > 0) {
         try {
@@ -874,6 +983,7 @@ export default function Contacts() {
       if (cancelled) return;
       console.error("Failed to load contact workspace:", error);
       setWorkspace({ timeline: null, notes: [], tasks: [] });
+      setLeadScoreHistory([]);
       setWorkspaceError("Could not load the contact workspace right now.");
       setWorkspaceLoading(false);
     });
@@ -885,6 +995,23 @@ export default function Contacts() {
 
   const selectedContact = contacts.find((contact) => (contact.id || contact._id) === selectedId);
   const totalContacts = pageInfo.totalElements || 0;
+
+  const runContactAiInsight = async (type) => {
+    if (!selectedId) return;
+    setAiInsightLoading(type);
+    try {
+      const endpoint = type === "bestTime"
+        ? `/api/ai/contacts/${selectedId}/best-follow-up-time`
+        : `/api/ai/contacts/${selectedId}/sentiment`;
+      const response = await api.post(endpoint);
+      setAiInsights((current) => ({ ...current, [type]: response.data?.text || "No AI insight returned." }));
+    } catch (error) {
+      const message = error.response?.data?.message || error.response?.data?.error || "AI insight failed.";
+      setAiInsights((current) => ({ ...current, [type]: message }));
+    } finally {
+      setAiInsightLoading("");
+    }
+  };
   const totalPages = pageInfo.totalPages || 0;
   const activeFilterCount = useMemo(
     () => Object.values(filters).filter((value) => value !== "" && value !== null && value !== undefined).length,
@@ -1553,12 +1680,21 @@ export default function Contacts() {
             customFields={customFields}
             customFieldValues={selectedCustomFieldValues}
             opportunities={selectedOpportunities}
+            leadScoreHistory={leadScoreHistory}
+            aiInsights={aiInsights}
+            aiInsightLoading={aiInsightLoading}
+            onRunAiInsight={runContactAiInsight}
             loading={workspaceLoading}
             error={workspaceError}
             onOpenTask={() => setTaskModal(selectedContact)}
             onOpenFlow={() => setFlowContact(selectedContact)}
             onEditContact={() => {
               openEditContact(selectedContact);
+            }}
+            onContactUpdated={(updated) => {
+              setContacts((current) => current.map((contact) =>
+                (contact.id || contact._id) === (updated.id || updated._id) ? { ...contact, ...updated } : contact
+              ));
             }}
             onClose={() => {
               setShowSidebar(false);
@@ -1694,12 +1830,21 @@ export default function Contacts() {
               customFields={customFields}
               customFieldValues={selectedCustomFieldValues}
               opportunities={selectedOpportunities}
+              leadScoreHistory={leadScoreHistory}
+              aiInsights={aiInsights}
+              aiInsightLoading={aiInsightLoading}
+              onRunAiInsight={runContactAiInsight}
               loading={workspaceLoading}
               error={workspaceError}
               onOpenTask={() => setTaskModal(selectedContact)}
               onOpenFlow={() => setFlowContact(selectedContact)}
               onEditContact={() => {
                 openEditContact(selectedContact);
+              }}
+              onContactUpdated={(updated) => {
+                setContacts((current) => current.map((contact) =>
+                  (contact.id || contact._id) === (updated.id || updated._id) ? { ...contact, ...updated } : contact
+                ));
               }}
               onClose={() => {
                 setShowSidebar(false);
