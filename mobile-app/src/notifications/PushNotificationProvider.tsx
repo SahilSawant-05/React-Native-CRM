@@ -3,6 +3,7 @@ import messaging from "@react-native-firebase/messaging";
 import { useAuth } from "../auth/AuthContext";
 import { usePushNotifications } from "./usePushNotifications";
 
+
 interface Props {
   children: React.ReactNode;
 }
