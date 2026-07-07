@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import api from "../api/client";
+import { fetchInbox } from "../api/chat";
 import { useAuth } from "../auth/AuthContext";
 
 interface BadgeCounts {
@@ -28,11 +29,12 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(() => {
     if (!user) return;
 
-    api
-      .get("/api/inbox/page", { params: { page: 0, size: 100 } })
-      .then((res) => {
-        const items: any[] = res.data?.content ?? res.data?.items ?? (Array.isArray(res.data) ? res.data : []);
-        setChat(items.reduce((sum, i) => sum + (Number(i?.unreadCount) || 0), 0));
+    // fetchInbox normalizes the backend's field-name variants
+    // (items/content, unread/unreadCount) — reading the raw response
+    // here always summed 0
+    fetchInbox({ page: 0, size: 100 })
+      .then((page) => {
+        setChat((page.content ?? []).reduce((sum, i) => sum + (Number(i.unreadCount) || 0), 0));
       })
       .catch(() => {});
 
