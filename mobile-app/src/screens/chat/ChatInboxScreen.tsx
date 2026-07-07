@@ -19,6 +19,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
+import { useBadges } from "../../state/BadgeContext";
 
 // "RESOLVED" removed — these map to backend status filters.
 // "UNREAD" is a client-side-only pseudo-tab (see selectTab below) — it
@@ -116,6 +117,13 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
   // Total unread message count across all loaded conversations, for the badge
   const unreadTotal = allItems.reduce((sum, i) => sum + (i.unreadCount ?? 0), 0);
+
+  // Keep the bottom-tab badge in lockstep with what this screen shows
+  const badges = useBadges();
+  React.useEffect(() => {
+    badges.setChatCount(unreadTotal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadTotal]);
 
   const applyFilter = (data: InboxItem[], q: string, unread: boolean) => {
     let result = data;

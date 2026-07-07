@@ -19,6 +19,7 @@ import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
+import { useBadges } from "../../state/BadgeContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,7 @@ export default function MailScreen({ navigation }: any) {
   const [successMsg, setSuccessMsg] = useState("");
   const [counts, setCounts] = useState<FolderCounts>(emptyCounts);
   const isMountedRef = useRef(true);
+  const badges = useBadges();
 
   const fetchEmails = useCallback(async (pageNum: number, replace: boolean, currentFolder: Folder, currentSearch: string) => {
     try {
@@ -260,6 +262,8 @@ export default function MailScreen({ navigation }: any) {
             next[key] = data.totalElements ?? 0;
           }
         });
+        // Bottom-tab badge mirrors the Unread folder count exactly
+        badges.setMailCount(Number(next.UNREAD) || 0);
         return next;
       });
     } catch {

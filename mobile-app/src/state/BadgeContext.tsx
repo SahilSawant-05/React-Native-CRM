@@ -7,9 +7,19 @@ interface BadgeCounts {
   chat: number;
   mail: number;
   refresh: () => void;
+  /** Screens push their own computed unread totals so the badge always
+   *  matches exactly what the inbox screens display. */
+  setChatCount: (n: number) => void;
+  setMailCount: (n: number) => void;
 }
 
-const BadgeCtx = createContext<BadgeCounts>({ chat: 0, mail: 0, refresh: () => {} });
+const BadgeCtx = createContext<BadgeCounts>({
+  chat: 0,
+  mail: 0,
+  refresh: () => {},
+  setChatCount: () => {},
+  setMailCount: () => {},
+});
 
 const POLL_MS = 30_000;
 
@@ -60,7 +70,11 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, refresh]);
 
-  return <BadgeCtx.Provider value={{ chat, mail, refresh }}>{children}</BadgeCtx.Provider>;
+  return (
+    <BadgeCtx.Provider value={{ chat, mail, refresh, setChatCount: setChat, setMailCount: setMail }}>
+      {children}
+    </BadgeCtx.Provider>
+  );
 }
 
 export function useBadges(): BadgeCounts {
