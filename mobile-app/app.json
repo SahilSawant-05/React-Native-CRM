@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon":"./assets/logo.png",
 
     "splash": {
       "resizeMode": "contain",
@@ -19,7 +20,10 @@
 
     "android": {
       "package": "com.crmagent",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon":{
+        "foregroundImage":".assets/logo.png",
+      }
     },
 
     "plugins": [
