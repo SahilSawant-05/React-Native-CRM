@@ -576,7 +576,7 @@ function OpportunityModal({ open, stages, contacts, initial, defaultStage, savin
                   style={[om.chip, active && { backgroundColor: st.color, borderColor: st.color }]}
                 >
                   <Text style={[om.chipText, active && om.chipTextActive]}>
-                    {st.icon} {st.label}
+                    {st.label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -743,7 +743,6 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
         <ScrollView contentContainerStyle={dm.body}>
           {/* Stage badge */}
           <View style={[dm.stageBadge, { backgroundColor: (stage?.color || "#0f766e") + "18" }]}>
-            <Text style={dm.stageIcon}>{stage?.icon}</Text>
             <Text style={[dm.stageLabel, { color: stage?.color || "#0f766e" }]}>{stage?.label || opp.stage}</Text>
           </View>
 
@@ -931,7 +930,7 @@ function MoveToBar({ targetStage, visible, stagesMap }: {
       ]}
     >
       <Text style={mtb.text}>
-        {targetStage ? `${meta?.icon}  Move To: ${meta?.label || targetStage}` : "Move to column"}
+        {targetStage ? `Move To: ${meta?.label || targetStage}` : "Move to column"}
       </Text>
     </Animated.View>
   );
@@ -1044,7 +1043,6 @@ function KanbanColumn({ stage, opps, isDropTarget, onCardPress, onLongPress, dra
     <View style={[kc.col, { borderColor: isDropTarget ? stage.color : "transparent" }]}>
       {/* Header */}
       <View style={[kc.header, { borderBottomColor: stage.color }]}>
-        <Text style={kc.icon}>{stage.icon}</Text>
         <View style={{ flex: 1 }}>
           <Text style={[kc.label, { color: stage.color }]} numberOfLines={1}>{stage.label}</Text>
           {totalValue > 0 && <Text style={kc.value}>{formatCurrency(totalValue)}</Text>}
