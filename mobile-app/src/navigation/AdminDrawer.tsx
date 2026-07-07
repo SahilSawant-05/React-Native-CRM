@@ -40,6 +40,7 @@ import DashboardScreen from "../screens/dashboard/DashboardScreen";
 import AutomationRulesScreen from "../screens/automation/AutomationRulesScreen";
 import LeadAssignmentScreen from "../screens/leadassignment/LeadAssignmentScreen";
 import AiSettingsScreen from "../screens/ai/AiSettingsScreen";
+import AiWorkQueueScreen from "../screens/ai/AiWorkQueueScreen";
 import FacebookLeadsScreen from "../screens/facebook/FacebookLeadsScreen";
 
 
@@ -72,6 +73,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { name: "Dashboard",     label: "Dashboard",        icon: "grid-outline" },
       { name: "Queue",         label: "Work Queue",      icon: "list-outline" },
+      { name: "AiWorkQueue",   label: "AI Work Queue",   icon: "sparkles-outline" },
       { name: "Chat",          label: "Messages",         icon: "chatbubbles-outline" },
       { name: "Mail",          label: "Mail",             icon: "mail-outline" },
       { name: "Tasks",         label: "Tasks",            icon: "checkbox-outline" },
@@ -315,6 +317,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   MediaLibrary:  withHeader(MediaLibraryScreen,  "Media Library"),
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
   AiSettings:      withHeader(AiSettingsScreen,       "AI Settings"),
+  AiWorkQueue:     withHeader(AiWorkQueueScreen,      "AI Work Queue"),
   FacebookLeads:   withHeader(FacebookLeadsScreen,    "Facebook Leads"),
   AutomationRules: withHeader(AutomationRulesScreen, "Automation Rules"),
   LeadAssignment:  withHeader(LeadAssignmentScreen,  "Lead Assignment"),

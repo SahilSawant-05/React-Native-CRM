@@ -163,18 +163,16 @@ export default function WorkQueueScreen() {
           />
         }
       >
-        {/* Summary header */}
+        {/* Summary header — slim bar, not a hero card */}
         <View style={styles.summaryCard}>
-          <View>
-            <Text style={styles.summaryLabel}>WORK QUEUE</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.summaryTitle}>Today's View</Text>
             {!!queue?.recommendedFocus && (
-              <Text style={styles.summaryDesc}>{queue.recommendedFocus}</Text>
+              <Text style={styles.summaryDesc} numberOfLines={1}>{queue.recommendedFocus}</Text>
             )}
           </View>
           <View style={styles.summaryBadge}>
-            <Text style={styles.summaryCount}>{queue?.totalCount ?? 0}</Text>
-            <Text style={styles.summaryPending}>pending</Text>
+            <Text style={styles.summaryCount}>{queue?.totalCount ?? 0} pending</Text>
           </View>
         </View>
 
@@ -201,16 +199,13 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 12, paddingBottom: 32 },
   summaryCard: {
     backgroundColor: "#0f766e",
-    borderRadius: 14,
-    padding: 20,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    gap: 10,
   },
   summaryLabel: {
     color: "#99f6e4",
@@ -222,20 +217,18 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     color: "#fff",
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 2,
+    fontSize: 15,
+    fontWeight: "600",
     fontFamily: headingFont,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.24 : undefined,
   },
-  summaryDesc: { color: "#ccfbf1", fontSize: 13, marginTop: 4, maxWidth: 220, letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
-  summaryBadge: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 12, padding: 12 },
+  summaryDesc: { color: "#ccfbf1", fontSize: 12, marginTop: 1, letterSpacing: Platform.OS === "ios" ? -0.15 : undefined },
+  summaryBadge: { backgroundColor: "rgba(255,255,255,0.16)", borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5 },
   summaryCount: {
     color: "#fff",
-    fontSize: 20,
+    fontSize: 12.5,
     fontWeight: "700",
     fontFamily: headingFont,
-    letterSpacing: Platform.OS === "ios" ? -0.32 : undefined,
   },
   summaryPending: { color: "#99f6e4", fontSize: 11, fontWeight: "600" },
   allClearCard: { alignItems: "center", paddingVertical: 60, gap: 8 },
