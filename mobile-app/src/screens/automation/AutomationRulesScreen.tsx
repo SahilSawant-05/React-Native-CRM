@@ -602,7 +602,7 @@ const s = StyleSheet.create({
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
   fab: {
-    position: "absolute", bottom: 24, right: 20,
+    position: "absolute", bottom: 16, right: 16,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
     shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },

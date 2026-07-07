@@ -363,7 +363,7 @@ export default function MailDetailScreen({ route, navigation }: any) {
 
   // ── Render: email ──────────────────────────────────────────────────────────
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}

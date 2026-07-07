@@ -572,7 +572,7 @@ const s = StyleSheet.create({
   statusText: { fontSize: 10, fontWeight: "600", letterSpacing: 0.4, fontFamily: MEDIUM_FONT },
 
   fab: {
-    position: "absolute", right: 20, bottom: 24,
+    position: "absolute", right: 16, bottom: 16,
     width: 56, height: 56, borderRadius: 28, backgroundColor: "#0f766e",
     alignItems: "center", justifyContent: "center",
     elevation: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 4 },

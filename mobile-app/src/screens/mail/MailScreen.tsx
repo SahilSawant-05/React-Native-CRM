@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 16,
-    bottom: 24,
+    bottom: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,

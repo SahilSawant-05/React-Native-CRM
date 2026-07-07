@@ -578,7 +578,7 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { color: "#9ca3af", fontSize: 15 },
   fab: {
-    position: "absolute", bottom: 24, right: 20,
+    position: "absolute", bottom: 16, right: 16,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 },

@@ -14,6 +14,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
+import BottomTabBar from "./BottomTabBar";
 
 // Screens
 import DashboardScreen from "../screens/dashboard/DashboardScreen";
@@ -323,7 +324,10 @@ export default function AgentDrawer() {
   return (
     <AgentDrawerCtx.Provider value={{ open: () => setDrawerOpen(true), navigateTo: navigate, openChat, pendingChatRef }}>
       <View style={{ flex: 1 }}>
-        <ActiveScreen />
+        <View style={{ flex: 1 }}>
+          <ActiveScreen />
+        </View>
+        <BottomTabBar activeTab={activeTab} onNavigate={navigate} />
         <DrawerPanel
           visible={drawerOpen}
           onClose={() => setDrawerOpen(false)}
