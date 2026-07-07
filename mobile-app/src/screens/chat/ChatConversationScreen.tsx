@@ -1083,8 +1083,8 @@ export default function ChatConversationScreen({ route }: Props) {
   return (
     <SafeAreaView style={styles.root} edges={["bottom"]}>
       <ImageBackground
-        source={require("../../../assets/chat-wallpaper.png")}
-        resizeMode="repeat"
+        source={require("../../../assets/watsapp-chatbg.jpg")}
+        resizeMode="cover"
         style={{ flex: 1 }}
       >
       <KeyboardAvoidingView
@@ -1237,7 +1237,7 @@ export default function ChatConversationScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#ece5dd" },
+  root: { flex: 1, backgroundColor: "#fbfbfb" },
   messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8 },
   dateSep: {
     alignSelf: "center",
