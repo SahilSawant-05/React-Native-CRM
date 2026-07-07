@@ -5,7 +5,9 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -58,10 +60,12 @@ export default function WhatsAppSetupScreen() {
         contentContainerStyle={{ padding: 16 }}
       >
         <View style={styles.headerCard}>
-          <Text style={styles.waIcon}>💬</Text>
+          <View style={styles.waIconWrap}>
+            <Ionicons name="logo-whatsapp" size={30} color="#25d366" />
+          </View>
           <Text style={styles.headerTitle}>WhatsApp Business</Text>
           <View style={[styles.badge, { backgroundColor: connected ? "#dcfce7" : "#fee2e2" }]}>
-            <Text style={[styles.badgeText, { color: connected ? "#22c55e" : "#ef4444" }]}>
+            <Text style={[styles.badgeText, { color: connected ? "#15803d" : "#b91c1c" }]}>
               {connected ? "Connected" : "Not Connected"}
             </Text>
           </View>
@@ -91,7 +95,7 @@ export default function WhatsAppSetupScreen() {
           </View>
         ) : (
           <View style={[styles.card, styles.notConnectedCard]}>
-            <Text style={styles.notConnectedIcon}>⚠️</Text>
+            <Ionicons name="alert-circle-outline" size={36} color="#9ca3af" style={styles.notConnectedIcon} />
             <Text style={styles.notConnectedText}>
               Connect via web dashboard to set up WhatsApp
             </Text>
@@ -106,7 +110,7 @@ export default function WhatsAppSetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#f8f9fb" },
   headerCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -114,32 +118,80 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
   },
-  waIcon: { fontSize: 48, marginBottom: 12 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#1e293b", marginBottom: 12 },
+  waIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(37,211,102,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   badge: { borderRadius: 99, paddingHorizontal: 12, paddingVertical: 5 },
-  badgeText: { fontSize: 13, fontWeight: "700" },
+  badgeText: { fontSize: 11, fontWeight: "600" },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
     padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
   },
-  sectionHeader: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-  label: { fontSize: 13, color: "#64748b" },
-  value: { fontSize: 13, fontWeight: "600", color: "#1e293b", maxWidth: "60%", textAlign: "right" },
-  divider: { height: 1, backgroundColor: "#f1f5f9" },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6b7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 12,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10 },
+  label: {
+    fontSize: 13,
+    color: "#6b7280",
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
+  value: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+    maxWidth: "60%",
+    textAlign: "right",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(60,60,67,0.12)" },
   notConnectedCard: { alignItems: "center", padding: 32 },
-  notConnectedIcon: { fontSize: 40, marginBottom: 12 },
-  notConnectedText: { fontSize: 16, fontWeight: "600", color: "#1e293b", textAlign: "center", marginBottom: 8 },
-  notConnectedSub: { fontSize: 13, color: "#64748b", textAlign: "center" },
+  notConnectedIcon: { marginBottom: 12 },
+  notConnectedText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 8,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  notConnectedSub: {
+    fontSize: 12.5,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 18,
+  },
 });

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 
 interface FbPage {
@@ -185,14 +187,19 @@ export default function FacebookLeadsScreen() {
           >
             {loadingPages
               ? <ActivityIndicator size="small" color="#1d4ed8" />
-              : <Text style={styles.refreshBtnText}>↺  Refresh pages</Text>}
+              : (
+                <View style={styles.btnInner}>
+                  <Ionicons name="refresh-outline" size={16} color="#1d4ed8" />
+                  <Text style={styles.refreshBtnText}>Refresh pages</Text>
+                </View>
+              )}
           </TouchableOpacity>
         </View>
 
         {/* Error */}
         {!!error && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorIcon}>⚠️</Text>
+            <Ionicons name="alert-circle-outline" size={18} color="#dc2626" style={{ marginTop: 1 }} />
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
@@ -251,13 +258,21 @@ export default function FacebookLeadsScreen() {
           >
             {syncing
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.syncBtnText}>⬇  Sync selected form</Text>}
+              : (
+                <View style={styles.btnInner}>
+                  <Ionicons name="cloud-download-outline" size={17} color="#fff" />
+                  <Text style={styles.syncBtnText}>Sync selected form</Text>
+                </View>
+              )}
           </TouchableOpacity>
         </View>
 
         {/* Selected source summary */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📄  Selected source</Text>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="document-text-outline" size={16} color="#374151" />
+            <Text style={styles.sectionTitle}>Selected source</Text>
+          </View>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryKey}>Page</Text>
@@ -272,7 +287,7 @@ export default function FacebookLeadsScreen() {
 
         {/* How it works */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoIcon}>ℹ️</Text>
+          <Ionicons name="information-circle-outline" size={22} color="#1d4ed8" style={{ marginTop: 2 }} />
           <View style={{ flex: 1, gap: 6 }}>
             <Text style={styles.infoTitle}>How sync works</Text>
             <Text style={styles.infoBody}>
@@ -298,7 +313,7 @@ export default function FacebookLeadsScreen() {
             {Array.isArray(result.warnings) && result.warnings.length > 0 && (
               <View style={styles.warningBox}>
                 {result.warnings.map((w, i) => (
-                  <Text key={i} style={styles.warningText}>⚠️  {w}</Text>
+                  <Text key={i} style={styles.warningText}>{w}</Text>
                 ))}
               </View>
             )}
@@ -326,8 +341,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  tagline: { fontSize: 10, fontWeight: "800", color: "#1d4ed8", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
-  heading: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  tagline: { fontSize: 11, fontWeight: "600", color: "#6b7280", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 4, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
+  heading: { fontSize: 19, fontWeight: "600", color: "#111827", letterSpacing: Platform.OS === "ios" ? -0.4 : 0, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   subheading: { fontSize: 13, color: "#64748b", lineHeight: 20, marginTop: 4 },
 
   refreshBtn: {
@@ -343,7 +358,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  refreshBtnText: { fontSize: 13, fontWeight: "700", color: "#1d4ed8" },
+  btnInner: { flexDirection: "row", alignItems: "center", gap: 6 },
+  refreshBtnText: { fontSize: 13, fontWeight: "600", color: "#1d4ed8", fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
 
   errorBanner: {
     flexDirection: "row",
@@ -355,7 +371,6 @@ const styles = StyleSheet.create({
     borderColor: "#fecaca",
     padding: 12,
   },
-  errorIcon: { fontSize: 16, marginTop: 1 },
   errorText: { flex: 1, fontSize: 13, fontWeight: "600", color: "#dc2626" },
 
   loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 },
@@ -404,10 +419,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
   },
-  syncBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  syncBtnText: { fontSize: 14.5, fontWeight: "600", color: "#fff", fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   btnDisabled: { opacity: 0.5 },
 
-  sectionTitle: { fontSize: 14, fontWeight: "800", color: "#0f172a", marginBottom: 10 },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
+  sectionTitle: { fontSize: 14, fontWeight: "600", color: "#111827", fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   summaryRow: { flexDirection: "row", gap: 16 },
   summaryItem: { flex: 1, gap: 4 },
   summaryKey: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase" },
@@ -422,12 +438,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
   },
-  infoIcon: { fontSize: 22, marginTop: 2 },
-  infoTitle: { fontSize: 15, fontWeight: "800", color: "#1e3a5f", marginBottom: 4 },
+  infoTitle: { fontSize: 14.5, fontWeight: "600", color: "#1e3a5f", marginBottom: 4, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   infoBody: { fontSize: 13, color: "#1e40af", lineHeight: 20 },
 
   resultCard: { borderWidth: 1, borderColor: "#bbf7d0" },
-  resultTitle: { fontSize: 16, fontWeight: "800", color: "#0f172a", marginBottom: 12 },
+  resultTitle: { fontSize: 15, fontWeight: "600", color: "#111827", marginBottom: 12, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metric: {
     flex: 1,
@@ -438,8 +453,8 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     padding: 12,
   },
-  metricLabel: { fontSize: 10, fontWeight: "800", color: "#64748b", textTransform: "uppercase", letterSpacing: 1 },
-  metricValue: { fontSize: 28, fontWeight: "800", color: "#0f172a", marginTop: 4 },
+  metricLabel: { fontSize: 10.5, fontWeight: "600", color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8 },
+  metricValue: { fontSize: 24, fontWeight: "700", color: "#111827", marginTop: 4, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
 
   warningBox: {
     marginTop: 12,

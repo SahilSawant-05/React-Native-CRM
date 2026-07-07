@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from "react";
 import {
   View, Text, FlatList, StyleSheet, Image,
-  TouchableOpacity, Clipboard, Alert, ActivityIndicator,
+  TouchableOpacity, Clipboard, Alert, ActivityIndicator, Platform,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import api from "../../api/client";
@@ -28,8 +29,8 @@ const MEDIA_COLORS: Record<string, { bg: string; text: string }> = {
   AUDIO:    { bg: "#dcfce7", text: "#22c55e" },
 };
 
-const MEDIA_EMOJI: Record<string, string> = {
-  IMAGE: "🖼️", VIDEO: "🎬", DOCUMENT: "📄", AUDIO: "🎵",
+const MEDIA_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  IMAGE: "image", VIDEO: "videocam", DOCUMENT: "document-text", AUDIO: "musical-notes",
 };
 
 function formatSize(bytes?: number) {
@@ -120,7 +121,7 @@ export default function MediaLibraryScreen() {
         renderItem={({ item }) => {
           const type = item.mediaType ?? "DOCUMENT";
           const colors = MEDIA_COLORS[type] || { bg: "#f1f5f9", text: "#64748b" };
-          const emoji = MEDIA_EMOJI[type] || "📁";
+          const iconName = MEDIA_ICONS[type] || "folder";
           const displayName = item.name || item.originalFileName || "Untitled";
           const isImage = type === "IMAGE" && !!item.publicUrl;
           return (
@@ -129,7 +130,7 @@ export default function MediaLibraryScreen() {
                 <Image source={{ uri: item.publicUrl }} style={styles.thumbnail} resizeMode="cover" />
               ) : (
                 <View style={[styles.iconBox, { backgroundColor: colors.bg }]}>
-                  <Text style={styles.emoji}>{emoji}</Text>
+                  <Ionicons name={iconName} size={26} color={colors.text} />
                 </View>
               )}
 
@@ -152,7 +153,8 @@ export default function MediaLibraryScreen() {
                 disabled={!item.publicUrl}
                 activeOpacity={0.75}
               >
-                <Text style={styles.copyBtnText}>📋 Copy URL</Text>
+                <Ionicons name="link-outline" size={14} color={item.publicUrl ? "#fff" : "#9ca3af"} />
+                <Text style={[styles.copyBtnText, !item.publicUrl && styles.copyBtnTextDisabled]}>Copy URL</Text>
               </TouchableOpacity>
             </View>
           );
@@ -168,46 +170,58 @@ export default function MediaLibraryScreen() {
       >
         {uploading
           ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.fabText}>＋</Text>}
+          : <Ionicons name="cloud-upload-outline" size={24} color="#fff" />}
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  container: { flex: 1, backgroundColor: "#f8f9fb" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 16, color: "#94a3b8", marginTop: 40 },
+  emptyText: {
+    fontSize: 15, color: "#9ca3af", marginTop: 40,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   card: {
-    backgroundColor: "#fff", borderRadius: 14, padding: 12,
+    backgroundColor: "#fff", borderRadius: 12, padding: 12,
     margin: 6, flex: 1,
     shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
   },
-  thumbnail: { width: "100%", height: 90, borderRadius: 8, marginBottom: 8 },
+  thumbnail: { width: "100%", height: 96, borderRadius: 12, marginBottom: 10 },
   iconBox: {
-    width: "100%", height: 70, borderRadius: 8, marginBottom: 8,
+    width: "100%", height: 72, borderRadius: 12, marginBottom: 10,
     alignItems: "center", justifyContent: "center",
   },
-  emoji: { fontSize: 28 },
-  name: { fontSize: 12, fontWeight: "600", color: "#1e293b", marginBottom: 6 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" },
-  badge: { borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeText: { fontSize: 10, fontWeight: "700" },
-  size: { fontSize: 10, color: "#94a3b8" },
-  urlPreview: { fontSize: 10, color: "#94a3b8", marginBottom: 8 },
-  copyBtn: {
-    backgroundColor: "#0f766e", borderRadius: 8,
-    paddingVertical: 7, alignItems: "center",
+  name: {
+    fontSize: 13.5, fontWeight: "600", color: "#111827", marginBottom: 6,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
-  copyBtnDisabled: { backgroundColor: "#e2e8f0" },
-  copyBtnText: { fontSize: 12, fontWeight: "700", color: "#fff" },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" },
+  badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2.5 },
+  badgeText: { fontSize: 10.5, fontWeight: "600" },
+  size: { fontSize: 11.5, color: "#9ca3af" },
+  urlPreview: { fontSize: 11.5, color: "#9ca3af", marginBottom: 10 },
+  copyBtn: {
+    backgroundColor: "#0f766e", borderRadius: 10,
+    paddingVertical: 8, alignItems: "center",
+    flexDirection: "row", justifyContent: "center", gap: 5,
+  },
+  copyBtnDisabled: { backgroundColor: "#f3f4f6" },
+  copyBtnText: {
+    fontSize: 12, fontWeight: "600", color: "#fff",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
+  copyBtnTextDisabled: { color: "#9ca3af" },
   fab: {
     position: "absolute", bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
-    shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 6,
   },
-  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });

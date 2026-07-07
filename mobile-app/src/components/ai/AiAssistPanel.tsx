@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Clipboard,
   Alert,
   StyleSheet,
@@ -165,7 +166,7 @@ const styles = StyleSheet.create({
   header: { gap: 8 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   btnInner: { flexDirection: "row", alignItems: "center", gap: 5 },
-  title: { fontSize: 13, fontWeight: "800", color: "#134e4a" },
+  title: { fontSize: 13, fontWeight: "600", color: "#134e4a", fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   subtitle: { fontSize: 10, color: "#0f766e", marginTop: 1 },
   btnGroup: { flexDirection: "row", gap: 8 },
   btnOutline: {
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 34,
   },
-  btnOutlineText: { fontSize: 12, fontWeight: "700", color: "#0f766e" },
+  btnOutlineText: { fontSize: 12, fontWeight: "600", color: "#0f766e" },
   btnFill: {
     flex: 1,
     borderRadius: 8,
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 34,
   },
-  btnFillText: { fontSize: 12, fontWeight: "700", color: "#fff" },
+  btnFillText: { fontSize: 12, fontWeight: "600", color: "#fff" },
   btnDisabled: { opacity: 0.5 },
   errorBox: {
     backgroundColor: "#fef2f2",

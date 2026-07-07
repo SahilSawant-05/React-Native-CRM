@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -93,7 +95,7 @@ function PickerRow({
       <Text style={fs.label}>{label}</Text>
       <TouchableOpacity style={fs.select} onPress={() => setOpen(true)} activeOpacity={0.7}>
         <Text style={fs.selectText}>{selected?.label ?? value ?? "Select…"}</Text>
-        <Text style={fs.chevron}>▾</Text>
+        <Ionicons name="chevron-down" size={16} color="#9ca3af" style={{ marginLeft: 8 }} />
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity style={fs.overlay} activeOpacity={1} onPress={() => setOpen(false)}>
@@ -109,7 +111,7 @@ function PickerRow({
                   <Text style={[fs.pickerItemText, o.value === value && fs.pickerItemTextActive]}>
                     {o.label}
                   </Text>
-                  {o.value === value && <Text style={{ color: "#0f766e" }}>✓</Text>}
+                  {o.value === value && <Ionicons name="checkmark" size={18} color="#0f766e" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -210,7 +212,7 @@ function RuleFormModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fb" }}>
         <View style={fs.header}>
           <Text style={fs.headerTitle}>{rule ? "Edit Rule" : "New Assignment Rule"}</Text>
           <TouchableOpacity onPress={onClose} style={fs.cancelBtn}>
@@ -230,7 +232,7 @@ function RuleFormModal({
             <TextInput
               style={fs.input}
               placeholder="e.g. WhatsApp leads → Rahul"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor="#9ca3af"
               value={name}
               onChangeText={setName}
             />
@@ -274,7 +276,7 @@ function RuleFormModal({
               <View style={fs.field}>
                 <Text style={fs.label}>
                   Criteria Value{" "}
-                  <Text style={{ color: "#94a3b8", fontWeight: "400" }}>
+                  <Text style={{ color: "#9ca3af", fontWeight: "400" }}>
                     ({criteriaType === "CITY" ? "e.g. Mumbai" : criteriaType === "WEBSITE_DOMAIN" ? "e.g. example.com" : "e.g. hot-lead"})
                   </Text>
                 </Text>
@@ -284,7 +286,7 @@ function RuleFormModal({
                     criteriaType === "CITY" ? "Mumbai" :
                     criteriaType === "WEBSITE_DOMAIN" ? "example.com" : "value"
                   }
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor="#9ca3af"
                   value={criteriaValue}
                   onChangeText={setCriteriaValue}
                   autoCapitalize="none"
@@ -298,7 +300,7 @@ function RuleFormModal({
             <TextInput
               style={fs.input}
               placeholder="0"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor="#9ca3af"
               keyboardType="numeric"
               value={priority}
               onChangeText={setPriority}
@@ -394,7 +396,9 @@ export default function LeadAssignmentScreen() {
         contentContainerStyle={rules.length === 0 ? s.emptyWrap : { padding: 16, gap: 12 }}
         ListEmptyComponent={
           <View style={s.emptyWrap}>
-            <Text style={s.emptyIcon}>🎯</Text>
+            <View style={s.emptyIconWrap}>
+              <Ionicons name="git-branch-outline" size={30} color="#0f766e" />
+            </View>
             <Text style={s.emptyTitle}>No assignment rules</Text>
             <Text style={s.emptySub}>Tap + to create your first rule</Text>
           </View>
@@ -419,9 +423,10 @@ export default function LeadAssignmentScreen() {
                     {item.criteriaValue ? ` = ${criteriaValueLabel(item)}` : ""}
                   </Text>
                 </View>
-                <Text style={s.arrow}>→</Text>
+                <Ionicons name="arrow-forward" size={13} color="#9ca3af" />
                 <View style={s.metaChipAgent}>
-                  <Text style={s.metaChipText}>👤 {agentName(item)}</Text>
+                  <Ionicons name="person-outline" size={11} color="#0f766e" />
+                  <Text style={s.metaChipAgentText}>{agentName(item)}</Text>
                 </View>
               </View>
 
@@ -430,10 +435,12 @@ export default function LeadAssignmentScreen() {
                   style={s.editBtn}
                   onPress={() => { setEditing(item); setFormOpen(true); }}
                 >
-                  <Text style={s.editBtnText}>✏️ Edit</Text>
+                  <Ionicons name="create-outline" size={15} color="#374151" />
+                  <Text style={s.editBtnText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
-                  <Text style={s.deleteBtnText}>🗑 Delete</Text>
+                  <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                  <Text style={s.deleteBtnText}>Delete</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -447,7 +454,7 @@ export default function LeadAssignmentScreen() {
         onPress={() => { setEditing(null); setFormOpen(true); }}
         activeOpacity={0.85}
       >
-        <Text style={s.fabText}>＋</Text>
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
       <RuleFormModal
@@ -463,101 +470,151 @@ export default function LeadAssignmentScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+const cardShadow = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.05,
+  shadowRadius: 6,
+  elevation: 2,
+} as const;
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f8fafc" },
+  root: { flex: 1, backgroundColor: "#f8f9fb" },
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 10 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
-  emptySub: { fontSize: 14, color: "#94a3b8", textAlign: "center" },
+  emptyIconWrap: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(15,118,110,0.08)",
+    alignItems: "center", justifyContent: "center", marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 16, fontWeight: "600", color: "#111827",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  emptySub: { fontSize: 13, color: "#9ca3af", textAlign: "center" },
   card: {
     backgroundColor: "#fff", borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: "#e2e8f0",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
+    ...cardShadow,
     gap: 10,
   },
   cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  ruleName: { fontSize: 14, fontWeight: "700", color: "#0f172a", flex: 1 },
-  priorityBadge: {
-    backgroundColor: "#fef3c7", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+  ruleName: {
+    fontSize: 15, fontWeight: "600", color: "#111827", flex: 1,
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
   },
-  priorityText: { fontSize: 11, fontWeight: "700", color: "#92400e" },
+  priorityBadge: {
+    backgroundColor: "#fef3c7", borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3,
+  },
+  priorityText: { fontSize: 11, fontWeight: "600", color: "#92400e" },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   metaChip: {
-    backgroundColor: "#eff6ff", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5,
   },
   metaChipAgent: {
-    backgroundColor: "#f0fdf4", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: "rgba(15,118,110,0.08)", borderRadius: 99, paddingHorizontal: 9, paddingVertical: 3.5,
+    flexDirection: "row", alignItems: "center", gap: 4,
   },
   metaChipText: { fontSize: 11, fontWeight: "600", color: "#374151" },
-  arrow: { fontSize: 12, color: "#94a3b8" },
-  cardActions: { flexDirection: "row", gap: 10 },
+  metaChipAgentText: { fontSize: 11, fontWeight: "600", color: "#0f766e" },
+  cardActions: {
+    flexDirection: "row", gap: 10, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)",
+  },
   editBtn: {
-    flex: 1, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8,
-    paddingVertical: 8, alignItems: "center",
+    flex: 1, backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
+    minHeight: 40, alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 6,
   },
-  editBtnText: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  editBtnText: {
+    fontSize: 13, fontWeight: "600", color: "#374151",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   deleteBtn: {
-    flex: 1, borderWidth: 1, borderColor: "#fecaca", borderRadius: 8,
-    paddingVertical: 8, alignItems: "center",
+    flex: 1, backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 12,
+    minHeight: 40, alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 6,
   },
-  deleteBtnText: { fontSize: 13, fontWeight: "600", color: "#dc2626" },
+  deleteBtnText: {
+    fontSize: 13, fontWeight: "600", color: "#dc2626",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   fab: {
     position: "absolute", bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
     shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
   },
-  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });
 
 const fs = StyleSheet.create({
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    padding: 20, borderBottomWidth: 1, borderBottomColor: "#e2e8f0", backgroundColor: "#fff",
+    padding: 18, borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.12)", backgroundColor: "#fff",
   },
-  headerTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  cancelBtn: { backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
-  cancelText: { color: "#475569", fontWeight: "600" },
+  headerTitle: {
+    fontSize: 16, fontWeight: "600", color: "#111827",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  cancelBtn: {
+    backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 99,
+    paddingHorizontal: 14, paddingVertical: 7,
+  },
+  cancelText: {
+    color: "#374151", fontSize: 13, fontWeight: "600",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   body: { padding: 16, gap: 14 },
   errorBox: {
-    backgroundColor: "#fef2f2", borderRadius: 10, borderWidth: 1,
-    borderColor: "#fecaca", padding: 12, marginHorizontal: 16, marginTop: 12,
+    backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 12,
+    padding: 12,
   },
   errorText: { color: "#dc2626", fontSize: 13 },
   field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  label: {
+    fontSize: 13, fontWeight: "600", color: "#374151",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   input: {
-    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
-    color: "#0f172a", backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
+    color: "#111827", backgroundColor: "rgba(118,118,128,0.06)",
   },
   select: {
-    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 11, backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 13, backgroundColor: "rgba(118,118,128,0.06)",
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-  selectText: { fontSize: 14, color: "#0f172a", flex: 1 },
-  chevron: { fontSize: 14, color: "#94a3b8", marginLeft: 8 },
+  selectText: { fontSize: 15, color: "#111827", flex: 1 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerSheet: {
     backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18,
     padding: 16, paddingBottom: 30, gap: 2,
   },
-  pickerTitle: { fontSize: 15, fontWeight: "700", color: "#0f172a", marginBottom: 8 },
+  pickerTitle: {
+    fontSize: 15, fontWeight: "600", color: "#111827", marginBottom: 8,
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   pickerItem: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingVertical: 13, paddingHorizontal: 8, borderRadius: 8,
+    paddingVertical: 13, paddingHorizontal: 10, borderRadius: 10,
   },
-  pickerItemActive: { backgroundColor: "#f0fdfa" },
+  pickerItemActive: { backgroundColor: "rgba(15,118,110,0.08)" },
   pickerItemText: { fontSize: 14, color: "#374151" },
-  pickerItemTextActive: { color: "#0f766e", fontWeight: "700" },
+  pickerItemTextActive: {
+    color: "#0f766e", fontWeight: "600",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   footer: {
-    padding: 16, borderTopWidth: 1, borderTopColor: "#e2e8f0", backgroundColor: "#fff",
+    padding: 16, borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(60,60,67,0.12)", backgroundColor: "#fff",
   },
   saveBtn: {
-    backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 15, alignItems: "center",
+    backgroundColor: "#0f766e", borderRadius: 12, minHeight: 48,
+    alignItems: "center", justifyContent: "center",
   },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  saveBtnText: {
+    color: "#fff", fontSize: 15, fontWeight: "600",
+    fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
 });

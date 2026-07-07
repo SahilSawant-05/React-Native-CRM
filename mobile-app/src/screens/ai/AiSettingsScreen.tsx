@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -11,27 +12,30 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
+
+const androidMedium = Platform.OS === "android" ? "sans-serif-medium" : undefined;
 
 const PROVIDERS = [
   {
     key: "OPENAI",
     name: "OpenAI",
-    emoji: "🤖",
+    icon: "hardware-chip-outline" as const,
     defaultModel: "gpt-5.4-mini",
     helper: "Strong all-round CRM assistant for summaries, replies, and campaign writing.",
   },
   {
     key: "GEMINI",
     name: "Google Gemini",
-    emoji: "✨",
+    icon: "diamond-outline" as const,
     defaultModel: "gemini-2.5-flash",
     helper: "Good low-cost option for fast text generation and Google-first teams.",
   },
   {
     key: "CLAUDE",
     name: "Anthropic Claude",
-    emoji: "🧠",
+    icon: "prism-outline" as const,
     defaultModel: "claude-sonnet-4-5",
     helper: "Useful for careful long-form summaries and polished business communication.",
   },
@@ -213,9 +217,9 @@ export default function AiSettingsScreen() {
             >
               <View style={styles.provRow}>
                 <View style={styles.provIconWrap}>
-                  <Text style={styles.provEmoji}>{prov.emoji}</Text>
+                  <Ionicons name={prov.icon} size={20} color="#0f766e" />
                 </View>
-                {active && <Text style={styles.checkMark}>✓</Text>}
+                {active && <Ionicons name="checkmark-circle" size={22} color="#0f766e" />}
               </View>
               <Text style={styles.provName}>{prov.name}</Text>
               <Text style={styles.provHelper}>{prov.helper}</Text>
@@ -236,7 +240,7 @@ export default function AiSettingsScreen() {
               <Text style={styles.modelName}>{selectedModel?.label || settings.model}</Text>
               {selectedModel && <Text style={styles.modelHelper}>{selectedModel.helper}</Text>}
             </View>
-            <Text style={styles.cycleArrow}>↻</Text>
+            <Ionicons name="sync-outline" size={20} color="#0f766e" />
           </TouchableOpacity>
           <Text style={styles.modelHint}>Tap to cycle through {modelOptions.length} available models</Text>
 
@@ -303,7 +307,12 @@ export default function AiSettingsScreen() {
           >
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={styles.btnDarkText}>✨  Generate</Text>}
+              : (
+                <View style={styles.btnDarkContent}>
+                  <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                  <Text style={styles.btnDarkText}>Generate</Text>
+                </View>
+              )}
           </TouchableOpacity>
           {!settings.active && (
             <Text style={styles.disabledHint}>Enable AI above to use the generator.</Text>
@@ -327,92 +336,90 @@ export default function AiSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f1f5f9" },
+  root: { flex: 1, backgroundColor: "#f8f9fb" },
   scroll: { padding: 16, gap: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: { fontSize: 14, color: "#64748b" },
+  loadingText: { fontSize: 14, color: "#6b7280", letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
 
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
     padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
   },
   cardActive: { borderWidth: 2, borderColor: "#0f766e" },
 
-  tagline: { fontSize: 10, fontWeight: "800", color: "#0f766e", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 },
-  heading: { fontSize: 20, fontWeight: "800", color: "#0f172a", marginBottom: 6 },
-  subheading: { fontSize: 13, color: "#64748b", lineHeight: 20 },
+  tagline: { fontSize: 11, fontWeight: "600", color: "#6b7280", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 4, fontFamily: androidMedium },
+  heading: { fontSize: 19, fontWeight: "600", color: "#111827", marginBottom: 6, fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.32 : 0 },
+  subheading: { fontSize: 13.5, color: "#6b7280", lineHeight: 20, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
 
-  statusBadge: { marginTop: 12, alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1 },
-  statusActive: { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" },
-  statusInactive: { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
-  statusText: { fontSize: 12, fontWeight: "700" },
+  statusBadge: { marginTop: 12, alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  statusActive: { backgroundColor: "#f0fdf4" },
+  statusInactive: { backgroundColor: "#fffbeb" },
+  statusText: { fontSize: 12, fontWeight: "600", fontFamily: androidMedium },
   statusActiveText: { color: "#15803d" },
   statusInactiveText: { color: "#92400e" },
 
-  msgBanner: { backgroundColor: "#fff", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#e2e8f0" },
-  msgBannerError: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
-  msgText: { fontSize: 13, fontWeight: "600", color: "#334155" },
+  msgBanner: { backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  msgBannerError: { backgroundColor: "#fef2f2" },
+  msgText: { fontSize: 13, fontWeight: "600", color: "#374151", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
   msgTextError: { color: "#dc2626" },
 
-  sectionLabel: { fontSize: 10, fontWeight: "800", color: "#94a3b8", letterSpacing: 1.5, marginTop: 4 },
+  sectionLabel: { fontSize: 11, fontWeight: "600", color: "#6b7280", letterSpacing: 0.8, marginTop: 4, fontFamily: androidMedium },
 
   provRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  provIconWrap: { width: 38, height: 38, borderRadius: 10, backgroundColor: "#f0fdfa", alignItems: "center", justifyContent: "center" },
-  provEmoji: { fontSize: 20 },
-  checkMark: { fontSize: 18, color: "#0f766e", fontWeight: "800" },
-  provName: { fontSize: 16, fontWeight: "800", color: "#0f172a", marginTop: 10 },
-  provHelper: { fontSize: 12, color: "#64748b", marginTop: 4, lineHeight: 18 },
-  defaultModelBadge: { marginTop: 8, backgroundColor: "#f8fafc", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
-  defaultModelText: { fontSize: 11, fontWeight: "700", color: "#64748b" },
+  provIconWrap: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#f0fdfa", alignItems: "center", justifyContent: "center" },
+  provName: { fontSize: 15, fontWeight: "600", color: "#111827", marginTop: 10, fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.32 : 0 },
+  provHelper: { fontSize: 12.5, color: "#6b7280", marginTop: 4, lineHeight: 18, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
+  defaultModelBadge: { marginTop: 8, backgroundColor: "#f8f9fb", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, alignSelf: "flex-start" },
+  defaultModelText: { fontSize: 11, fontWeight: "600", color: "#6b7280", fontFamily: androidMedium },
 
-  fieldLabel: { fontSize: 11, fontWeight: "800", color: "#64748b", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 6 },
+  fieldLabel: { fontSize: 11, fontWeight: "600", color: "#6b7280", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 6, fontFamily: androidMedium },
   modelSelector: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(60,60,67,0.2)",
+    borderRadius: 12,
     padding: 12,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "rgba(118,118,128,0.06)",
     gap: 8,
   },
-  modelName: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  modelHelper: { fontSize: 12, color: "#64748b", marginTop: 2 },
-  cycleArrow: { fontSize: 20, color: "#0f766e", fontWeight: "700" },
-  modelHint: { fontSize: 11, color: "#94a3b8", marginTop: 4 },
+  modelName: { fontSize: 14, fontWeight: "600", color: "#111827", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
+  modelHelper: { fontSize: 12.5, color: "#6b7280", marginTop: 2 },
+  modelHint: { fontSize: 11, color: "#9ca3af", marginTop: 4 },
 
   input: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(60,60,67,0.2)",
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#0f172a",
-    backgroundColor: "#f8fafc",
+    paddingVertical: 11,
+    fontSize: 15,
+    color: "#111827",
+    backgroundColor: "rgba(118,118,128,0.06)",
   },
-  textArea: { minHeight: 110, paddingTop: 10 },
+  textArea: { minHeight: 110, paddingTop: 11 },
 
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingVertical: 4 },
-  toggleLabel: { fontSize: 14, fontWeight: "600", color: "#334155", flex: 1 },
+  toggleLabel: { fontSize: 14, fontWeight: "600", color: "#374151", flex: 1, fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
 
   btnRow: { flexDirection: "row", gap: 10, marginTop: 16 },
-  btnPrimary: { flex: 1, backgroundColor: "#0f766e", borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  btnPrimaryText: { fontSize: 14, fontWeight: "700", color: "#fff" },
-  btnSecondary: { flex: 1, backgroundColor: "#f0fdfa", borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: "#99f6e4" },
-  btnSecondaryText: { fontSize: 14, fontWeight: "700", color: "#0f766e" },
-  btnDark: { marginTop: 12, backgroundColor: "#0f172a", borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  btnDarkText: { fontSize: 14, fontWeight: "700", color: "#fff" },
+  btnPrimary: { flex: 1, backgroundColor: "#0f766e", borderRadius: 12, minHeight: 46, alignItems: "center", justifyContent: "center" },
+  btnPrimaryText: { fontSize: 15, fontWeight: "600", color: "#fff", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.32 : 0 },
+  btnSecondary: { flex: 1, backgroundColor: "#f0fdfa", borderRadius: 12, minHeight: 46, alignItems: "center", justifyContent: "center" },
+  btnSecondaryText: { fontSize: 15, fontWeight: "600", color: "#0f766e", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.32 : 0 },
+  btnDark: { marginTop: 12, backgroundColor: "#111827", borderRadius: 12, minHeight: 46, alignItems: "center", justifyContent: "center" },
+  btnDarkContent: { flexDirection: "row", alignItems: "center", gap: 8 },
+  btnDarkText: { fontSize: 15, fontWeight: "600", color: "#fff", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.32 : 0 },
   btnDisabled: { opacity: 0.5 },
 
-  disabledHint: { fontSize: 12, color: "#94a3b8", marginTop: 8, textAlign: "center" },
+  disabledHint: { fontSize: 12, color: "#9ca3af", marginTop: 8, textAlign: "center" },
 
-  resultBox: { marginTop: 10, backgroundColor: "#f8fafc", borderRadius: 10, padding: 14 },
-  resultText: { fontSize: 13, color: "#334155", lineHeight: 22 },
+  resultBox: { marginTop: 10, backgroundColor: "#f8f9fb", borderRadius: 12, padding: 14 },
+  resultText: { fontSize: 13.5, color: "#374151", lineHeight: 22, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
 });

@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -114,7 +115,7 @@ function PickerRow({
       <Text style={fs.label}>{label}</Text>
       <TouchableOpacity style={fs.select} onPress={() => setOpen(true)} activeOpacity={0.7}>
         <Text style={fs.selectText}>{selected?.label ?? value}</Text>
-        <Text style={fs.chevron}>▾</Text>
+        <Ionicons name="chevron-down" size={16} color="#9ca3af" style={{ marginLeft: 8 }} />
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity style={fs.overlay} activeOpacity={1} onPress={() => setOpen(false)}>
@@ -129,7 +130,7 @@ function PickerRow({
                 <Text style={[fs.pickerItemText, o.value === value && fs.pickerItemTextActive]}>
                   {o.label}
                 </Text>
-                {o.value === value && <Text style={{ color: "#0f766e" }}>✓</Text>}
+                {o.value === value && <Ionicons name="checkmark" size={18} color="#0f766e" />}
               </TouchableOpacity>
             ))}
           </View>
@@ -226,7 +227,7 @@ function RuleFormModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fb" }}>
         <View style={fs.header}>
           <Text style={fs.headerTitle}>{rule ? "Edit Rule" : "New Automation Rule"}</Text>
           <TouchableOpacity onPress={onClose} style={fs.cancelBtn}>
@@ -470,7 +471,7 @@ export default function AutomationRulesScreen() {
         contentContainerStyle={rules.length === 0 ? s.emptyWrap : { padding: 16, gap: 12 }}
         ListEmptyComponent={
           <View style={s.emptyWrap}>
-            <Text style={s.emptyIcon}>⚡</Text>
+            <Ionicons name="flash-outline" size={44} color="#9ca3af" />
             <Text style={s.emptyTitle}>No automation rules</Text>
             <Text style={s.emptySub}>Tap + to create your first rule</Text>
           </View>
@@ -482,12 +483,14 @@ export default function AutomationRulesScreen() {
                 <Text style={s.ruleName}>{item.name}</Text>
                 <View style={s.tagRow}>
                   <View style={s.tagTrigger}>
+                    <Ionicons name="flash-outline" size={11} color="#374151" />
                     <Text style={s.tagText}>
                       {TRIGGERS.find((t) => t.value === item.triggerType)?.label ?? labelFor(item.triggerType)}
                     </Text>
                   </View>
-                  <Text style={s.arrow}>→</Text>
+                  <Ionicons name="arrow-forward" size={12} color="#9ca3af" />
                   <View style={s.tagAction}>
+                    <Ionicons name="play-outline" size={11} color="#15803d" />
                     <Text style={s.tagText}>
                       {ACTIONS.find((a) => a.value === item.actionType)?.label ?? labelFor(item.actionType)}
                     </Text>
@@ -506,10 +509,12 @@ export default function AutomationRulesScreen() {
                 style={s.editBtn}
                 onPress={() => { setEditing(item); setFormOpen(true); }}
               >
-                <Text style={s.editBtnText}>✏️ Edit</Text>
+                <Ionicons name="create-outline" size={16} color="#374151" />
+                <Text style={s.editBtnText}>Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
-                <Text style={s.deleteBtnText}>🗑 Delete</Text>
+                <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                <Text style={s.deleteBtnText}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -522,7 +527,7 @@ export default function AutomationRulesScreen() {
         onPress={() => { setEditing(null); setFormOpen(true); }}
         activeOpacity={0.85}
       >
-        <Text style={s.fabText}>＋</Text>
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
       <RuleFormModal
@@ -537,98 +542,158 @@ export default function AutomationRulesScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const fontMedium = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f8fafc" },
+  root: { flex: 1, backgroundColor: "#f8f9fb" },
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 10 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
-  emptySub: { fontSize: 14, color: "#94a3b8", textAlign: "center" },
+  emptyTitle: {
+    fontSize: 16, fontWeight: "600", color: "#111827",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  emptySub: { fontSize: 13.5, color: "#9ca3af", textAlign: "center" },
   card: {
     backgroundColor: "#fff", borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: "#e2e8f0",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3, elevation: 2,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
     gap: 10,
   },
   cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  ruleName: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  ruleName: {
+    fontSize: 15, fontWeight: "600", color: "#111827",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   tagRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  tagTrigger: { backgroundColor: "#eff6ff", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  tagAction: { backgroundColor: "#f0fdf4", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  tagTrigger: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 100,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  tagAction: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "#dcfce7", borderRadius: 100,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
   tagText: { fontSize: 11, fontWeight: "600", color: "#374151" },
-  arrow: { fontSize: 12, color: "#94a3b8" },
-  cardActions: { flexDirection: "row", gap: 10 },
+  cardActions: {
+    flexDirection: "row", gap: 10, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)",
+  },
   editBtn: {
-    flex: 1, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8,
-    paddingVertical: 8, alignItems: "center",
+    flex: 1, flexDirection: "row", justifyContent: "center", gap: 6,
+    backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
+    minHeight: 44, alignItems: "center",
   },
-  editBtnText: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  editBtnText: {
+    fontSize: 13, fontWeight: "600", color: "#374151",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   deleteBtn: {
-    flex: 1, borderWidth: 1, borderColor: "#fecaca", borderRadius: 8,
-    paddingVertical: 8, alignItems: "center",
+    flex: 1, flexDirection: "row", justifyContent: "center", gap: 6,
+    backgroundColor: "rgba(220,38,38,0.08)", borderRadius: 12,
+    minHeight: 44, alignItems: "center",
   },
-  deleteBtnText: { fontSize: 13, fontWeight: "600", color: "#dc2626" },
+  deleteBtnText: {
+    fontSize: 13, fontWeight: "600", color: "#dc2626",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   fab: {
     position: "absolute", bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
     shadowColor: "#0f766e", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 8,
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
   },
-  fabText: { color: "#fff", fontSize: 28, lineHeight: 32 },
 });
 
 const fs = StyleSheet.create({
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    padding: 20, borderBottomWidth: 1, borderBottomColor: "#e2e8f0", backgroundColor: "#fff",
+    padding: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.12)",
+    backgroundColor: "#fff",
   },
-  headerTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  cancelBtn: { backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
-  cancelText: { color: "#475569", fontWeight: "600" },
+  headerTitle: {
+    fontSize: 16, fontWeight: "600", color: "#111827",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
+  cancelBtn: {
+    backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 12,
+    paddingHorizontal: 14, minHeight: 36, justifyContent: "center",
+  },
+  cancelText: {
+    color: "#374151", fontWeight: "600", fontSize: 14,
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
+  },
   body: { padding: 16, gap: 14 },
   errorBox: {
-    backgroundColor: "#fef2f2", borderRadius: 10, borderWidth: 1,
-    borderColor: "#fecaca", padding: 12, marginHorizontal: 16, marginTop: 12,
+    backgroundColor: "#fef2f2", borderRadius: 12, padding: 12,
   },
   errorText: { color: "#dc2626", fontSize: 13 },
   field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: "#374151" },
+  label: {
+    fontSize: 12.5, fontWeight: "600", color: "#6b7280",
+    fontFamily: fontMedium,
+  },
   input: {
-    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
-    color: "#0f172a", backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 12, fontSize: 15,
+    color: "#111827", backgroundColor: "rgba(118,118,128,0.06)",
   },
   switchRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: "#fff", borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
+    backgroundColor: "#fff", borderRadius: 14, padding: 14,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
   select: {
-    borderWidth: 1, borderColor: "#d1d5db", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 11, backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 12, minHeight: 46, backgroundColor: "rgba(118,118,128,0.06)",
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-  selectText: { fontSize: 14, color: "#0f172a", flex: 1 },
-  chevron: { fontSize: 14, color: "#94a3b8", marginLeft: 8 },
+  selectText: {
+    fontSize: 15, color: "#111827", flex: 1,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerSheet: {
-    backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 16, paddingBottom: 30, gap: 2,
   },
-  pickerTitle: { fontSize: 15, fontWeight: "700", color: "#0f172a", marginBottom: 8 },
+  pickerTitle: {
+    fontSize: 15, fontWeight: "600", color: "#111827", marginBottom: 8,
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
   pickerItem: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingVertical: 13, paddingHorizontal: 8, borderRadius: 8,
+    paddingVertical: 13, paddingHorizontal: 10, borderRadius: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.12)",
   },
-  pickerItemActive: { backgroundColor: "#f0fdfa" },
+  pickerItemActive: { backgroundColor: "rgba(15,118,110,0.08)", borderBottomColor: "transparent" },
   pickerItemText: { fontSize: 14, color: "#374151" },
-  pickerItemTextActive: { color: "#0f766e", fontWeight: "700" },
+  pickerItemTextActive: {
+    color: "#0f766e", fontWeight: "600",
+    fontFamily: fontMedium,
+  },
   footer: {
-    padding: 16, borderTopWidth: 1, borderTopColor: "#e2e8f0", backgroundColor: "#fff",
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)",
+    backgroundColor: "#fff",
   },
   saveBtn: {
-    backgroundColor: "#0f766e", borderRadius: 12, paddingVertical: 15, alignItems: "center",
+    backgroundColor: "#0f766e", borderRadius: 12, minHeight: 48,
+    alignItems: "center", justifyContent: "center",
   },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  saveBtnText: {
+    color: "#fff", fontSize: 15, fontWeight: "600",
+    fontFamily: fontMedium,
+    letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+  },
 });
