@@ -1358,7 +1358,7 @@ export default function ChatConversationScreen({ route }: Props) {
       <ImageBackground
         source={require("../../../assets/watsapp-chatbg.jpg")}
         resizeMode="cover"
-        style={{ flex: 1 }}
+        style={{ flex: 1, overflow: "hidden" }}
       >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1526,8 +1526,8 @@ export default function ChatConversationScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fbfbfb" },
-  messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8 },
+  root: { flex: 1, backgroundColor: "#fbfbfb", overflow: "hidden" },
+  messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8, width: "100%" },
   dateSep: {
     alignSelf: "center",
     backgroundColor: "#ffffff",
@@ -1548,11 +1548,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  bubbleRow: { marginVertical: 1.5 },
+  bubbleRow: { marginVertical: 1.5, width: "100%" },
   bubbleRowIn: { alignItems: "flex-start" },
   bubbleRowOut: { alignItems: "flex-end" },
   bubble: {
     maxWidth: "82%",
+    flexShrink: 1,
     borderRadius: 13,
     paddingHorizontal: 9,
     paddingTop: 6,
@@ -1582,6 +1583,10 @@ const styles = StyleSheet.create({
     color: "#111b21",
     lineHeight: 20,
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
+    flexShrink: 1,
+    // react-native-web: long unbroken strings (URLs, ids) otherwise push
+    // the bubble past the screen edge and the whole page scrolls sideways
+    ...(Platform.OS === "web" ? ({ wordBreak: "break-word", overflowWrap: "anywhere" } as any) : null),
   },
   bubbleTextOut: { color: "#111b21" },
   bubbleMeta: {
@@ -1593,14 +1598,14 @@ const styles = StyleSheet.create({
   bubbleTime: { fontSize: 10.5, color: "#667781", letterSpacing: 0.1 },
   bubbleTimeOut: { color: "#667781" },
   statusIcon: { marginLeft: 3, marginBottom: -2 },
-  mediaImage: { width: 230, height: 172, borderRadius: 12, marginBottom: 4 },
+  mediaImage: { width: 230, maxWidth: "100%", height: 172, borderRadius: 12, marginBottom: 4 },
   mediaFile: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 4,
   },
-  mediaFileName: { fontSize: 13, color: "#1e293b", flex: 1 },
+  mediaFileName: { fontSize: 13, color: "#1e293b", flex: 1, flexShrink: 1 },
   emptyChat: {
     flex: 1,
     alignItems: "center",
