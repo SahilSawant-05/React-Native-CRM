@@ -1,0 +1,66 @@
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import api from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+
+interface BadgeCounts {
+  chat: number;
+  mail: number;
+  refresh: () => void;
+}
+
+const BadgeCtx = createContext<BadgeCounts>({ chat: 0, mail: 0, refresh: () => {} });
+
+const POLL_MS = 30_000;
+
+/**
+ * Polls unread counts for the bottom-tab badges:
+ *  - chat: sum of unreadCount across the WhatsApp inbox
+ *  - mail: totalElements of the UNREAD email folder
+ * Refreshes every 30s while logged in, and on demand (e.g. when a
+ * push notification arrives).
+ */
+export function BadgeProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [chat, setChat] = useState(0);
+  const [mail, setMail] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refresh = useCallback(() => {
+    if (!user) return;
+
+    api
+      .get("/api/inbox/page", { params: { page: 0, size: 100 } })
+      .then((res) => {
+        const items: any[] = res.data?.content ?? res.data?.items ?? (Array.isArray(res.data) ? res.data : []);
+        setChat(items.reduce((sum, i) => sum + (Number(i?.unreadCount) || 0), 0));
+      })
+      .catch(() => {});
+
+    api
+      .get("/api/email/logs/page", { params: { folder: "UNREAD", page: 0, size: 1 } })
+      .then((res) => {
+        setMail(Number(res.data?.totalElements) || 0);
+      })
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setChat(0);
+      setMail(0);
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+    refresh();
+    timerRef.current = setInterval(refresh, POLL_MS);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [user, refresh]);
+
+  return <BadgeCtx.Provider value={{ chat, mail, refresh }}>{children}</BadgeCtx.Provider>;
+}
+
+export function useBadges(): BadgeCounts {
+  return useContext(BadgeCtx);
+}
