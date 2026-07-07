@@ -193,6 +193,16 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
       load(0, statusRef.current, searchRef.current, hasLoadedOnceRef.current).catch(() => {});
       hasLoadedOnceRef.current = true;
+
+      // Live-ish updates: the web app gets these over a websocket; on
+      // mobile we silently re-poll the inbox every 15s while focused so
+      // new incoming messages appear and unread counts stay current.
+      const poll = setInterval(() => {
+        if (!isTypingRef.current) {
+          load(0, statusRef.current, searchRef.current, true).catch(() => {});
+        }
+      }, 15000);
+      return () => clearInterval(poll);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );

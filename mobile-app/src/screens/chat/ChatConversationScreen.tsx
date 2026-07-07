@@ -24,6 +24,7 @@ import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
+import { useBadges } from "../../state/BadgeContext";
 
 type Props = {
   route: RouteProp<{ ChatConversation: { inbox: InboxItem } }, "ChatConversation">;
@@ -1197,9 +1198,19 @@ export default function ChatConversationScreen({ route }: Props) {
     [inbox.contactId]
   );
 
+  const badges = useBadges();
   useEffect(() => {
     load(0);
-    markAsRead(inbox.contactId).catch(() => {});
+    // Mark ONLY this conversation read (same as the web app), then pull the
+    // badge down by this conversation's unread count so the tab updates
+    // immediately instead of waiting for the next inbox load.
+    markAsRead(inbox.contactId)
+      .then(() => {
+        const mine = Number(inbox.unreadCount) || 0;
+        if (mine > 0) badges.setChatCount(Math.max(0, badges.chat - mine));
+        else badges.refresh();
+      })
+      .catch(() => {});
   }, []);
 
   // Inverted list: prepending puts the new message at the bottom instantly.
