@@ -56,30 +56,34 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
 
-      <View style={styles.rowBody}>
-        <View style={styles.rowTop}>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.contactName}
-          </Text>
-          <Text style={[styles.time, unread && styles.timeUnread]}>
-            {timeAgo(item.lastMessageAt)}
-          </Text>
-        </View>
-        <View style={styles.rowBottom}>
-          <Text
-            style={[styles.preview, unread && styles.previewBold]}
-            numberOfLines={1}
-          >
-            {item.lastMessage || "No messages yet"}
-          </Text>
-          {unread && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadCount}>
-                {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.rowMiddle}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.contactName}
+        </Text>
+        <Text
+          style={[styles.preview, unread && styles.previewBold]}
+          numberOfLines={1}
+        >
+          {item.lastMessage || "No messages yet"}
+        </Text>
+      </View>
+
+      {/* Right column: timestamp on top, unread count badge directly below it */}
+      <View style={styles.rowRight}>
+        <Text style={[styles.time, unread && styles.timeUnread]}>
+          {timeAgo(item.lastMessageAt)}
+        </Text>
+        {unread ? (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadCount}>
+              {(item.unreadCount ?? 0) > 99 ? "99+" : item.unreadCount}
+            </Text>
+          </View>
+        ) : (
+          // Reserves the same vertical space as the badge so row heights
+          // stay consistent whether or not a badge is showing.
+          <View style={styles.unreadBadgePlaceholder} />
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -376,7 +380,7 @@ const styles = StyleSheet.create({
   },
   chipTextActive: { color: "#15603e", fontWeight: "600" },
 
-  // Row — WhatsApp anatomy: avatar · (name+time / preview+badge)
+  // Row — WhatsApp anatomy: avatar · (name+preview, stacked) · (time+badge, stacked, right-aligned)
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -399,29 +403,34 @@ const styles = StyleSheet.create({
     color: "#0f766e",
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
   },
-  rowBody: { flex: 1, gap: 2 },
-  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+
+  // Middle column: contact name + last message preview, stacked
+  rowMiddle: { flex: 1, gap: 3, justifyContent: "center" },
   name: {
-    flex: 1,
     fontSize: 16,
     fontWeight: "500",
     color: "#111b21",
     letterSpacing: Platform.OS === "ios" ? -0.32 : 0,
     fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
-    marginRight: 8,
   },
-  time: { fontSize: 12, color: "#667781" },
-  timeUnread: { color: "#1daa61", fontWeight: "600" },
-  rowBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
   preview: {
-    flex: 1,
     fontSize: 13.5,
     color: "#667781",
     letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
     lineHeight: 18,
   },
   previewBold: { color: "#3b4a54", fontWeight: "500" },
-  // WhatsApp green unread counter, right side of the preview line
+
+  // Right column: timestamp on top, unread count badge directly below it
+  rowRight: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 42,
+  },
+  time: { fontSize: 12, color: "#667781" },
+  timeUnread: { color: "#1daa61", fontWeight: "600" },
+  // WhatsApp green unread counter, now sitting under the timestamp
   unreadBadge: {
     backgroundColor: "#25d366",
     borderRadius: 99,
@@ -431,6 +440,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
+  // Empty spacer so read rows keep the same height as unread rows
+  unreadBadgePlaceholder: { height: 20 },
   unreadCount: { color: "#fff", fontSize: 11, fontWeight: "700" },
 
   separator: {
