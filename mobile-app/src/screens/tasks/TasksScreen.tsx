@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Modal,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,8 @@ import api from "../../api/client";
 import { Contact, Task, User } from "../../types";
 
 const HFONT = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+const COL_W = 280;
+const MODAL_HEADER_PAD = Platform.OS === "android" ? 20 : 8;
 const LS16 = Platform.OS === "ios" ? -0.32 : 0;
 const LS14 = Platform.OS === "ios" ? -0.15 : 0;
 
@@ -171,54 +175,38 @@ function MoveSheet({ card, visible, onClose, onMove }: { card: TaskCard|null; vi
   );
 }
 
-/* ─── Drag-to-reorder within a column ── */
-function DraggableList({ data, onReorder, renderItem, emptyComponent }: {
-  data: TaskCard[]; onReorder:(d:TaskCard[])=>void;
-  renderItem:(item:TaskCard, dragging:boolean)=>React.ReactNode;
-  emptyComponent: React.ReactNode;
-}) {
-  const [draggingKey, setDraggingKey] = useState<string|null>(null);
-  const [hoverIdx, setHoverIdx]       = useState<number|null>(null);
-  const fromIdx = useRef(-1);
-
-  if (data.length === 0) return <>{emptyComponent}</>;
-
-  const commit = (toIdx: number) => {
-    if (draggingKey === null) return;
-    if (fromIdx.current !== toIdx) {
-      const next = [...data];
-      const [moved] = next.splice(fromIdx.current, 1);
-      next.splice(toIdx, 0, moved);
-      onReorder(next);
-    }
-    setDraggingKey(null); setHoverIdx(null);
-  };
-
+/* ─── Floating Drag Card (cross-column drag) ── */
+function FloatingTaskCard({ card, animXY, visible }: { card: TaskCard | null; animXY: Animated.ValueXY; visible: boolean }) {
+  if (!card || !visible) return null;
+  const color = COLUMN_COLORS[card.status];
+  const pri = PRIORITY_META[card.priority] ?? PRIORITY_META.medium;
   return (
-    <>
-      {data.map((item, idx) => {
-        const dragging = item.key === draggingKey;
-        const hover    = hoverIdx === idx && draggingKey !== null && !dragging;
-        return (
-          <TouchableOpacity
-            key={item.key}
-            activeOpacity={dragging ? 0.4 : 1}
-            style={[dragging && s.draggingCard, hover && s.hoverTarget]}
-            onLongPress={() => { fromIdx.current = idx; setDraggingKey(item.key); setHoverIdx(idx); }}
-            onPress={() => { if (draggingKey) commit(idx); }}
-            delayLongPress={250}
-          >
-            {renderItem(item, dragging)}
-          </TouchableOpacity>
-        );
-      })}
-      {draggingKey !== null && (
-        <TouchableOpacity style={s.dropZone} onPress={() => commit(data.length)} activeOpacity={0.6}>
-          <Ionicons name="arrow-down-circle-outline" size={14} color="#0f766e" style={{marginRight:6}}/>
-          <Text style={s.dropZoneText}>Drop here (end of list)</Text>
-        </TouchableOpacity>
-      )}
-    </>
+    <Animated.View
+      pointerEvents="none"
+      style={[s.floatCard, { borderLeftColor: color }, { transform: [{ translateX: animXY.x }, { translateY: animXY.y }] }]}
+    >
+      <Text style={s.floatTitle} numberOfLines={2}>{card.title}</Text>
+      {!!card.contactName && <Text style={s.floatMeta}>👤 {card.contactName}</Text>}
+      <Text style={[s.floatMeta, { color: pri.text }]}>{pri.label} priority</Text>
+    </Animated.View>
+  );
+}
+
+/* ─── Move To Bar ── */
+function MoveToBar({ targetCol, visible }: { targetCol: StatusKey | null; visible: boolean }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, { toValue: visible ? 1 : 0, useNativeDriver: true, tension: 80, friction: 10 }).start();
+  }, [visible, anim]);
+  const name = targetCol ? STATUS_COLUMNS.find(c => c.id === targetCol)?.name : null;
+  const color = targetCol ? COLUMN_COLORS[targetCol] : "#0f766e";
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[s.moveBar, { backgroundColor: color }, { transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }] }]}
+    >
+      <Text style={s.moveBarText}>{name ? `Move To: ${name}` : "Move to column"}</Text>
+    </Animated.View>
   );
 }
 
@@ -238,7 +226,7 @@ function ContactPickerModal({ visible, onClose, onSelect }: { visible:boolean; o
       <SafeAreaView style={{flex:1,backgroundColor:"#fff"}}>
         <View style={s.modalHeader}>
           <Text style={s.modalTitle}>Select Contact</Text>
-          <TouchableOpacity onPress={onClose} style={s.modalClose}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={s.modalClose} hitSlop={{top:10,bottom:10,left:10,right:10}}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
         </View>
         <View style={{paddingHorizontal:16,paddingBottom:8}}>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search contacts…" placeholderTextColor="#94a3b8" style={s.searchInput} />
@@ -293,7 +281,7 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
       <SafeAreaView style={{flex:1,backgroundColor:"#fff"}}>
         <View style={s.modalHeader}>
           <Text style={s.modalTitle}>{initial?"Edit Task":"New Task"}</Text>
-          <TouchableOpacity onPress={onClose} style={s.modalClose}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={s.modalClose} hitSlop={{top:10,bottom:10,left:10,right:10}}><Ionicons name="close" size={20} color="#6b7280"/></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{padding:16}} keyboardShouldPersistTaps="handled">
           <Text style={s.fieldLabel}>TASK NAME *</Text>
@@ -348,14 +336,14 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
 }
 
 /* ─── Task Card ── */
-function TaskCardView({ card, isDragging, onEdit, onDelete, onMove }: {
-  card:TaskCard; isDragging:boolean; onEdit:()=>void; onDelete:()=>void; onMove:()=>void;
+function TaskCardView({ card, isDragging, onEdit, onDelete, onMove, onLongPress }: {
+  card:TaskCard; isDragging:boolean; onEdit:()=>void; onDelete:()=>void; onMove:()=>void; onLongPress:()=>void;
 }) {
   const pri = PRIORITY_META[card.priority] ?? PRIORITY_META.medium;
   const due = dueMeta(card.date || card.dueAt);
   const confirmDelete = () => Alert.alert("Delete Task", `Delete "${card.title}"?`, [{ text:"Cancel",style:"cancel" },{ text:"Delete",style:"destructive",onPress:onDelete }]);
   return (
-    <View style={[s.card, isDragging&&s.cardActive]}>
+    <TouchableOpacity activeOpacity={0.85} onLongPress={onLongPress} delayLongPress={250} style={[s.card, isDragging&&s.cardActive, isDragging&&{opacity:0.25}]}>
       <View style={s.cardHeader}>
         <Ionicons name="reorder-three-outline" size={16} color="#9ca3af"/>
         <Text style={s.cardId}>#{safeId(card.id??card._id).slice(-4)}</Text>
@@ -383,7 +371,7 @@ function TaskCardView({ card, isDragging, onEdit, onDelete, onMove }: {
         <Text style={[s.dueLabel,{color:due.color}]}>{due.label}</Text>
       </View>
       <View style={{flexDirection:"row",alignItems:"center",gap:4}}><Ionicons name="calendar-outline" size={11} color="#9ca3af"/><Text style={s.dateText}>{displayDate(card.dueAt??card.date)}</Text></View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -392,26 +380,31 @@ function InfoRow({ label, value }: { label:string; value:string }) {
 }
 
 /* ─── Kanban Column ── */
-function KanbanColumnView({ col, onAddCard, onEditCard, onDeleteCard, onReorder, onMoveCard }: {
+function KanbanColumnView({ col, onAddCard, onEditCard, onDeleteCard, onMoveCard, onLongPressCard, isDropTarget, draggingKey }: {
   col:KanbanColumn; onAddCard:(id:StatusKey)=>void; onEditCard:(c:TaskCard)=>void;
-  onDeleteCard:(c:TaskCard)=>void; onReorder:(id:StatusKey,d:TaskCard[])=>void; onMoveCard:(c:TaskCard)=>void;
+  onDeleteCard:(c:TaskCard)=>void; onMoveCard:(c:TaskCard)=>void;
+  onLongPressCard:(c:TaskCard)=>void; isDropTarget:boolean; draggingKey:string|null;
 }) {
   const accent = COLUMN_COLORS[col.id];
   return (
-    <View style={[s.column,{borderTopColor:accent}]}>
+    <View style={[s.column,{borderTopColor:accent},isDropTarget&&{borderWidth:2.5,borderColor:accent}]}>
       <View style={s.columnHeader}>
         <View style={[s.dot,{backgroundColor:accent,width:8,height:8}]}/>
         <Text style={s.colName}>{col.name}</Text>
         <View style={[s.colCount,{backgroundColor:accent+"22"}]}><Text style={[s.colCountText,{color:accent}]}>{col.cards.length}</Text></View>
       </View>
-      <DraggableList
-        data={col.cards}
-        onReorder={d=>onReorder(col.id,d)}
-        renderItem={(item,dragging)=>(
-          <TaskCardView card={item} isDragging={dragging} onEdit={()=>onEditCard(item)} onDelete={()=>onDeleteCard(item)} onMove={()=>onMoveCard(item)}/>
-        )}
-        emptyComponent={<View style={s.emptyCol}><Text style={s.emptyColText}>No tasks · long-press to reorder</Text></View>}
-      />
+      {isDropTarget && (
+        <View style={[s.dropHint,{borderColor:accent,backgroundColor:accent+"18"}]}>
+          <Text style={[s.dropHintText,{color:accent}]}>Release to move here</Text>
+        </View>
+      )}
+      {col.cards.length===0 && !isDropTarget ? (
+        <View style={s.emptyCol}><Text style={s.emptyColText}>No tasks · hold a card to move</Text></View>
+      ) : (
+        col.cards.map(item=>(
+          <TaskCardView key={item.key} card={item} isDragging={draggingKey===item.key} onEdit={()=>onEditCard(item)} onDelete={()=>onDeleteCard(item)} onMove={()=>onMoveCard(item)} onLongPress={()=>onLongPressCard(item)}/>
+        ))
+      )}
       <TouchableOpacity onPress={()=>onAddCard(col.id)} style={[s.addMoreBtn,{borderColor:accent+"60"}]}>
         <Ionicons name="add" size={15} color={accent}/><Text style={[s.addMoreText,{color:accent,marginLeft:4}]}>Add Task</Text>
       </TouchableOpacity>
@@ -464,6 +457,16 @@ export default function TaskKanbanScreen() {
   const [activeColId, setActiveColId]     = useState<StatusKey>("OPEN");
   const [toast, setToast]                 = useState<{msg:string;type:ToastType}|null>(null);
 
+  // ── Cross-column drag state (Pipeline pattern) ──
+  const [draggingCard, setDraggingCard]     = useState<TaskCard|null>(null);
+  const [dropTarget, setDropTarget]         = useState<StatusKey|null>(null);
+  const [moveBarVisible, setMoveBarVisible] = useState(false);
+  const draggingRef  = useRef<TaskCard|null>(null);
+  const columnBounds = useRef<Record<string, { left:number; right:number }>>({});
+  const columnRefs   = useRef<Record<string, View|null>>({});
+  const animXY       = useRef(new Animated.ValueXY({ x:-9999, y:-9999 })).current;
+  draggingRef.current = draggingCard;
+
   const showToast = useCallback((msg:string, type:ToastType="success") => setToast({msg,type}), []);
 
   useEffect(() => { taskApi.getUsers().then(raw=>setUsers(normalizeTaskList(raw) as any)).catch(()=>setUsers([])); }, []);
@@ -491,10 +494,6 @@ export default function TaskKanbanScreen() {
     const id=safeId(c.id??c._id); setContactId(id); setContactName(c.name); setActiveFilter(null); loadContactTasks(id,c.name);
   };
 
-  const handleReorder = useCallback((colId:StatusKey, newCards:TaskCard[]) => {
-    setColumns(prev=>prev.map(col=>col.id===colId?{...col,cards:newCards}:col));
-  }, []);
-
   const handleMoveCard = async (card:TaskCard, toCol:StatusKey) => {
     if (card.status===toCol) return;
     const cid=card.contactId??contactId; const tid=card.id??card._id;
@@ -509,6 +508,60 @@ export default function TaskKanbanScreen() {
       showToast(`Moved to ${STATUS_COLUMNS.find(c=>c.id===toCol)?.name}`);
     } catch (err:any) { showToast(`Move failed: ${err.message}`,"error"); }
   };
+
+  // ── Cross-column drag & drop (ported from PipelineScreen) ──
+  const moveRef = useRef(handleMoveCard);
+  moveRef.current = handleMoveCard;
+
+  const measureAll = useCallback(() => {
+    STATUS_COLUMNS.forEach(({ id }) => {
+      columnRefs.current[id]?.measureInWindow((x, _y, w) => {
+        columnBounds.current[id] = { left: x, right: x + w };
+      });
+    });
+  }, []);
+
+  const hitColumn = (screenX:number): StatusKey|null => {
+    for (const [key, b] of Object.entries(columnBounds.current)) {
+      if (screenX >= b.left && screenX <= b.right) return key as StatusKey;
+    }
+    return null;
+  };
+
+  const handleCardLongPress = useCallback((card:TaskCard) => {
+    measureAll();
+    setDraggingCard(card);
+    setMoveBarVisible(true);
+  }, [measureAll]);
+
+  const endDrag = () => {
+    animXY.setValue({ x:-9999, y:-9999 });
+    setDraggingCard(null);
+    setDropTarget(null);
+    setMoveBarVisible(false);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder:        () => !!draggingRef.current,
+      onMoveShouldSetPanResponderCapture: () => !!draggingRef.current,
+      onPanResponderMove: (evt) => {
+        if (!draggingRef.current) return;
+        const { pageX, pageY } = evt.nativeEvent;
+        animXY.setValue({ x: pageX - (COL_W - 24) / 2, y: pageY - 80 });
+        setDropTarget(hitColumn(pageX));
+      },
+      onPanResponderRelease: (evt) => {
+        const { pageX } = evt.nativeEvent;
+        const target = hitColumn(pageX);
+        const card   = draggingRef.current;
+        endDrag();
+        if (!card || !target || target === card.status) return;
+        moveRef.current(card, target);
+      },
+      onPanResponderTerminate: () => endDrag(),
+    })
+  ).current;
 
   const openAdd  = (colId:StatusKey) => { if (!contactId){showToast("Select a contact first","info");setContactModal(true);return;} setEditCard(null);setActiveColId(colId);setTaskFormModal(true); };
   const openEdit = (card:TaskCard)   => { setEditCard(card);setActiveColId(card.status);setTaskFormModal(true); };
@@ -579,13 +632,19 @@ export default function TaskKanbanScreen() {
           <TouchableOpacity onPress={()=>setContactModal(true)} style={s.cta}><Text style={s.ctaText}>Choose Contact</Text><Ionicons name="arrow-forward" size={15} color="#fff" style={{marginLeft:6}}/></TouchableOpacity>
         </View>
       ) : (
-        <ScrollView style={{flex:1}}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.board}>
-            {filteredCols.map(col=>(
-              <KanbanColumnView key={col.id} col={col} onAddCard={openAdd} onEditCard={openEdit} onDeleteCard={handleDelete} onReorder={handleReorder} onMoveCard={openMove}/>
-            ))}
+        <View style={{flex:1}} {...panResponder.panHandlers}>
+          <ScrollView style={{flex:1}} scrollEnabled={!draggingCard}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.board} scrollEnabled={!draggingCard}>
+              {filteredCols.map(col=>(
+                <View key={col.id} ref={r=>{ columnRefs.current[col.id]=r; if (r) setTimeout(measureAll, 150); }}>
+                  <KanbanColumnView col={col} onAddCard={openAdd} onEditCard={openEdit} onDeleteCard={handleDelete} onMoveCard={openMove} onLongPressCard={handleCardLongPress} isDropTarget={dropTarget===col.id} draggingKey={draggingCard?.key??null}/>
+                </View>
+              ))}
+            </ScrollView>
           </ScrollView>
-        </ScrollView>
+          <FloatingTaskCard card={draggingCard} animXY={animXY} visible={!!draggingCard}/>
+          <MoveToBar targetCol={dropTarget} visible={moveBarVisible}/>
+        </View>
       )}
 
       <ContactPickerModal visible={contactModal} onClose={()=>setContactModal(false)} onSelect={handleSelectContact}/>
@@ -619,10 +678,13 @@ const s = StyleSheet.create({
   emptyColText: { color:"#9ca3af", fontSize:12 },
   addMoreBtn: { marginTop:8, paddingVertical:12, minHeight:44, borderRadius:12, backgroundColor:"rgba(118,118,128,0.08)", alignItems:"center", justifyContent:"center", flexDirection:"row" },
   addMoreText: { fontSize:13, fontWeight:"600", fontFamily:HFONT, letterSpacing:LS14 },
-  draggingCard: { opacity:0.4, transform:[{scale:0.97}] },
-  hoverTarget: { borderTopWidth:2, borderTopColor:"#0f766e" },
-  dropZone: { marginVertical:4, paddingVertical:12, minHeight:44, borderRadius:12, backgroundColor:"#f0fdfa", alignItems:"center", justifyContent:"center", flexDirection:"row" },
-  dropZoneText: { color:"#0f766e", fontSize:13, fontWeight:"600", fontFamily:HFONT, letterSpacing:LS14 },
+  dropHint: { marginBottom:8, borderWidth:2, borderStyle:"dashed", borderRadius:10, paddingVertical:10, alignItems:"center" },
+  dropHintText: { fontSize:12, fontWeight:"700", fontFamily:HFONT },
+  floatCard: { position:"absolute", width:COL_W-24, backgroundColor:"#fff", borderRadius:12, padding:14, borderLeftWidth:5, elevation:20, shadowColor:"#000", shadowOffset:{width:0,height:10}, shadowOpacity:0.3, shadowRadius:16, zIndex:9999 },
+  floatTitle: { fontSize:14, fontWeight:"700", color:"#0f172a", marginBottom:5, fontFamily:HFONT },
+  floatMeta: { fontSize:12, color:"#64748b", marginBottom:2 },
+  moveBar: { position:"absolute", bottom:0, left:0, right:0, paddingVertical:18, alignItems:"center", zIndex:8888, borderTopLeftRadius:16, borderTopRightRadius:16 },
+  moveBarText: { fontSize:15, fontWeight:"600", color:"#fff", fontFamily:HFONT },
   card: { backgroundColor:"#fff", borderRadius:14, padding:12, marginVertical:5, shadowColor:"#000", shadowOpacity:0.05, shadowOffset:{width:0,height:2}, shadowRadius:6, elevation:2 },
   cardActive: { backgroundColor:"#f0fdfa", shadowColor:"#0f766e", shadowOpacity:0.15, shadowOffset:{width:0,height:4}, shadowRadius:10, elevation:5 },
   cardHeader: { flexDirection:"row", alignItems:"center", marginBottom:6, gap:4 },
@@ -661,7 +723,7 @@ const s = StyleSheet.create({
   sheetCurrent: { fontSize:11, fontWeight:"600" },
   sheetCancel: { marginTop:8, paddingVertical:14, minHeight:48, alignItems:"center", justifyContent:"center", borderRadius:12, backgroundColor:"rgba(118,118,128,0.08)" },
   sheetCancelText: { fontSize:15, fontWeight:"600", fontFamily:HFONT, letterSpacing:LS16, color:"#6b7280" },
-  modalHeader: { flexDirection:"row", alignItems:"center", justifyContent:"space-between", paddingHorizontal:16, paddingVertical:14, borderBottomWidth:StyleSheet.hairlineWidth, borderBottomColor:"rgba(60,60,67,0.12)" },
+  modalHeader: { flexDirection:"row", alignItems:"center", justifyContent:"space-between", paddingHorizontal:16, paddingBottom:14, paddingTop:14+MODAL_HEADER_PAD, borderBottomWidth:StyleSheet.hairlineWidth, borderBottomColor:"rgba(60,60,67,0.12)" },
   modalTitle: { fontSize:16, fontWeight:"600", fontFamily:HFONT, letterSpacing:LS16, color:"#111827" },
   modalClose: { width:34, height:34, borderRadius:17, backgroundColor:"rgba(118,118,128,0.08)", alignItems:"center", justifyContent:"center" },
   searchInput: { backgroundColor:"rgba(118,118,128,0.08)", borderRadius:10, paddingHorizontal:12, paddingVertical:10, minHeight:40, fontSize:15, letterSpacing:LS16, color:"#111827" },
