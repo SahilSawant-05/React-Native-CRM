@@ -503,12 +503,14 @@ function AttachMenu({
   onTemplate,
   onMediaLibrary,
   onUploadDevice,
+  onFlow,
 }: {
   visible: boolean;
   onClose: () => void;
   onTemplate: () => void;
   onMediaLibrary: () => void;
   onUploadDevice: () => void;
+  onFlow: () => void;
 }) {
   if (!visible) return null;
   return (
@@ -557,6 +559,21 @@ function AttachMenu({
           <View>
             <Text style={amStyles.label}>Upload from Device</Text>
             <Text style={amStyles.sublabel}>Pick a file from your phone and send</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={amStyles.item}
+          onPress={() => {
+            onClose();
+            onFlow();
+          }}
+        >
+          <View style={[amStyles.iconCircle, { backgroundColor: "#fff4e6" }]}>
+            <Ionicons name="reader-outline" size={22} color="#e8590c" />
+          </View>
+          <View>
+            <Text style={amStyles.label}>Send Flow</Text>
+            <Text style={amStyles.sublabel}>Interactive WhatsApp Flow form</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={amStyles.cancel} onPress={onClose}>
@@ -869,6 +886,261 @@ const tcStyles = StyleSheet.create({
   sendBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
 
+// ─── WhatsApp Flow Sender ─────────────────────────────────────────────────────
+// Mirrors the web chat: pick a PUBLISHED flow, optional message body and
+// CTA button text, then POST /api/messages/send-whatsapp/flow.
+
+interface WaFlow {
+  id: string | number;
+  name?: string;
+  metaFlowId?: string;
+}
+
+function FlowSendSheet({
+  visible, contactId, onClose, onSent,
+}: {
+  visible: boolean;
+  contactId: string | number;
+  onClose: () => void;
+  onSent: (flowName: string) => void;
+}) {
+  const [flows, setFlows] = useState<WaFlow[]>([]);
+  const [flowId, setFlowId] = useState<string>("");
+  const [body, setBody] = useState("");
+  const [ctaText, setCtaText] = useState("Open form");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!visible) return;
+    setError("");
+    setLoading(true);
+    api
+      .get("/api/whatsapp-flows", { params: { status: "PUBLISHED" } })
+      .then((r) => {
+        const rows: WaFlow[] = Array.isArray(r.data) ? r.data : r.data?.content ?? r.data?.items ?? [];
+        setFlows(rows);
+        setFlowId((cur) => cur || (rows[0]?.id != null ? String(rows[0].id) : ""));
+      })
+      .catch((err: any) => {
+        setFlows([]);
+        setError(err?.response?.data?.message || err?.message || "Failed to load flows");
+      })
+      .finally(() => setLoading(false));
+  }, [visible]);
+
+  const selected = flows.find((f) => String(f.id) === flowId) || null;
+  const needsMeta = Boolean(selected && (!selected.metaFlowId || String(selected.metaFlowId).startsWith("local-flow-")));
+
+  async function send() {
+    if (!flowId || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      await api.post("/api/messages/send-whatsapp/flow", {
+        contactId,
+        flowId: Number(flowId),
+        body: body.trim() || null,
+        ctaText: ctaText.trim() || null,
+      });
+      setBody("");
+      onSent(selected?.name || "Flow");
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || "Failed to send WhatsApp Flow");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <View style={fsStyles.header}>
+          <Text style={fsStyles.title}>Send WhatsApp Flow</Text>
+          <TouchableOpacity onPress={onClose} style={fsStyles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={fsStyles.bodyWrap} keyboardShouldPersistTaps="handled">
+          {loading ? (
+            <ActivityIndicator color="#0f766e" style={{ marginTop: 30 }} />
+          ) : flows.length === 0 ? (
+            <View style={fsStyles.emptyBox}>
+              <Ionicons name="reader-outline" size={32} color="#9ca3af" />
+              <Text style={fsStyles.emptyText}>
+                No published flows. Create and publish a WhatsApp Flow from the web CRM first.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={fsStyles.label}>Flow</Text>
+              {flows.map((f) => {
+                const active = String(f.id) === flowId;
+                return (
+                  <TouchableOpacity
+                    key={String(f.id)}
+                    style={[fsStyles.flowRow, active && fsStyles.flowRowActive]}
+                    onPress={() => setFlowId(String(f.id))}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={active ? "radio-button-on" : "radio-button-off"}
+                      size={19}
+                      color={active ? "#0f766e" : "#9ca3af"}
+                    />
+                    <Text style={[fsStyles.flowName, active && { color: "#0f766e" }]} numberOfLines={1}>
+                      {f.name || `Flow ${f.id}`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {needsMeta && (
+                <View style={fsStyles.warnBox}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#b45309" />
+                  <Text style={fsStyles.warnText}>
+                    This flow is not synced with Meta yet. Publish it to Meta from the web CRM before sending.
+                  </Text>
+                </View>
+              )}
+
+              <Text style={fsStyles.label}>Button text</Text>
+              <TextInput
+                style={fsStyles.input}
+                value={ctaText}
+                onChangeText={setCtaText}
+                placeholder="Open form"
+                placeholderTextColor="#9ca3af"
+                maxLength={20}
+              />
+
+              <Text style={fsStyles.label}>Message (optional)</Text>
+              <TextInput
+                style={[fsStyles.input, fsStyles.inputMultiline]}
+                value={body}
+                onChangeText={setBody}
+                placeholder="Short message shown above the flow button…"
+                placeholderTextColor="#9ca3af"
+                multiline
+                textAlignVertical="top"
+              />
+
+              {!!error && <Text style={fsStyles.errorText}>{error}</Text>}
+            </>
+          )}
+        </ScrollView>
+
+        {flows.length > 0 && (
+          <View style={fsStyles.footer}>
+            <TouchableOpacity
+              style={[fsStyles.sendBtn, (!flowId || sending) && { opacity: 0.5 }]}
+              onPress={send}
+              disabled={!flowId || sending}
+              activeOpacity={0.85}
+            >
+              {sending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="send" size={16} color="#fff" />
+                  <Text style={fsStyles.sendBtnText}>Send Flow</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const fsStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.15)",
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  closeBtn: { padding: 4 },
+  bodyWrap: { padding: 18, gap: 6, paddingBottom: 30 },
+  label: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: "#6b7280",
+    marginTop: 12,
+    marginBottom: 6,
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+  flowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(118,118,128,0.05)",
+    marginBottom: 6,
+  },
+  flowRowActive: { backgroundColor: "#f0fdfa" },
+  flowName: { flex: 1, fontSize: 14.5, color: "#111827", fontWeight: "500" },
+  warnBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#fffbeb",
+    borderRadius: 10,
+    padding: 11,
+    marginTop: 8,
+  },
+  warnText: { flex: 1, fontSize: 12.5, color: "#92400e", lineHeight: 17 },
+  input: {
+    backgroundColor: "rgba(118,118,128,0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(60,60,67,0.2)",
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    fontSize: 14.5,
+    color: "#111827",
+  },
+  inputMultiline: { minHeight: 90 },
+  errorText: { fontSize: 13, color: "#dc2626", fontWeight: "600", marginTop: 10 },
+  emptyBox: { alignItems: "center", gap: 10, paddingVertical: 40, paddingHorizontal: 20 },
+  emptyText: { fontSize: 13.5, color: "#6b7280", textAlign: "center", lineHeight: 19 },
+  footer: {
+    padding: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(60,60,67,0.15)",
+  },
+  sendBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#0f766e",
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  sendBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
+    fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined,
+  },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ChatConversationScreen({ route }: Props) {
@@ -886,6 +1158,7 @@ export default function ChatConversationScreen({ route }: Props) {
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
+  const [flowSheetOpen, setFlowSheetOpen] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const load = useCallback(
@@ -1210,6 +1483,7 @@ export default function ChatConversationScreen({ route }: Props) {
         onTemplate={() => setTemplatePickerOpen(true)}
         onMediaLibrary={() => setMediaLibraryOpen(true)}
         onUploadDevice={handleUploadFromDevice}
+        onFlow={() => setFlowSheetOpen(true)}
       />
 
       <TemplatePicker
@@ -1231,6 +1505,21 @@ export default function ChatConversationScreen({ route }: Props) {
         visible={mediaLibraryOpen}
         onClose={() => setMediaLibraryOpen(false)}
         onSelect={handleSendMediaAsset}
+      />
+
+      <FlowSendSheet
+        visible={flowSheetOpen}
+        contactId={inbox.contactId}
+        onClose={() => setFlowSheetOpen(false)}
+        onSent={(flowName) => {
+          appendOptimistic({
+            id: `temp-${Date.now()}`,
+            textBody: `[Flow: ${flowName}]`,
+            direction: "OUTBOUND",
+            createdAt: new Date().toISOString(),
+            status: "SENT",
+          });
+        }}
       />
     </SafeAreaView>
   );
