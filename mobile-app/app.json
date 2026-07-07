@@ -5,34 +5,27 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon":"./assets/logo.png",
-
+    "icon": "./assets/logo.png",
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#0f766e"
     },
-
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.techoceanhub.crmagent",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.techoceanhub.crmagent"
     },
-
     "android": {
       "package": "com.crmagent",
       "googleServicesFile": "./google-services.json",
-      "adaptiveIcon":{
-        "foregroundImage":"./assets/logo.png"
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png"
       }
     },
-
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/messaging"
     ],
-
     "web": {},
-
     "extra": {
       "eas": {
         "projectId": "b76117df-ae59-42ab-a8f1-ad119b9ff181"
