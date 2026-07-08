@@ -80,7 +80,13 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         if (!allowed) return;
 
         const token = await msg.getToken();
-        if (token) await registerTokenWithBackend(token);
+        if (token) {
+          // Visible in `npx expo start` / adb logcat — copy this token into
+          // Firebase Console > Messaging > Send test message to verify the
+          // device pipeline end-to-end without any backend code.
+          console.log("[FCM] Device token:", token);
+          await registerTokenWithBackend(token);
+        }
 
         unsubscribeTokenRefresh = msg.onTokenRefresh((newToken: string) => {
           registerTokenWithBackend(newToken);
