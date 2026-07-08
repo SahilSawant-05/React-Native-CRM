@@ -192,7 +192,10 @@ export default function ChatInboxScreen({ navigation }: Props) {
           lastMessage: "",
           unreadCount: 0,
         };
-        navigation.navigate("ChatConversation", { inbox });
+        // Defer past the navigator's first mount — navigating synchronously
+        // inside the initial focus effect gets dropped and leaves the user
+        // stuck on the inbox instead of the contact's conversation.
+        setTimeout(() => navigation.navigate("ChatConversation", { inbox }), 0);
       }
 
       load(0, statusRef.current, searchRef.current, hasLoadedOnceRef.current).catch(() => {});
