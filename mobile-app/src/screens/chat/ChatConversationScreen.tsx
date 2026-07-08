@@ -1365,7 +1365,9 @@ export default function ChatConversationScreen({ route }: Props) {
   if (loading) return <LoadingSpinner message="Loading conversation…" />;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    {/* No bottom edge: the BottomTabBar below already absorbs the bottom
+        inset, so adding it here doubled up as a gap under the input bar */}
+    <SafeAreaView style={styles.root} edges={[]}>
       <ImageBackground
         source={require("../../../assets/watsapp-chatbg.jpg")}
         resizeMode="cover"
