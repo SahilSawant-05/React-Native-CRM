@@ -112,7 +112,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
               });
               await Notifications.scheduleNotificationAsync({
                 content: {
-                  title: title || "CRM Agent",
+                  title: title || "Vistaar",
                   body: body || "",
                   data: remoteMessage?.data ?? {},
                 },
