@@ -1264,13 +1264,21 @@ export default function ChatConversationScreen({ route }: Props) {
     }
   }, [inbox.contactId]);
 
-  // Poll for new messages every 6s while this screen is focused, and refresh
-  // once immediately on focus so returning to the chat shows the latest.
+  // Live polling: while this screen is mounted (i.e. the chat is open) fetch
+  // the latest messages every few seconds so inbound replies stream in
+  // WhatsApp-style without leaving the screen. A plain mounted interval is
+  // used (rather than focus-only) so it keeps ticking reliably; it is torn
+  // down automatically when the user navigates away and the screen unmounts.
+  useEffect(() => {
+    const id = setInterval(refreshLatest, 3500);
+    return () => clearInterval(id);
+  }, [refreshLatest]);
+
+  // Also refresh immediately whenever the screen regains focus (e.g. coming
+  // back from a modal or another tab) so it never shows a stale thread.
   useFocusEffect(
     useCallback(() => {
       refreshLatest();
-      const id = setInterval(refreshLatest, 6000);
-      return () => clearInterval(id);
     }, [refreshLatest])
   );
 
