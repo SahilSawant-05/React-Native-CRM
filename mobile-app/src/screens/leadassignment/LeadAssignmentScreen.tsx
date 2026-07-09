@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -143,12 +144,39 @@ function RuleFormModal({
   const [saving, setSaving] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Android doesn't auto-scroll a focused TextInput above the keyboard, so
-  // when a lower field gains focus we nudge the form up to the bottom so the
-  // input never hides under the keyboard.
-  const scrollToInput = () => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
-  };
+  // Refs for every text input so we can scroll each one into view precisely
+  // when it's focused, instead of guessing / always jumping to the bottom.
+  const nameInputRef = useRef<TextInput>(null);
+  const criteriaValueInputRef = useRef<TextInput>(null);
+  const priorityInputRef = useRef<TextInput>(null);
+
+  // Android's `KeyboardAvoidingView` doesn't reliably resize content inside a
+  // `Modal` (windowSoftInputMode isn't applied the same way inside modals),
+  // so relying on "height"/"padding" behavior alone still leaves focused
+  // fields tucked under the keyboard. To guarantee a field is visible we
+  // measure its position relative to the ScrollView and scroll it into view
+  // manually whenever it gains focus.
+  const scrollFieldIntoView = useCallback((fieldRef: React.RefObject<TextInput | null>) => {
+    const delay = Platform.OS === "android" ? 250 : 100; // wait for keyboard anim
+    setTimeout(() => {
+      const scrollNode = findNodeHandle(scrollRef.current);
+      if (!fieldRef.current || !scrollNode) return;
+      fieldRef.current.measureLayout(
+        scrollNode,
+        (_x: number, y: number) => {
+          // Keep ~90px of breathing room above the field so its label is
+          // visible too, not just the input box itself.
+          scrollRef.current?.scrollTo({ y: Math.max(y - 90, 0), animated: true });
+        },
+        () => {
+          // measurement can fail transiently right after the modal opens —
+          // fall back to scrolling to the end, which is safe for a short form.
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }
+      );
+    }, delay);
+  }, []);
+
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -169,6 +197,9 @@ function RuleFormModal({
       setPriority("100");
     }
     setError("");
+    // Reset scroll position each time the form (re)opens so a previous
+    // edit's scroll offset doesn't carry over.
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
   }, [visible, rule]);
 
   async function handleSave() {
@@ -231,8 +262,8 @@ function RuleFormModal({
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
         <ScrollView
           ref={scrollRef}
@@ -249,11 +280,14 @@ function RuleFormModal({
           <View style={fs.field}>
             <Text style={fs.label}>Rule Name</Text>
             <TextInput
+              ref={nameInputRef}
               style={fs.input}
               placeholder="e.g. WhatsApp leads → Rahul"
               placeholderTextColor="#9ca3af"
               value={name}
               onChangeText={setName}
+              onFocus={() => scrollFieldIntoView(nameInputRef)}
+              returnKeyType="next"
             />
           </View>
 
@@ -300,6 +334,7 @@ function RuleFormModal({
                   </Text>
                 </Text>
                 <TextInput
+                  ref={criteriaValueInputRef}
                   style={fs.input}
                   placeholder={
                     criteriaType === "CITY" ? "Mumbai" :
@@ -308,8 +343,9 @@ function RuleFormModal({
                   placeholderTextColor="#9ca3af"
                   value={criteriaValue}
                   onChangeText={setCriteriaValue}
-                  onFocus={scrollToInput}
+                  onFocus={() => scrollFieldIntoView(criteriaValueInputRef)}
                   autoCapitalize="none"
+                  returnKeyType="next"
                 />
               </View>
             )
@@ -318,13 +354,15 @@ function RuleFormModal({
           <View style={fs.field}>
             <Text style={fs.label}>Priority (higher = matched first)</Text>
             <TextInput
+              ref={priorityInputRef}
               style={fs.input}
               placeholder="0"
               placeholderTextColor="#9ca3af"
               keyboardType="numeric"
               value={priority}
               onChangeText={setPriority}
-              onFocus={scrollToInput}
+              onFocus={() => scrollFieldIntoView(priorityInputRef)}
+              returnKeyType="done"
             />
           </View>
         </ScrollView>
@@ -586,7 +624,7 @@ const fs = StyleSheet.create({
     color: "#374151", fontSize: 13, fontWeight: "600",
     fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
-  body: { padding: 16, paddingBottom: 120, gap: 14 },
+  body: { padding: 16, paddingBottom: 160, gap: 14 },
   errorBox: {
     backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 12,
     padding: 12,
