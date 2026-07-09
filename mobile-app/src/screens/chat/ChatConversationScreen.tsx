@@ -96,25 +96,60 @@ function messageSignature(m: Message): string {
   return `${m.direction}|${body}|${m.mediaUrl || ""}`;
 }
 
+function realId(m: Message): string | null {
+  const id = m.id ?? m.messageId;
+  return id != null && !String(id).startsWith("temp-") ? String(id) : null;
+}
+
+// True when two message objects represent the same message with the same
+// visible content (status, text, media). Used to decide whether a freshly
+// re-fetched copy of a message actually needs to replace the one already
+// on screen, or whether we can just keep the existing object reference —
+// which lets React (and <Image>) skip re-rendering/re-decoding a bubble
+// that hasn't really changed.
+function messagesEqual(a: Message, b: Message): boolean {
+  return (
+    (a.status ?? "") === (b.status ?? "") &&
+    (a.textBody || a.body || a.text || "") === (b.textBody || b.body || b.text || "") &&
+    (a.mediaUrl ?? "") === (b.mediaUrl ?? "") &&
+    (a.mediaType ?? "") === (b.mediaType ?? "") &&
+    (a.mediaFileName ?? "") === (b.mediaFileName ?? "") &&
+    (a.createdAt || a.timestamp || "") === (b.createdAt || b.timestamp || "")
+  );
+}
+
 // Merge freshly-fetched page-0 messages into whatever is already on screen
 // (optimistic sends + previously loaded pages) without dropping older pages
 // or double-showing a message. Keyed by real id/messageId; temp- optimistic
 // messages are removed once a matching server message exists.
+//
+// Object identity is preserved wherever content hasn't actually changed —
+// both per-message (so an unchanged bubble/image never re-renders) and for
+// the whole array (so a no-op poll returns the exact same array reference,
+// letting React's setState bail out and skip re-rendering entirely). This
+// is what keeps background polling invisible instead of visibly jittering
+// the thread every few seconds.
 function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
+  const existingByRid = new Map<string, Message>();
+  for (const m of existing) {
+    const rid = realId(m);
+    if (rid) existingByRid.set(rid, m);
+  }
+
   const byKey = new Map<string, Message>();
   const realSignatures = new Set<string>();
 
-  const realId = (m: Message) => {
-    const id = m.id ?? m.messageId;
-    return id != null && !String(id).startsWith("temp-") ? String(id) : null;
-  };
-
-  // Server messages win — index them first.
+  // Server messages win — index them first, reusing the existing object
+  // reference whenever the incoming copy is content-identical.
   for (const m of incoming) {
     const rid = realId(m);
-    const key = rid ?? messageSignature(m) + "|" + messageTime(m);
-    byKey.set(key, m);
-    if (rid) realSignatures.add(messageSignature(m));
+    if (rid) {
+      const prevVersion = existingByRid.get(rid);
+      byKey.set(rid, prevVersion && messagesEqual(prevVersion, m) ? prevVersion : m);
+      realSignatures.add(messageSignature(m));
+    } else {
+      byKey.set(messageSignature(m) + "|" + messageTime(m), m);
+    }
   }
 
   for (const m of existing) {
@@ -129,7 +164,26 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
     byKey.set(messageSignature(m) + "|" + messageTime(m), m);
   }
 
-  return Array.from(byKey.values()).sort((a, b) => messageTime(b) - messageTime(a));
+  // Sort newest-first. Tie-break on the map key (which encodes the real id,
+  // or a signature+time for optimistic ones) so that two messages sharing
+  // the exact same timestamp always land in the same relative order on
+  // every merge — otherwise a tie could flip randomly between polls
+  // (depending on the order the API happened to return them in that call)
+  // and make the thread look like it's reshuffling itself on refresh.
+  const merged = Array.from(byKey.entries())
+    .sort(([keyA, a], [keyB, b]) => {
+      const dt = messageTime(b) - messageTime(a);
+      if (dt !== 0) return dt;
+      return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
+    })
+    .map(([, m]) => m);
+
+  // Nothing actually changed — hand back the SAME array reference so the
+  // caller's setState is a no-op and nothing re-renders.
+  if (merged.length === existing.length && merged.every((m, i) => m === existing[i])) {
+    return existing;
+  }
+  return merged;
 }
 
 function StatusTick({ status }: { status?: string }) {
@@ -163,7 +217,7 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
   );
 }
 
-function MessageBubble({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
+function MessageBubbleInner({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
   const isOut = message.direction === "OUTBOUND";
   const text = message.textBody || message.body || message.text || "";
   const time = message.createdAt || message.timestamp;
@@ -199,6 +253,25 @@ function MessageBubble({ message, prevMessage }: { message: Message; prevMessage
     </>
   );
 }
+
+// Only re-render a bubble when its own content, status, or date-separator
+// neighbour actually changed — not just because the parent messages array
+// got a new reference (which happens on every poll, including no-op ones).
+const MessageBubble = React.memo(MessageBubbleInner, (prev, next) => {
+  const a = prev.message;
+  const b = next.message;
+  const sameMessage =
+    (a.id ?? a.messageId) === (b.id ?? b.messageId) && messagesEqual(a, b);
+  if (!sameMessage) return false;
+
+  const prevDateA = prev.prevMessage
+    ? formatDate(prev.prevMessage.createdAt || prev.prevMessage.timestamp)
+    : null;
+  const prevDateB = next.prevMessage
+    ? formatDate(next.prevMessage.createdAt || next.prevMessage.timestamp)
+    : null;
+  return prevDateA === prevDateB;
+});
 
 // ─── Template Picker Modal ────────────────────────────────────────────────────
 
@@ -1200,11 +1273,27 @@ export default function ChatConversationScreen({ route }: Props) {
   const [totalPages, setTotalPages] = useState(1);
   const [attachOpen, setAttachOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const [flowSheetOpen, setFlowSheetOpen] = useState(false);
+  // WhatsApp-style "jump to latest" affordance: while the user has scrolled
+  // up to read older messages, new incoming/outgoing messages shouldn't
+  // silently appear off-screen — show a floating pill instead of forcing
+  // a jump, and only auto-follow the bottom when the user is already there.
+  const [showNewMessagePill, setShowNewMessagePill] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  // Inverted list: offset 0 == visually at the bottom (the newest message).
+  const atBottomRef = useRef(true);
+  const lastTopKeyRef = useRef<string | null>(null);
+  // While the user's finger is actively on the list, a background poll
+  // landing mid-gesture is what makes a refresh feel like it "interrupts"
+  // or breaks the scroll — so we hold onto the freshest fetch and only
+  // apply it once the gesture settles, instead of merging immediately.
+  const isTouchingRef = useRef(false);
+  const pendingContentRef = useRef<Message[] | null>(null);
 
   const load = useCallback(
     async (p = 0) => {
@@ -1258,11 +1347,29 @@ export default function ChatConversationScreen({ route }: Props) {
     try {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
+      if (isTouchingRef.current) {
+        // Don't merge mid-gesture — hold the latest fetch and apply it as
+        // soon as the user's finger lifts, so a poll can never yank the
+        // list out from under an active swipe.
+        pendingContentRef.current = content;
+        return;
+      }
       setMessages((prev) => mergeMessages(prev, content));
     } catch {
       // Ignore poll errors — the next tick will retry.
     }
   }, [inbox.contactId]);
+
+  // Applies whatever the most recent poll fetched but held back, called
+  // once the current touch/scroll gesture ends.
+  const flushPendingContent = useCallback(() => {
+    isTouchingRef.current = false;
+    if (pendingContentRef.current) {
+      const content = pendingContentRef.current;
+      pendingContentRef.current = null;
+      setMessages((prev) => mergeMessages(prev, content));
+    }
+  }, []);
 
   // Live polling: while this screen is mounted (i.e. the chat is open) fetch
   // the latest messages every few seconds so inbound replies stream in
@@ -1282,9 +1389,56 @@ export default function ChatConversationScreen({ route }: Props) {
     }, [refreshLatest])
   );
 
+  const scrollToLatest = useCallback((animated = true) => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated });
+    atBottomRef.current = true;
+    setShowNewMessagePill(false);
+    setNewMessageCount(0);
+  }, []);
+
+  // Whenever the newest message changes (poll picked up an inbound reply, or
+  // we/another tab sent something), either silently keep following the
+  // bottom (WhatsApp behaviour when you're already caught up) or surface a
+  // "New messages" pill instead of yanking the user away from what they're
+  // reading — exactly like WhatsApp does when you're scrolled up.
+  useEffect(() => {
+    const top = messages[0];
+    if (!top) return;
+    // Keyed by CONTENT (direction+text+media), not id. If we keyed off the
+    // id, an optimistic "temp-..." message getting resolved to its real
+    // server id on the next poll would look like a brand-new message and
+    // re-fire the scroll/pill logic every ~3.5s — which is exactly what
+    // made the thread feel jumpy/broken after sending.
+    const topKey = messageSignature(top);
+
+    if (lastTopKeyRef.current === null) {
+      // First load — nothing "new" yet, just record where we are.
+      lastTopKeyRef.current = topKey;
+      return;
+    }
+
+    if (topKey !== lastTopKeyRef.current) {
+      if (atBottomRef.current) {
+        // Already at the bottom — just glide down to the new message,
+        // like WhatsApp does when the chat is open and you're caught up.
+        requestAnimationFrame(() => scrollToLatest(true));
+      } else {
+        // User is reading older messages — don't yank them down, show a
+        // tappable "New message" pill instead.
+        setShowNewMessagePill(true);
+        setNewMessageCount((c) => c + 1);
+      }
+      lastTopKeyRef.current = topKey;
+    }
+  }, [messages, scrollToLatest]);
+
   // Inverted list: prepending puts the new message at the bottom instantly.
   const appendOptimistic = (msg: Message) => {
     setMessages((prev) => [msg, ...prev]);
+    // Our own sends should always land at the bottom immediately, the same
+    // way WhatsApp snaps you down when you hit send.
+    lastTopKeyRef.current = messageSignature(msg);
+    requestAnimationFrame(() => scrollToLatest(true));
   };
 
   async function handleSend() {
@@ -1449,70 +1603,165 @@ export default function ChatConversationScreen({ route }: Props) {
       >
         {!!error && <ErrorBanner message={error} />}
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item, index) =>
-            String(
-              item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index
-            )
-          }
-          // inverted=true flips the list so index-0 sits at the bottom, exactly
-          // like WhatsApp. Newest messages (prepended) appear at the bottom.
-          inverted
-          renderItem={({ item, index }) => (
-            // In an inverted list index 0 is the newest message (bottom).
-            // The "previous" message in time is at index+1 (above it).
-            <MessageBubble message={item} prevMessage={messages[index + 1]} />
-          )}
-          // onEndReached fires when the user scrolls UP to the top (inverted).
-          onEndReached={() => {
-            if (!loadingMore && page + 1 < totalPages) load(page + 1);
-          }}
-          onEndReachedThreshold={0.2}
-          contentContainerStyle={styles.messageList}
-          ListEmptyComponent={
-            <View style={styles.emptyChat}>
-              <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
-            </View>
-          }
-          // Show a loading indicator at the top (rendered at bottom in inverted)
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator color="#0f766e" style={{ marginVertical: 8 }} />
-            ) : null
-          }
-        />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item, index) =>
+              String(
+                item.id ?? item.messageId ?? item.createdAt ?? item.timestamp ?? index
+              )
+            }
+            // inverted=true flips the list so index-0 sits at the bottom, exactly
+            // like WhatsApp. Newest messages (prepended) appear at the bottom.
+            inverted
+            // React Native's inverted FlatList doesn't reliably keep your
+            // scroll position anchored when the underlying data array is
+            // replaced (which happens on every ~3.5s poll, even for a
+            // no-op status update) — it can silently shift what's on
+            // screen, which is what made the thread feel like it "broke"
+            // or reflowed on refresh. This pins the currently visible item
+            // in place across data updates instead of letting RN re-derive
+            // the scroll offset from scratch.
+            maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 10 }}
+            renderItem={({ item, index }) => (
+              // In an inverted list index 0 is the newest message (bottom).
+              // The "previous" message in time is at index+1 (above it).
+              <MessageBubble message={item} prevMessage={messages[index + 1]} />
+            )}
+            // onEndReached fires when the user scrolls UP to the top (inverted).
+            onEndReached={() => {
+              if (!loadingMore && page + 1 < totalPages) load(page + 1);
+            }}
+            onEndReachedThreshold={0.2}
+            // Track whether the user is currently at the visual bottom of the
+            // thread so incoming messages either auto-follow (WhatsApp-style)
+            // or surface a "New message" pill instead of jumping the screen.
+            onScroll={(e) => {
+              const y = e.nativeEvent.contentOffset.y;
+              const nowAtBottom = y < 60;
+              atBottomRef.current = nowAtBottom;
+              if (nowAtBottom && showNewMessagePill) {
+                setShowNewMessagePill(false);
+                setNewMessageCount(0);
+              }
+            }}
+            scrollEventThrottle={80}
+            onScrollBeginDrag={() => {
+              isTouchingRef.current = true;
+            }}
+            onScrollEndDrag={flushPendingContent}
+            onMomentumScrollEnd={flushPendingContent}
+            contentContainerStyle={styles.messageList}
+            ListEmptyComponent={
+              <View style={styles.emptyChat}>
+                <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
+              </View>
+            }
+            // Show a loading indicator at the top (rendered at bottom in inverted)
+            ListFooterComponent={
+              loadingMore ? (
+                <ActivityIndicator color="#0f766e" style={{ marginVertical: 8 }} />
+              ) : null
+            }
+          />
 
-        {/* AI panel (collapsible) */}
+          {/* WhatsApp-style "jump to latest" pill — only shown once the user
+              has scrolled away from the bottom and a new message arrives. */}
+          {showNewMessagePill && (
+            <TouchableOpacity
+              style={styles.newMessagePill}
+              onPress={() => scrollToLatest(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="arrow-down" size={14} color="#fff" />
+              <Text style={styles.newMessagePillText}>
+                {newMessageCount > 1 ? `${newMessageCount} new messages` : "New message"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* AI panel — collapsible + bounded height with its own scroller so a
+            long AI response never pushes the input bar off-screen or breaks
+            the chat layout. */}
         {aiPanelOpen && (
           <View style={styles.aiPanelWrap}>
-            <AiAssistPanel
-              contactId={inbox.contactId}
-              title="AI Chat Assistant"
-              contextPrompt={
-                `Contact: ${inbox.contactName || ""}. ` +
-                `Last messages:\n` +
-                messages
-                  .slice(0, 12)
-                  .reverse()
-                  .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
-                  .join("\n") +
-                `\n\nSummarise this WhatsApp conversation and recommend the next best CRM action.`
-              }
-              replyPrompt={
-                `Contact: ${inbox.contactName || ""}.\n` +
-                `Last messages:\n` +
-                messages
-                  .slice(0, 12)
-                  .reverse()
-                  .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
-                  .join("\n") +
-                `\n\nWrite a short, warm WhatsApp reply to continue this conversation. Keep it human and helpful.`
-              }
-              onApply={(t) => setText((prev) => prev ? prev + "\n" + t : t)}
-              applyLabel="Use in message"
-            />
+            <View style={styles.aiPanelHeader}>
+              <TouchableOpacity
+                style={styles.aiPanelHeaderLeft}
+                onPress={() => setAiPanelCollapsed((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="sparkles" size={14} color="#0f766e" />
+                <Text style={styles.aiPanelHeaderText}>AI Chat Assistant</Text>
+                <Ionicons
+                  name={aiPanelCollapsed ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color="#64748b"
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setAiPanelOpen(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={18} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            {!aiPanelCollapsed && (
+              <ScrollView
+                style={styles.aiPanelScroll}
+                contentContainerStyle={styles.aiPanelScrollContent}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
+                <AiAssistPanel
+                  contactId={inbox.contactId}
+                  title="AI Chat Assistant"
+                  contextPrompt={
+                    `Contact: ${inbox.contactName || ""}. ` +
+                    `Last messages:\n` +
+                    messages
+                      .slice(0, 12)
+                      .reverse()
+                      .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
+                      .join("\n") +
+                    `\n\nSummarise this WhatsApp conversation and recommend the next best CRM action.`
+                  }
+                  replyPrompt={
+                    `Contact: ${inbox.contactName || ""}.\n` +
+                    `Last messages:\n` +
+                    messages
+                      .slice(0, 12)
+                      .reverse()
+                      .map((m) => `${m.direction === "OUTBOUND" ? "Agent" : "Contact"}: ${m.textBody || m.mediaType || ""}`)
+                      .join("\n") +
+                    `\n\nWrite a short, warm WhatsApp reply to continue this conversation. Keep it human and helpful.`
+                  }
+                  onApply={(t) => {
+                    // AI output — especially a conversation summary — can be
+                    // long, multi-paragraph text. Dropping it verbatim into
+                    // the compose box used to make the input pill balloon
+                    // past its bounds and break the input bar layout, so
+                    // normalise whitespace and cap it to something that's
+                    // actually usable as a WhatsApp message draft.
+                    const clean = t.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+                    const MAX_DRAFT_LEN = 1000;
+                    const capped =
+                      clean.length > MAX_DRAFT_LEN
+                        ? clean.slice(0, MAX_DRAFT_LEN).trim() + "…"
+                        : clean;
+                    setText((prev) => (prev.trim() ? prev.trim() + "\n" + capped : capped));
+                    // Collapse (not close) the panel so the compose box and
+                    // the newly inserted draft are immediately visible
+                    // instead of both fighting for screen space.
+                    setAiPanelCollapsed(true);
+                  }}
+                  applyLabel="Use in message"
+                />
+              </ScrollView>
+            )}
           </View>
         )}
 
@@ -1526,6 +1775,7 @@ export default function ChatConversationScreen({ route }: Props) {
               value={text}
               onChangeText={setText}
               multiline
+              scrollEnabled
               maxLength={4096}
             />
             <TouchableOpacity
@@ -1695,6 +1945,24 @@ const styles = StyleSheet.create({
     paddingTop: 80,
   },
   emptyChatText: { color: "#94a3b8", fontSize: 14 },
+  newMessagePill: {
+    position: "absolute",
+    bottom: 14,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#0f766e",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  newMessagePillText: { color: "#fff", fontSize: 12.5, fontWeight: "700" },
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -1727,7 +1995,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: Platform.OS === "ios" ? -0.24 : 0,
     color: "#111b21",
-    maxHeight: 110,
+    maxHeight: 120,
+    textAlignVertical: "top",
+    // maxHeight alone doesn't reliably clip a multiline TextInput on every
+    // platform (notably web) — without an explicit scroll behaviour, text
+    // longer than the box (e.g. a pasted AI summary) overflows and breaks
+    // the input pill's layout instead of scrolling inside it.
+    ...(Platform.OS === "web" ? ({ overflowY: "auto" } as any) : null),
   },
   pillIconBtn: {
     width: 40,
@@ -1758,5 +2032,33 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   sendIcon: { color: "#fff", fontSize: 19, marginLeft: 2 },
-  aiPanelWrap: { paddingHorizontal: 10, paddingBottom: 6 },
+  aiPanelWrap: {
+    marginHorizontal: 10,
+    marginBottom: 6,
+    maxHeight: 320,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  aiPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    backgroundColor: "#f8fafc",
+  },
+  aiPanelHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
+  aiPanelHeaderText: { fontSize: 13, fontWeight: "700", color: "#0f172a" },
+  aiPanelScroll: { flexGrow: 0 },
+  aiPanelScrollContent: { padding: 10, paddingBottom: 14 },
 });
