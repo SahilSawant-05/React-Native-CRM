@@ -188,6 +188,8 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
 
 function StatusTick({ status }: { status?: string }) {
   const s = (status ?? "").toUpperCase();
+  if (s === "FAILED") return <Ionicons name="alert-circle" size={14} color="#dc2626" style={styles.statusIcon} />;
+  if (s === "SENDING") return <Ionicons name="time-outline" size={14} color="#8696a0" style={styles.statusIcon} />;
   if (s === "READ") return <Ionicons name="checkmark-done" size={15} color="#53bdeb" style={styles.statusIcon} />;
   if (s === "DELIVERED") return <Ionicons name="checkmark-done" size={15} color="#8696a0" style={styles.statusIcon} />;
   return <Ionicons name="checkmark" size={15} color="#8696a0" style={styles.statusIcon} />;
@@ -217,61 +219,68 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
   );
 }
 
-function MessageBubbleInner({ message, prevMessage }: { message: Message; prevMessage?: Message }) {
-  const isOut = message.direction === "OUTBOUND";
-  const text = message.textBody || message.body || message.text || "";
-  const time = message.createdAt || message.timestamp;
+const MessageBubble = React.memo(
+  function MessageBubble({
+    message,
+    prevMessage,
+    onRetry,
+  }: {
+    message: Message;
+    prevMessage?: Message;
+    onRetry?: (m: Message) => void;
+  }) {
+    const isOut = message.direction === "OUTBOUND";
+    const text = message.textBody || message.body || message.text || "";
+    const time = message.createdAt || message.timestamp;
+    const failed = (message.status ?? "").toUpperCase() === "FAILED";
 
-  // In an inverted list prevMessage is the older message just above this one.
-  // Show the date separator BELOW this bubble (rendered above in inverted list)
-  // when it belongs to a different day than the older neighbour.
-  const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
-  const thisDate = formatDate(time);
-  const showDateSep = prevDate !== null && prevDate !== thisDate;
+    // In an inverted list prevMessage is the older message just above this one.
+    // Show the date separator BELOW this bubble (rendered above in inverted list)
+    // when it belongs to a different day than the older neighbour.
+    const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
+    const thisDate = formatDate(time);
+    const showDateSep = prevDate !== null && prevDate !== thisDate;
 
-  return (
-    <>
-      {showDateSep && (
-        <View style={styles.dateSep}>
-          <Text style={styles.dateSepText}>{thisDate}</Text>
-        </View>
-      )}
-      <View style={[styles.bubbleRow, isOut ? styles.bubbleRowOut : styles.bubbleRowIn]}>
-        <View style={[styles.bubble, isOut ? styles.bubbleOut : styles.bubbleIn]}>
-          {message.mediaUrl && <MediaBubble message={message} isOut={isOut} />}
-          {!!text && (
-            <Text style={[styles.bubbleText, isOut && styles.bubbleTextOut]}>{text}</Text>
-          )}
-          <View style={styles.bubbleMeta}>
-            <Text style={[styles.bubbleTime, isOut && styles.bubbleTimeOut]}>
-              {formatTime(time)}
-            </Text>
-            {isOut && <StatusTick status={message.status} />}
+    return (
+      <>
+        {showDateSep && (
+          <View style={styles.dateSep}>
+            <Text style={styles.dateSepText}>{thisDate}</Text>
           </View>
+        )}
+        <View style={[styles.bubbleRow, isOut ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+          <TouchableOpacity
+            activeOpacity={failed ? 0.7 : 1}
+            disabled={!failed}
+            onPress={failed && onRetry ? () => onRetry(message) : undefined}
+            style={[styles.bubble, isOut ? styles.bubbleOut : styles.bubbleIn, failed && styles.bubbleFailed]}
+          >
+            {message.mediaUrl && <MediaBubble message={message} isOut={isOut} />}
+            {!!text && (
+              <Text style={[styles.bubbleText, isOut && styles.bubbleTextOut]}>{text}</Text>
+            )}
+            <View style={styles.bubbleMeta}>
+              {failed && <Text style={styles.retryHint}>Tap to retry</Text>}
+              <Text style={[styles.bubbleTime, isOut && styles.bubbleTimeOut]}>
+                {formatTime(time)}
+              </Text>
+              {isOut && <StatusTick status={message.status} />}
+            </View>
+          </TouchableOpacity>
         </View>
-      </View>
-    </>
-  );
-}
-
-// Only re-render a bubble when its own content, status, or date-separator
-// neighbour actually changed — not just because the parent messages array
-// got a new reference (which happens on every poll, including no-op ones).
-const MessageBubble = React.memo(MessageBubbleInner, (prev, next) => {
-  const a = prev.message;
-  const b = next.message;
-  const sameMessage =
-    (a.id ?? a.messageId) === (b.id ?? b.messageId) && messagesEqual(a, b);
-  if (!sameMessage) return false;
-
-  const prevDateA = prev.prevMessage
-    ? formatDate(prev.prevMessage.createdAt || prev.prevMessage.timestamp)
-    : null;
-  const prevDateB = next.prevMessage
-    ? formatDate(next.prevMessage.createdAt || next.prevMessage.timestamp)
-    : null;
-  return prevDateA === prevDateB;
-});
+      </>
+    );
+  },
+  // Only re-render a row when something visible about it actually changes.
+  (prev, next) =>
+    prev.message.id === next.message.id &&
+    prev.message.status === next.message.status &&
+    prev.message.mediaUrl === next.message.mediaUrl &&
+    (prev.message.textBody || prev.message.body || prev.message.text) ===
+      (next.message.textBody || next.message.body || next.message.text) &&
+    (prev.prevMessage?.createdAt || prev.prevMessage?.timestamp) ===
+      (next.prevMessage?.createdAt || next.prevMessage?.timestamp)
+);
 
 // ─── Template Picker Modal ────────────────────────────────────────────────────
 
@@ -1441,29 +1450,74 @@ export default function ChatConversationScreen({ route }: Props) {
     requestAnimationFrame(() => scrollToLatest(true));
   };
 
+  const setMessageStatus = useCallback((id: Message["id"], status: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)));
+  }, []);
+
+  // Core outgoing-text send. Renders an optimistic bubble immediately
+  // (status SENDING), flips it to SENT on success or FAILED on error so the
+  // user can tap to retry. The next poll swaps the temp bubble for the real
+  // server message (deduped by content signature) — no duplicates.
+  const sendText = useCallback(
+    async (body: string, existingTempId?: Message["id"]) => {
+      const trimmed = body.trim();
+      if (!trimmed) return;
+      const tempId = existingTempId ?? `temp-${Date.now()}`;
+      if (existingTempId) {
+        setMessageStatus(existingTempId, "SENDING");
+      } else {
+        setMessages((prev) => [
+          {
+            id: tempId,
+            textBody: trimmed,
+            direction: "OUTBOUND",
+            createdAt: new Date().toISOString(),
+            status: "SENDING",
+          } as Message,
+          ...prev,
+        ]);
+      }
+      setSending(true);
+      try {
+        await sendTextMessage(inbox.contactId, trimmed);
+        setMessageStatus(tempId, "SENT");
+        // Pull the confirmed server copy in promptly instead of waiting for
+        // the next poll tick.
+        refreshLatest();
+      } catch {
+        setMessageStatus(tempId, "FAILED");
+      } finally {
+        setSending(false);
+      }
+    },
+    [inbox.contactId, refreshLatest, setMessageStatus]
+  );
+
   async function handleSend() {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
-    setSending(true);
-    const optimistic: Message = {
-      id: `temp-${Date.now()}`,
-      textBody: trimmed,
-      direction: "OUTBOUND",
-      createdAt: new Date().toISOString(),
-      status: "SENT",
-    };
-    appendOptimistic(optimistic);
     setText("");
-    try {
-      await sendTextMessage(inbox.contactId, trimmed);
-    } catch (err: any) {
-      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      setText(trimmed);
-      setError("Failed to send message. Please try again.");
-    } finally {
-      setSending(false);
-    }
+    await sendText(trimmed);
   }
+
+  // Tapping a FAILED bubble re-sends its text and clears the failed one.
+  const handleRetry = useCallback(
+    (msg: Message) => {
+      const body = msg.textBody || msg.body || msg.text || "";
+      if (!body.trim()) return;
+      sendText(body, msg.id);
+    },
+    [sendText]
+  );
+
+  const renderMessage = useCallback(
+    ({ item, index }: { item: Message; index: number }) => (
+      // In an inverted list index 0 is the newest message (bottom).
+      // The "previous" message in time is at index+1 (above it).
+      <MessageBubble message={item} prevMessage={messages[index + 1]} onRetry={handleRetry} />
+    ),
+    [messages, handleRetry]
+  );
 
   async function handleSendTemplate(template: Template, headerMediaUrl: string | null) {
     setSelectedTemplate(null);
@@ -1624,11 +1678,8 @@ export default function ChatConversationScreen({ route }: Props) {
             // in place across data updates instead of letting RN re-derive
             // the scroll offset from scratch.
             maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 10 }}
-            renderItem={({ item, index }) => (
-              // In an inverted list index 0 is the newest message (bottom).
-              // The "previous" message in time is at index+1 (above it).
-              <MessageBubble message={item} prevMessage={messages[index + 1]} />
-            )}
+            // Memoized row (see MessageBubble) + onRetry for failed sends.
+            renderItem={renderMessage}
             // onEndReached fires when the user scrolls UP to the top (inverted).
             onEndReached={() => {
               if (!loadingMore && page + 1 < totalPages) load(page + 1);
@@ -1653,6 +1704,14 @@ export default function ChatConversationScreen({ route }: Props) {
             onScrollEndDrag={flushPendingContent}
             onMomentumScrollEnd={flushPendingContent}
             contentContainerStyle={styles.messageList}
+            // ── Performance: keep scrolling smooth with long threads ──
+            removeClippedSubviews={Platform.OS === "android"}
+            initialNumToRender={15}
+            maxToRenderPerBatch={12}
+            windowSize={11}
+            updateCellsBatchingPeriod={40}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             ListEmptyComponent={
               <View style={styles.emptyChat}>
                 <Text style={styles.emptyChatText}>No messages yet. Say hello!</Text>
@@ -1909,6 +1968,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 1,
     elevation: 1,
+  },
+  bubbleFailed: {
+    backgroundColor: "#fee2e2",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#fca5a5",
+  },
+  retryHint: {
+    fontSize: 10.5,
+    color: "#dc2626",
+    fontWeight: "600",
+    marginRight: 6,
   },
   bubbleText: {
     fontSize: 15,
