@@ -1669,15 +1669,15 @@ export default function ChatConversationScreen({ route }: Props) {
             // inverted=true flips the list so index-0 sits at the bottom, exactly
             // like WhatsApp. Newest messages (prepended) appear at the bottom.
             inverted
-            // React Native's inverted FlatList doesn't reliably keep your
-            // scroll position anchored when the underlying data array is
-            // replaced (which happens on every ~3.5s poll, even for a
-            // no-op status update) — it can silently shift what's on
-            // screen, which is what made the thread feel like it "broke"
-            // or reflowed on refresh. This pins the currently visible item
-            // in place across data updates instead of letting RN re-derive
-            // the scroll offset from scratch.
-            maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 10 }}
+            // NOTE: we deliberately do NOT set maintainVisibleContentPosition
+            // here. On an inverted list it anchors index-0 (the newest
+            // message), which pins freshly-polled inbound messages off-screen
+            // at the bottom so they only appear after a remount (go back /
+            // refresh). Jitter on no-op polls is instead prevented by
+            // mergeMessages returning the SAME array reference when nothing
+            // changed (and reusing unchanged message objects), and new-message
+            // scrolling is handled explicitly by the scroll-follow effect
+            // below (auto-glide when caught up, "New message" pill otherwise).
             // Memoized row (see MessageBubble) + onRetry for failed sends.
             renderItem={renderMessage}
             // onEndReached fires when the user scrolls UP to the top (inverted).
