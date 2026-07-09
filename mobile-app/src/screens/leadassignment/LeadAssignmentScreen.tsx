@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -141,6 +141,14 @@ function RuleFormModal({
   const [assignedUserId, setAssignedUserId] = useState("");
   const [priority, setPriority] = useState("100");
   const [saving, setSaving] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Android doesn't auto-scroll a focused TextInput above the keyboard, so
+  // when a lower field gains focus we nudge the form up to the bottom so the
+  // input never hides under the keyboard.
+  const scrollToInput = () => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+  };
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -227,6 +235,7 @@ function RuleFormModal({
           keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={fs.body}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -299,6 +308,7 @@ function RuleFormModal({
                   placeholderTextColor="#9ca3af"
                   value={criteriaValue}
                   onChangeText={setCriteriaValue}
+                  onFocus={scrollToInput}
                   autoCapitalize="none"
                 />
               </View>
@@ -314,6 +324,7 @@ function RuleFormModal({
               keyboardType="numeric"
               value={priority}
               onChangeText={setPriority}
+              onFocus={scrollToInput}
             />
           </View>
         </ScrollView>
@@ -575,7 +586,7 @@ const fs = StyleSheet.create({
     color: "#374151", fontSize: 13, fontWeight: "600",
     fontFamily: mediumFont, letterSpacing: Platform.OS === "ios" ? -0.15 : 0,
   },
-  body: { padding: 16, gap: 14 },
+  body: { padding: 16, paddingBottom: 120, gap: 14 },
   errorBox: {
     backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 12,
     padding: 12,
