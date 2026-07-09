@@ -18,7 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
-import { RouteProp } from "@react-navigation/native";
+import { RouteProp, useFocusEffect } from "@react-navigation/native";
 import { fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "../../api/chat";
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -86,6 +86,50 @@ function messageTime(m?: Message): number {
   const raw = m.createdAt || m.timestamp;
   const t = raw ? new Date(raw).getTime() : NaN;
   return Number.isNaN(t) ? 0 : t;
+}
+
+// A best-effort content signature used to recognise when an optimistic
+// (temp-) message we appended locally has come back from the server with a
+// real id, so we can drop the temp duplicate instead of showing both.
+function messageSignature(m: Message): string {
+  const body = (m.textBody || m.body || m.text || "").trim();
+  return `${m.direction}|${body}|${m.mediaUrl || ""}`;
+}
+
+// Merge freshly-fetched page-0 messages into whatever is already on screen
+// (optimistic sends + previously loaded pages) without dropping older pages
+// or double-showing a message. Keyed by real id/messageId; temp- optimistic
+// messages are removed once a matching server message exists.
+function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
+  const byKey = new Map<string, Message>();
+  const realSignatures = new Set<string>();
+
+  const realId = (m: Message) => {
+    const id = m.id ?? m.messageId;
+    return id != null && !String(id).startsWith("temp-") ? String(id) : null;
+  };
+
+  // Server messages win — index them first.
+  for (const m of incoming) {
+    const rid = realId(m);
+    const key = rid ?? messageSignature(m) + "|" + messageTime(m);
+    byKey.set(key, m);
+    if (rid) realSignatures.add(messageSignature(m));
+  }
+
+  for (const m of existing) {
+    const rid = realId(m);
+    if (rid) {
+      if (!byKey.has(rid)) byKey.set(rid, m);
+      continue;
+    }
+    // Optimistic temp message: drop it if the server already returned an
+    // equivalent one, otherwise keep it until the next poll confirms it.
+    if (realSignatures.has(messageSignature(m))) continue;
+    byKey.set(messageSignature(m) + "|" + messageTime(m), m);
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => messageTime(b) - messageTime(a));
 }
 
 function StatusTick({ status }: { status?: string }) {
@@ -1175,15 +1219,10 @@ export default function ChatConversationScreen({ route }: Props) {
         // always be the newest message or the whole thread renders out
         // of order and new messages won't land at the bottom like
         // WhatsApp. Sort explicitly rather than trust the API's order.
-        const content = [...(data.content ?? [])].sort(
-          (a, b) => messageTime(b) - messageTime(a)
-        );
-        setMessages((prev) => {
-          const merged = p === 0 ? content : [...prev, ...content];
-          // Re-sort the merged result too, in case an older page's
-          // messages interleave in time with what's already loaded.
-          return merged.sort((a, b) => messageTime(b) - messageTime(a));
-        });
+        const content = data.content ?? [];
+        // Merge rather than replace so optimistic sends and previously
+        // loaded older pages survive a page-0 refresh (used by polling too).
+        setMessages((prev) => mergeMessages(prev, content));
         setTotalPages(data.totalPages ?? 1);
         setPage(p);
       } catch (err: any) {
@@ -1212,6 +1251,28 @@ export default function ChatConversationScreen({ route }: Props) {
       })
       .catch(() => {});
   }, []);
+
+  // Silent page-0 refresh (no loading spinner) used by the live poll so new
+  // inbound messages stream in while the chat is open, WhatsApp-style.
+  const refreshLatest = useCallback(async () => {
+    try {
+      const data = await fetchMessages(inbox.contactId, 0);
+      const content = data.content ?? [];
+      setMessages((prev) => mergeMessages(prev, content));
+    } catch {
+      // Ignore poll errors — the next tick will retry.
+    }
+  }, [inbox.contactId]);
+
+  // Poll for new messages every 6s while this screen is focused, and refresh
+  // once immediately on focus so returning to the chat shows the latest.
+  useFocusEffect(
+    useCallback(() => {
+      refreshLatest();
+      const id = setInterval(refreshLatest, 6000);
+      return () => clearInterval(id);
+    }, [refreshLatest])
+  );
 
   // Inverted list: prepending puts the new message at the bottom instantly.
   const appendOptimistic = (msg: Message) => {
