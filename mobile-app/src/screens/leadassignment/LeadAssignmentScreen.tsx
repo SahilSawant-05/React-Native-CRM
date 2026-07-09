@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -220,7 +221,16 @@ function RuleFormModal({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={fs.body} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+        <ScrollView
+          contentContainerStyle={fs.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}>
           {!!error && (
             <View style={fs.errorBox}>
               <Text style={fs.errorText}>{error}</Text>
@@ -313,6 +323,7 @@ function RuleFormModal({
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={fs.saveBtnText}>Save Rule</Text>}
           </TouchableOpacity>
         </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
