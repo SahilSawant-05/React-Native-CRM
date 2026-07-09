@@ -413,6 +413,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22, paddingVertical: 14,
   },
   signOutText: { fontSize: 14, fontWeight: "600", color: "#ef4444" },
-  hamburger: { marginLeft: Platform.OS === "ios" ? 16 : 4, gap: 5, paddingVertical: 4 },
+  hamburger: { marginLeft: Platform.OS === "ios" ? 16 : 4, gap: 5, paddingVertical: 4 ,marginRight:8},
   line: { width: 22, height: 2.5, borderRadius: 2, backgroundColor: "#0f766e" },
 });
