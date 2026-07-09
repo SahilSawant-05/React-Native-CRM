@@ -169,7 +169,7 @@ export default function AiSettingsScreen() {
 
   if (initialLoading) {
     return (
-      <SafeAreaView style={styles.root} edges={["bottom"]}>
+      <SafeAreaView style={styles.root} edges={[]}>
         <View style={styles.center}>
           <ActivityIndicator color="#0f766e" size="large" />
           <Text style={styles.loadingText}>Loading AI settings…</Text>
@@ -179,7 +179,7 @@ export default function AiSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
         {/* Header */}

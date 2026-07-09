@@ -84,7 +84,7 @@ export default function TemplatesScreen() {
   if (loading) return <LoadingSpinner message="Loading templates..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchTemplates(); }} />}
       {!!syncMsg && <View style={styles.syncBanner}><Text style={styles.syncText}>{syncMsg}</Text></View>}
       <View style={styles.headerRow}>

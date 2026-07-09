@@ -65,7 +65,7 @@ export default function DomainCatalogScreen() {
   if (loading) return <LoadingSpinner message="Loading catalog..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchItems(); }} />}
       <View style={styles.searchContainer}>
         <TextInput

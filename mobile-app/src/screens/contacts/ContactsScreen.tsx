@@ -445,7 +445,7 @@ export default function ContactsScreen({ navigation }: Props) {
   if (loading) return <LoadingSpinner message="Loading contacts…" />;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <AddContactModal
         visible={addOpen}
         onClose={() => setAddOpen(false)}

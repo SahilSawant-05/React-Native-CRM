@@ -484,7 +484,7 @@ export default function CampaignsScreen() {
   const [tab, setTab] = useState<"create" | "history">("create");
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, tab === "create" && styles.tabActive]}

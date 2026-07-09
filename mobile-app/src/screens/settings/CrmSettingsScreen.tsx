@@ -120,7 +120,7 @@ export default function CrmSettingsScreen() {
     : [];
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchAll(); }} />}
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f766e" />}

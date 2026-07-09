@@ -462,7 +462,7 @@ export default function AutomationRulesScreen() {
   if (loading) return <LoadingSpinner message="Loading automation rules…" />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.root}>
+    <SafeAreaView edges={[]} style={s.root}>
       {!!error && <ErrorBanner message={error} onRetry={() => { setLoading(true); load(); }} />}
 
       <FlatList

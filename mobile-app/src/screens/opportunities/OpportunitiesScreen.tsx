@@ -113,7 +113,7 @@ export default function OpportunitiesScreen() {
   if (loading) return <LoadingSpinner message="Loading opportunities…" />;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       {/* Stage filter */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>

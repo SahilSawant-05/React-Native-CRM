@@ -130,7 +130,7 @@ export default function NotificationsScreen() {
   if (loading) return <LoadingSpinner message="Loading notifications..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={retry} />}
       <View style={styles.headerRow}>
         <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>

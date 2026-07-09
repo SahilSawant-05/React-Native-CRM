@@ -112,7 +112,7 @@ export default function BillingStatusScreen() {
   };
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.container}>
+    <SafeAreaView edges={[]} style={s.container}>
       <ScrollView
         refreshControl={
           <RefreshControl

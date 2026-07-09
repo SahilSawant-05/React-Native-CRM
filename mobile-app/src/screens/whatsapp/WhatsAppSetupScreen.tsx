@@ -54,7 +54,7 @@ export default function WhatsAppSetupScreen() {
   if (loading) return <LoadingSpinner message="Checking WhatsApp status..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f766e" />}
         contentContainerStyle={{ padding: 16 }}

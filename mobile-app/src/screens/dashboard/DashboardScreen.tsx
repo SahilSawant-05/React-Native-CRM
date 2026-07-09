@@ -113,7 +113,7 @@ export default function DashboardScreen() {
 
   if (error && !summary) {
     return (
-      <SafeAreaView edges={["bottom"]} style={c.container}>
+      <SafeAreaView edges={[]} style={c.container}>
         <View style={c.errorWrap}>
           <Ionicons name="stats-chart-outline" size={44} color="#9ca3af" style={c.errorIcon} />
           <Text style={c.errorTitle}>Dashboard Unavailable</Text>
@@ -141,7 +141,7 @@ export default function DashboardScreen() {
   const maxStage = Math.max(1, ...byOppStage.map((i: any) => Number(i.count ?? 0)));
 
   return (
-    <SafeAreaView edges={["bottom"]} style={c.container}>
+    <SafeAreaView edges={[]} style={c.container}>
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor="#0f766e" />

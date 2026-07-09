@@ -28,7 +28,7 @@ export default function ProfileScreen() {
     .join("");
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Avatar */}
         <View style={styles.hero}>

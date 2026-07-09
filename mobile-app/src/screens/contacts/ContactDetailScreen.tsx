@@ -85,7 +85,7 @@ try {
 }
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {!!error && <ErrorBanner message={error} />}
 

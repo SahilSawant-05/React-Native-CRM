@@ -170,7 +170,7 @@ export default function FacebookLeadsScreen() {
   useEffect(() => { if (pageId) loadForms(pageId); }, [pageId]);
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
         {/* Header */}

@@ -237,7 +237,7 @@ export default function BillingScreen() {
   const yearly = billingCycle === "YEARLY";
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.container}>
+    <SafeAreaView edges={[]} style={s.container}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor="#0f766e" />}
         contentContainerStyle={{ padding: 16, paddingBottom: 48 }}

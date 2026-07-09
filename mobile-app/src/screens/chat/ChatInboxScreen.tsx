@@ -273,7 +273,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
   if (loading) return <LoadingSpinner message="Loading inbox…" />;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <View style={styles.searchWrap}>
         <TextInput
           style={styles.searchInput}

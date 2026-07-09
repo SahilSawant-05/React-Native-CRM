@@ -1445,7 +1445,7 @@ export default function PipelineScreen() {
   if (loading && !refreshing) return <LoadingSpinner message="Loading pipeline..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.root}>
+    <SafeAreaView edges={[]} style={s.root}>
       {!!error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchBoard(); }} />}
 
       {/* ── Top Bar ── */}

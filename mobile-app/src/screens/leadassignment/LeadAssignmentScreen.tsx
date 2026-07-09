@@ -387,7 +387,7 @@ export default function LeadAssignmentScreen() {
   if (loading) return <LoadingSpinner message="Loading assignment rules…" />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.root}>
+    <SafeAreaView edges={[]} style={s.root}>
       {!!error && <ErrorBanner message={error} onRetry={() => { setLoading(true); load(); }} />}
 
       <FlatList

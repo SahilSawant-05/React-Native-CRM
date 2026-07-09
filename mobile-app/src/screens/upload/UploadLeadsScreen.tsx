@@ -220,7 +220,7 @@ export default function UploadLeadsScreen() {
   if (loading) return <LoadingSpinner message="Loading upload history..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       <ScrollView
         refreshControl={
           <RefreshControl

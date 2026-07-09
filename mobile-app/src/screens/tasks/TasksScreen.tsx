@@ -602,7 +602,7 @@ export default function TaskKanbanScreen() {
   const total = columns.reduce((acc,col)=>acc+col.cards.length,0);
 
   return (
-    <SafeAreaView style={s.root} edges={["bottom"]}>
+    <SafeAreaView style={s.root} edges={[]}>
       <View style={s.header}>
         <View style={s.headerLeft}>
           <View style={s.logoBox}><Ionicons name="checkmark-done-outline" size={17} color="#fff"/></View>

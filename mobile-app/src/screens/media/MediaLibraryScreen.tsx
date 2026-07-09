@@ -107,7 +107,7 @@ export default function MediaLibraryScreen() {
   if (loading) return <LoadingSpinner message="Loading media..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchAssets(); }} />}
       <FlatList
         data={assets}

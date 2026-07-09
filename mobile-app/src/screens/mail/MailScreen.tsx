@@ -342,7 +342,7 @@ export default function MailScreen({ navigation }: any) {
   if (loading && emails.length === 0) return <LoadingSpinner message="Loading emails..." />;
 
   return (
-    <SafeAreaView edges={["bottom"]} style={styles.container}>
+    <SafeAreaView edges={[]} style={styles.container}>
       <ComposeModal
         visible={composeOpen}
         saving={saving}

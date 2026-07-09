@@ -415,7 +415,7 @@ export default function CalendarScreen() {
     .slice(0, 20);
 
   return (
-    <SafeAreaView edges={["bottom"]} style={s.container}>
+    <SafeAreaView edges={[]} style={s.container}>
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchEvents(); }} tintColor="#0f766e" />

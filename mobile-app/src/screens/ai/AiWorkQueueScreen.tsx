@@ -339,7 +339,7 @@ export default function AiWorkQueueScreen() {
   const activeEmpty = activeTab === "queue" ? items.length === 0 : leadInbox.length === 0;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"

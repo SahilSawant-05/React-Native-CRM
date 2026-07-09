@@ -152,7 +152,7 @@ export default function WorkQueueScreen() {
   if (loading) return <LoadingSpinner message="Loading work queue…" />;
 
   return (
-    <SafeAreaView style={styles.root} edges={["bottom"]}>
+    <SafeAreaView style={styles.root} edges={[]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={
