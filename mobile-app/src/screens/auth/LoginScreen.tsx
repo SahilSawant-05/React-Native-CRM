@@ -58,7 +58,7 @@ export default function LoginScreen() {
         {/* Header band */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Vistaar Flow</Text>
-          <Text style={styles.headerSub}>Admin / Agent Portal</Text>
+          {/* <Text style={styles.headerSub}>Admin / Agent Portal</Text> */}
           {/* <View style={styles.waBadge}>
             <Text style={styles.waBadgeText}>💬</Text>
             

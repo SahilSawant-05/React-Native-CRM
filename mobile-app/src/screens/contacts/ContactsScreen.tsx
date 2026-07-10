@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -69,6 +70,7 @@ function AddContactModal({ visible, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   function set(key: string, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -113,135 +115,165 @@ function AddContactModal({ visible, onClose, onSaved }: {
             <Text style={addStyles.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={addStyles.body} keyboardShouldPersistTaps="handled">
-          {!!error && <View style={addStyles.errorBox}><Text style={addStyles.errorText}>{error}</Text></View>}
 
-          <View style={addStyles.field}>
-            <Text style={addStyles.label}>Full Name *</Text>
-            <TextInput
-              style={addStyles.input}
-              placeholder="John Doe"
-              placeholderTextColor="#94a3b8"
-              value={form.name}
-              onChangeText={(v) => set("name", v)}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
+        {/* KeyboardAvoidingView wraps both the scrollable form AND the footer,
+            so the Save button rides above the keyboard instead of hiding behind it. */}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={addStyles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+          >
+            {!!error && <View style={addStyles.errorBox}><Text style={addStyles.errorText}>{error}</Text></View>}
 
-          <View style={addStyles.field}>
-            <Text style={addStyles.label}>Email</Text>
-            <TextInput
-              style={addStyles.input}
-              placeholder="john@example.com"
-              placeholderTextColor="#94a3b8"
-              value={form.email}
-              onChangeText={(v) => set("email", v)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Phone with country code dropdown */}
-          <View style={[addStyles.field, { zIndex: 20 }]}>
-            <Text style={addStyles.label}>Phone</Text>
-            <View style={addStyles.phoneRow}>
-              <View style={{ zIndex: 20 }}>
-                <TouchableOpacity
-                  style={addStyles.countryBtn}
-                  onPress={() => setShowCountryDropdown((v) => !v)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={addStyles.countryBtnText}>
-                    {COUNTRY_CODES.find((c) => c.code === form.countryCode)?.flag} {form.countryCode}
-                  </Text>
-                  <Ionicons name="chevron-down" size={14} color="#6b7280" style={{ marginLeft: "auto" }} />
-                </TouchableOpacity>
-
-                {showCountryDropdown && (
-                  <View style={addStyles.dropdown}>
-                    {COUNTRY_CODES.map((c) => (
-                      <TouchableOpacity
-                        key={c.code}
-                        style={[
-                          addStyles.dropdownItem,
-                          form.countryCode === c.code && addStyles.dropdownItemActive,
-                        ]}
-                        onPress={() => selectCountryCode(c.code)}
-                      >
-                        <Text style={addStyles.dropdownItemText}>
-                          {c.flag} {c.code} · {c.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-
+            <View style={addStyles.field}>
+              <Text style={addStyles.label}>Full Name *</Text>
               <TextInput
-                style={[addStyles.input, addStyles.phoneInput]}
-                placeholder="9876543210"
+                style={addStyles.input}
+                placeholder="John Doe"
                 placeholderTextColor="#94a3b8"
-                value={form.phone}
-                onChangeText={(v) => set("phone", v)}
-                keyboardType="phone-pad"
+                value={form.name}
+                onChangeText={(v) => set("name", v)}
+                autoCapitalize="words"
                 autoCorrect={false}
               />
             </View>
-          </View>
 
-          <View style={addStyles.field}>
-            <Text style={addStyles.label}>Company</Text>
-            <TextInput
-              style={addStyles.input}
-              placeholder="Acme Corp"
-              placeholderTextColor="#94a3b8"
-              value={form.company}
-              onChangeText={(v) => set("company", v)}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
+            <View style={addStyles.field}>
+              <Text style={addStyles.label}>Email</Text>
+              <TextInput
+                style={addStyles.input}
+                placeholder="john@example.com"
+                placeholderTextColor="#94a3b8"
+                value={form.email}
+                onChangeText={(v) => set("email", v)}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-          <View style={addStyles.field}>
-            <Text style={addStyles.label}>Tags (comma separated)</Text>
-            <TextInput
-              style={addStyles.input}
-              placeholder="hot-lead, vip"
-              placeholderTextColor="#94a3b8"
-              value={form.tags}
-              onChangeText={(v) => set("tags", v)}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Lead Source picker */}
-          <View style={addStyles.field}>
-            <Text style={addStyles.label}>Lead Source</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                {LEAD_SOURCES.filter(s => s.value).map((src) => (
+            {/* Phone with country code dropdown */}
+            <View style={[addStyles.field, { zIndex: 20 }]}>
+              <Text style={addStyles.label}>Phone</Text>
+              <View style={addStyles.phoneRow}>
+                <View style={{ zIndex: 20 }}>
                   <TouchableOpacity
-                    key={src.value}
-                    onPress={() => set("leadSource", form.leadSource === src.value ? "" : src.value)}
-                    style={[addStyles.srcChip, form.leadSource === src.value && addStyles.srcChipActive]}
+                    style={addStyles.countryBtn}
+                    onPress={() => setShowCountryDropdown((v) => !v)}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[addStyles.srcChipText, form.leadSource === src.value && addStyles.srcChipTextActive]}>
-                      {src.label}
+                    <Text style={addStyles.countryBtnText}>
+                      {COUNTRY_CODES.find((c) => c.code === form.countryCode)?.flag} {form.countryCode}
                     </Text>
+                    <Ionicons name="chevron-down" size={14} color="#6b7280" style={{ marginLeft: "auto" }} />
                   </TouchableOpacity>
-                ))}
+
+                  {showCountryDropdown && (
+                    <View style={addStyles.dropdown}>
+                      {COUNTRY_CODES.map((c) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={[
+                            addStyles.dropdownItem,
+                            form.countryCode === c.code && addStyles.dropdownItemActive,
+                          ]}
+                          onPress={() => selectCountryCode(c.code)}
+                        >
+                          <Text style={addStyles.dropdownItemText}>
+                            {c.flag} {c.code} · {c.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                <TextInput
+                  style={[addStyles.input, addStyles.phoneInput]}
+                  placeholder="9876543210"
+                  placeholderTextColor="#94a3b8"
+                  value={form.phone}
+                  onChangeText={(v) => set("phone", v)}
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                  onFocus={() => {
+                    // Nudge the scroll so the phone row clears the keyboard on smaller screens
+                    setTimeout(() => scrollRef.current?.scrollTo({ y: 140, animated: true }), 150);
+                  }}
+                />
               </View>
-            </ScrollView>
+            </View>
+
+            <View style={addStyles.field}>
+              <Text style={addStyles.label}>Company</Text>
+              <TextInput
+                style={addStyles.input}
+                placeholder="Acme Corp"
+                placeholderTextColor="#94a3b8"
+                value={form.company}
+                onChangeText={(v) => set("company", v)}
+                autoCapitalize="words"
+                autoCorrect={false}
+                onFocus={() => {
+                  setTimeout(() => scrollRef.current?.scrollTo({ y: 220, animated: true }), 150);
+                }}
+              />
+            </View>
+
+            <View style={addStyles.field}>
+              <Text style={addStyles.label}>Tags (comma separated)</Text>
+              <TextInput
+                style={addStyles.input}
+                placeholder="hot-lead, vip"
+                placeholderTextColor="#94a3b8"
+                value={form.tags}
+                onChangeText={(v) => set("tags", v)}
+                autoCapitalize="words"
+                autoCorrect={false}
+                onFocus={() => {
+                  setTimeout(() => scrollRef.current?.scrollTo({ y: 300, animated: true }), 150);
+                }}
+              />
+            </View>
+
+            {/* Lead Source picker */}
+            <View style={addStyles.field}>
+              <Text style={addStyles.label}>Lead Source</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {LEAD_SOURCES.filter(s => s.value).map((src) => (
+                    <TouchableOpacity
+                      key={src.value}
+                      onPress={() => set("leadSource", form.leadSource === src.value ? "" : src.value)}
+                      style={[addStyles.srcChip, form.leadSource === src.value && addStyles.srcChipActive]}
+                    >
+                      <Text style={[addStyles.srcChipText, form.leadSource === src.value && addStyles.srcChipTextActive]}>
+                        {src.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+
+            {/* Extra bottom padding so the last field never sits flush against
+                the footer / keyboard edge */}
+            <View style={{ height: 24 }} />
+          </ScrollView>
+
+          <View style={addStyles.footer}>
+            <TouchableOpacity style={addStyles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={addStyles.saveBtnText}>Add Contact</Text>}
+            </TouchableOpacity>
           </View>
-        </ScrollView>
-        <View style={addStyles.footer}>
-          <TouchableOpacity style={addStyles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={addStyles.saveBtnText}>Add Contact</Text>}
-          </TouchableOpacity>
-        </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
@@ -255,7 +287,7 @@ const addStyles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
   cancelBtn: { backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   cancelText: { color: "#475569", fontWeight: "600" },
-  body: { padding: 16, gap: 14 },
+  body: { padding: 16, gap: 14, flexGrow: 1 },
   errorBox: { backgroundColor: "#fef2f2", borderRadius: 10, borderWidth: 1, borderColor: "#fecaca", padding: 12 },
   errorText: { color: "#dc2626", fontSize: 13 },
   field: { gap: 6 },
