@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
+import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn } from "../../api/telephony";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -479,6 +480,8 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
         apiToken: config.apiToken === "********" ? null : config.apiToken,
         webhookSecret: config.webhookSecret === "********" ? null : config.webhookSecret,
       });
+      // Call buttons across the app re-read the toggles on next call.
+      invalidateTelephonyToggles();
       onInfo("Telephony settings saved.");
     } catch (err: any) {
       setError(apiErrorMessage(err, "Failed to save telephony settings."));
@@ -782,6 +785,25 @@ function NewCallSheet({
     setCalling(true);
     setError("");
     try {
+      // Respect the telephony toggle: CRM click-to-call only when the
+      // provider is active AND click-to-call is enabled; otherwise use the
+      // phone's native dialer.
+      const toggles = await getTelephonyToggles();
+      if (!isCrmCallingOn(toggles)) {
+        const number = customerNumber.trim();
+        if (!number) {
+          setError(
+            "CRM calling is off (enable the provider + click-to-call in Telephony Settings). To dial from the phone, enter the customer number."
+          );
+          return;
+        }
+        await Linking.openURL(`tel:${number}`);
+        onDone("CRM calling is off — dialed from the phone instead.");
+        setContactId(""); setCustomerNumber(""); setAgentNumber(""); setNotes("");
+        onClose();
+        return;
+      }
+
       const res = await api.post("/api/telephony/calls/click-to-call", {
         contactId: contactId.trim() ? Number(contactId.trim()) : null,
         customerNumber: customerNumber.trim() || null,

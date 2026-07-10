@@ -1,5 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -19,6 +21,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
+import { smartCall } from "../../api/telephony";
 
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
@@ -43,6 +46,31 @@ export default function ContactDetailScreen({ route }: Props) {
   const [timeline, setTimeline] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [callPlacing, setCallPlacing] = useState(false);
+
+  // Toggle-aware calling: CRM click-to-call when telephony is active +
+  // click-to-call enabled, otherwise the phone's native dialer.
+  async function handleCall() {
+    if (callPlacing || !contact.phone) return;
+    setCallPlacing(true);
+    try {
+      const result = await smartCall({
+        contactId: contact.id ?? contact._id ?? null,
+        phone: contact.phone,
+      });
+      if (result.mode === "CRM") {
+        Alert.alert(
+          "CRM call started",
+          `Call logged as ${result.status}. Your phone will ring first, then the customer is connected.`
+        );
+      } else if (result.failureReason) {
+        // CRM was on but couldn't start — we already fell back to the dialer.
+        Alert.alert("Called via phone", `CRM call failed (${result.failureReason}), dialed normally instead.`);
+      }
+    } finally {
+      setCallPlacing(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -111,10 +139,15 @@ try {
           {!!contact.phone && (
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => Linking.openURL(`tel:${contact.phone}`)}
+              onPress={handleCall}
+              disabled={callPlacing}
             >
               <View style={[styles.actionCircle, { backgroundColor: "#dcfce7" }]}>
-                <Ionicons name="call" size={22} color="#15803d" />
+                {callPlacing ? (
+                  <ActivityIndicator size="small" color="#15803d" />
+                ) : (
+                  <Ionicons name="call" size={22} color="#15803d" />
+                )}
               </View>
               <Text style={[styles.actionLabel, { color: "#15803d" }]}>Call</Text>
             </TouchableOpacity>
