@@ -32,6 +32,22 @@ export const initials = (value) => {
 
 export const looksLikeHtml = (value) => /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
 
+export const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+export const plainTextToEmailHtml = (value) =>
+  String(value || "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+
 export const textPreview = (value) =>
   String(value || "")
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")

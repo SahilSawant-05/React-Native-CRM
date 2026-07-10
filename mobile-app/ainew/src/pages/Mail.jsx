@@ -28,6 +28,7 @@ import {
   formatDate,
   initials,
   normalizeList,
+  plainTextToEmailHtml,
   shortDate,
   textPreview,
 } from "../components/email/emailUtils";
@@ -103,9 +104,11 @@ function ComposeModal({
   onContact,
   onDesign,
   onTemplate,
+  onAiDraft,
   onMediaAsset,
 }) {
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
 
   if (!open) return null;
 
@@ -153,17 +156,21 @@ Phone: ${mergeData.contactPhone || ""}
 Opportunity: ${mergeData.opportunityName || ""}
 Pipeline: ${mergeData.pipelineName || ""}
 Current draft:
-${composer.bodyText || ""}`}
+${composer.bodyText || textPreview(composer.bodyHtml) || ""}`}
             replyPrompt={`Write a clear, concise email body for this CRM contact. Keep it warm, professional, and include one next-step CTA.
 Contact: ${mergeData.contactName || composer.toEmail || "Customer"}
 Opportunity: ${mergeData.opportunityName || ""}
 Subject: ${composer.subject || ""}
 Current draft:
-${composer.bodyText || ""}`}
-            onApply={(text) => onValue("bodyText", [composer.bodyText, text].filter(Boolean).join(composer.bodyText ? "\n\n" : ""))}
-            applyLabel="Use in email"
+${composer.bodyText || textPreview(composer.bodyHtml) || ""}`}
+            onApply={onAiDraft}
+            applyLabel="Use in designer"
             compact
           />
+
+          <div className="rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800">
+            The designed email below is the primary email that will be sent. AI and templates load into this designer. Plain text is only a fallback for email clients that cannot render HTML.
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
             <button
@@ -198,7 +205,21 @@ ${composer.bodyText || ""}`}
             </div>
           </Suspense>
 
-          <textarea rows={4} value={composer.bodyText} onChange={(event) => onValue("bodyText", event.target.value)} placeholder="Plain text fallback" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+          <div className="rounded-lg border border-gray-200 bg-gray-50">
+            <button
+              type="button"
+              onClick={() => setFallbackOpen((open) => !open)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-500"
+            >
+              Plain text fallback
+              <span className="normal-case tracking-normal text-gray-400">{fallbackOpen ? "Hide" : "Show"}</span>
+            </button>
+            {fallbackOpen && (
+              <div className="border-t border-gray-200 p-3">
+                <textarea rows={4} value={composer.bodyText} onChange={(event) => onValue("bodyText", event.target.value)} placeholder="Optional fallback for simple email clients" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
@@ -434,6 +455,18 @@ export default function Mail() {
     setComposerTemplateVersion((version) => version + 1);
   };
 
+  const applyAiDraftToComposer = (text) => {
+    const draftText = [composer.bodyText, text].filter(Boolean).join(composer.bodyText ? "\n\n" : "");
+    setComposer((current) => ({
+      ...current,
+      bodyHtml: plainTextToEmailHtml(draftText),
+      bodyText: draftText,
+      designJson: "",
+      mjml: "",
+    }));
+    setComposerTemplateVersion((version) => version + 1);
+  };
+
   const insertComposerMedia = (asset) => {
     const htmlSnippet = mediaHtmlSnippet(asset);
     const textSnippet = `${asset.name || asset.originalFileName}: ${asset.publicUrl}`;
@@ -555,6 +588,7 @@ export default function Mail() {
         onContact={selectContactForComposer}
         onDesign={setComposerDesign}
         onTemplate={applyComposerTemplate}
+        onAiDraft={applyAiDraftToComposer}
         onMediaAsset={insertComposerMedia}
       />
       <ManualLogModal

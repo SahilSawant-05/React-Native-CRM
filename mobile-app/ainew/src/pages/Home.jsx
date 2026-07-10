@@ -305,14 +305,14 @@ export default function Home() {
               <div className="font-black text-slate-950">Vistaar Flow</div>
               <div className="text-xs font-semibold text-slate-500">Expand. Automate. Grow. Where Every Lead Moves Forward.</div>
               <div className="mt-1 text-xs font-semibold text-slate-500">
-                Vistaar Flow powered by{" "}
+                Vistaar Flow is an app by{" "}
                 <a
                   href="https://techoceanhub.com"
                   target="_blank"
                   rel="noreferrer"
                   className="font-extrabold text-teal-700 hover:text-teal-800"
                 >
-                  TechoceanHub
+                  Techoceanhub Private Limited
                 </a>
               </div>
             </div>
@@ -321,6 +321,8 @@ export default function Home() {
             <a href="#platform" className="hover:text-teal-700">Platform</a>
             <a href="#industries" className="hover:text-teal-700">Industries</a>
             <a href="#pricing" className="hover:text-teal-700">Pricing</a>
+            <Link to="/privacy-policy" className="hover:text-teal-700">Privacy Policy</Link>
+            <Link to="/terms-and-conditions" className="hover:text-teal-700">Terms</Link>
             <Link to="/login" className="hover:text-teal-700">Login</Link>
           </div>
         </div>

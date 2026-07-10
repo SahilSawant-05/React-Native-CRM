@@ -40,6 +40,47 @@ const planFeatureEnabled = (plan, key) => {
   }
 };
 
+const planRankValue = (plan) => Number(plan?.monthlyPricePaise || 0);
+
+const planActionMeta = ({ plan, currentPlan, subscription, billingCycle }) => {
+  const current = plan?.planKey === currentPlan?.planKey;
+  const trial = subscription?.status === "TRIAL";
+  const cycleLabel = billingCycle === "YEARLY" ? "Yearly" : "Monthly";
+  if (trial) {
+    return {
+      label: current ? "Current Trial Plan" : "Use During Trial",
+      helper: current
+        ? "This is the plan currently enabled for your trial."
+        : "Switch trial features without payment. Credits are not added again.",
+      disabled: current,
+      variant: current ? "current" : "trial",
+    };
+  }
+  if (current) {
+    return {
+      label: `Renew ${cycleLabel}`,
+      helper: "Renews the same plan and credits the included plan credits after payment.",
+      disabled: false,
+      variant: "current",
+    };
+  }
+  const lowerPlan = planRankValue(plan) < planRankValue(currentPlan);
+  if (lowerPlan) {
+    return {
+      label: `Downgrade ${cycleLabel}`,
+      helper: "Use this when renewing on a smaller plan. Make sure your users, contacts, pipelines, and storage fit this plan.",
+      disabled: false,
+      variant: "downgrade",
+    };
+  }
+  return {
+    label: `Upgrade ${cycleLabel}`,
+    helper: "Move to a higher plan and receive the included plan credits after payment.",
+    disabled: false,
+    variant: "upgrade",
+  };
+};
+
 const loadRazorpayScript = () =>
   new Promise((resolve, reject) => {
     if (window.Razorpay) {
@@ -242,6 +283,24 @@ export default function Billing() {
       checkout.open();
     } catch (purchaseError) {
       setError(errorMessage(purchaseError, "Could not start Razorpay checkout."));
+    } finally {
+      setPurchasingKey("");
+    }
+  };
+
+  const changeTrialPlan = async (plan) => {
+    if (plan.planKey === summary?.planKey) return;
+    setError("");
+    setSuccess("");
+    const purchaseKey = `TRIAL_${plan.planKey}`;
+    setPurchasingKey(purchaseKey);
+    try {
+      const response = await api.post("/api/billing/trial/change-plan", { planKey: plan.planKey });
+      setSummary(response.data);
+      setSuccess(`${plan.name} enabled for your trial. Trial credits were not reset or added again.`);
+      await load({ quiet: true });
+    } catch (changeError) {
+      setError(errorMessage(changeError, "Could not change trial plan."));
     } finally {
       setPurchasingKey("");
     }
@@ -458,11 +517,12 @@ export default function Billing() {
           <HardDrive size={18} className="text-teal-700" />
           <h2 className="text-base font-extrabold text-slate-950">Plan Usage</h2>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <UsageMeter label="Seats" used={usage.seatsUsed} limit={usage.seatsLimit} helper="Owner and agents count as seats." />
           <UsageMeter label="Contacts" used={usage.contactsUsed} limit={usage.contactsLimit} helper="Manual, imported, website, and WhatsApp leads." />
           <UsageMeter label="Pipelines" used={usage.pipelinesUsed} limit={usage.pipelinesLimit} helper="Separate sales journeys for your CRM." />
           <UsageMeter label="Storage" used={usage.storageUsedBytes} limit={usage.storageLimitBytes} helper="Media Library, email images, documents, and WhatsApp media." formatter={formatStorage} />
+          <UsageMeter label="Tracked Call Minutes" used={usage.callMinutesUsedThisMonth} limit={usage.callMinutesLimit} helper="Answered third-party telephony calls tracked for reporting." />
         </div>
       </section>
 
@@ -580,7 +640,8 @@ export default function Billing() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan) => {
             const current = plan.planKey === summary?.planKey;
-            const purchaseKey = `PLAN_${plan.planKey}_${billingCycle}`;
+            const actionMeta = planActionMeta({ plan, currentPlan, subscription, billingCycle });
+            const purchaseKey = subscription?.status === "TRIAL" ? `TRIAL_${plan.planKey}` : `PLAN_${plan.planKey}_${billingCycle}`;
             const yearly = billingCycle === "YEARLY";
             const price = yearly ? plan.yearlyPricePaise : plan.monthlyPricePaise;
             const credits = yearly ? plan.yearlyCredits : plan.monthlyCredits;
@@ -602,6 +663,7 @@ export default function Billing() {
                 <p>{plan.maxContacts?.toLocaleString()} contacts</p>
                 <p>{plan.maxPipelines} pipelines</p>
                 <p>{formatStorage(plan.storageLimitBytes)} media storage</p>
+                <p>{plan.monthlyCallMinutes ? `${plan.monthlyCallMinutes.toLocaleString()} bundled call minutes / month` : "Unlimited third-party call tracking"}</p>
               </div>
               <div className={`mt-4 rounded-lg border px-3 py-2 text-xs font-bold leading-5 ${
                 aiIncluded
@@ -619,17 +681,20 @@ export default function Billing() {
               </div>
               <button
                 type="button"
-                onClick={() => buyPlan(plan)}
-                disabled={Boolean(purchasingKey)}
+                onClick={() => subscription?.status === "TRIAL" ? changeTrialPlan(plan) : buyPlan(plan)}
+                disabled={Boolean(purchasingKey) || actionMeta.disabled}
                 className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-extrabold ${
-                  current
+                  actionMeta.variant === "current"
                     ? "border border-teal-200 bg-white text-teal-700 hover:bg-teal-50"
+                    : actionMeta.variant === "downgrade"
+                      ? "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
                     : "bg-slate-950 text-white hover:bg-slate-800"
                 } disabled:opacity-60`}
               >
                 {purchasingKey === purchaseKey ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-                {current ? `Renew ${yearly ? "Yearly" : "Monthly"}` : `Upgrade ${yearly ? "Yearly" : "Monthly"}`}
+                {actionMeta.label}
               </button>
+              <p className="mt-2 min-h-10 text-xs font-semibold leading-5 text-slate-500">{actionMeta.helper}</p>
             </article>
           )})}
         </div>
@@ -776,6 +841,7 @@ function usageWarnings(summary, usage, subscription) {
     ["Contacts", usage?.contactsUsed, usage?.contactsLimit],
     ["Pipelines", usage?.pipelinesUsed, usage?.pipelinesLimit],
     ["Storage", usage?.storageUsedBytes, usage?.storageLimitBytes, formatStorage],
+    ["Call minutes", usage?.callMinutesUsedThisMonth, usage?.callMinutesLimit],
   ].forEach(([label, used, limit, formatter]) => {
     const safeUsed = Number(used || 0);
     const safeLimit = Number(limit || 0);
@@ -938,12 +1004,23 @@ function SubscriptionBanner({ subscription }) {
     );
   }
 
-  if ((status === "ACTIVE" || status === "TRIAL") && Number.isFinite(daysUntilEnd) && daysUntilEnd >= 0 && daysUntilEnd <= 7) {
+  if (status === "ACTIVE" && Number.isFinite(daysUntilEnd) && daysUntilEnd >= 0 && daysUntilEnd <= 7) {
     return (
       <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
         <div className="flex gap-2">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <span>{status === "TRIAL" ? "Trial" : "Plan"} expires on {periodEnd}. {daysUntilEnd === 0 ? "Renew today to stay uninterrupted." : `${daysUntilEnd} day${daysUntilEnd === 1 ? "" : "s"} remaining.`}</span>
+          <span>Plan expires on {periodEnd}. {daysUntilEnd === 0 ? "Renew today to stay uninterrupted." : `${daysUntilEnd} day${daysUntilEnd === 1 ? "" : "s"} remaining.`}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "TRIAL") {
+    return (
+      <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+        <div className="flex gap-2">
+          <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+          <span>Trial mode: you can switch plans to test features until {periodEnd}. Trial credits are capped and will not be added again when switching plans.</span>
         </div>
       </div>
     );
@@ -955,7 +1032,8 @@ function SubscriptionBanner({ subscription }) {
 function UsageMeter({ label, used = 0, limit = 0, helper, formatter = formatCredits }) {
   const safeUsed = Number(used || 0);
   const safeLimit = Number(limit || 0);
-  const percent = safeLimit > 0 ? Math.min(100, Math.round((safeUsed / safeLimit) * 100)) : 0;
+  const hasLimit = safeLimit > 0;
+  const percent = hasLimit ? Math.min(100, Math.round((safeUsed / safeLimit) * 100)) : 0;
   const warning = percent >= 80 && percent < 100;
   const full = percent >= 100;
   return (
@@ -966,14 +1044,14 @@ function UsageMeter({ label, used = 0, limit = 0, helper, formatter = formatCred
           <p className="mt-1 text-sm text-slate-500">{helper}</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${full ? "bg-red-50 text-red-700" : warning ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
-          {formatter(safeUsed)} / {formatter(safeLimit)}
+          {formatter(safeUsed)} / {hasLimit ? formatter(safeLimit) : "Unlimited"}
         </span>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
         <div className={`h-full rounded-full ${full ? "bg-red-500" : warning ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${percent}%` }} />
       </div>
       <p className={`mt-2 text-xs font-semibold ${full ? "text-red-600" : warning ? "text-amber-700" : "text-slate-500"}`}>
-        {full ? "Limit reached. Upgrade to continue." : warning ? "Near limit. Plan upgrade may be needed soon." : `${percent}% used`}
+        {!hasLimit ? "Reporting only. Provider billing is separate." : full ? "Limit reached. Upgrade to continue." : warning ? "Near limit. Plan upgrade may be needed soon." : `${percent}% used`}
       </p>
     </article>
   );

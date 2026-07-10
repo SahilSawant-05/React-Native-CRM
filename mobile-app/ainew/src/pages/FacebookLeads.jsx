@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
 const DEFAULT_LIMIT = 100;
+const FORMS_PAGE_SIZE = 25;
 
 export default function FacebookLeads() {
   const navigate = useNavigate();
@@ -25,6 +26,11 @@ export default function FacebookLeads() {
   const [aiLoadingFormId, setAiLoadingFormId] = useState("");
   const [aiSuggestions, setAiSuggestions] = useState({});
   const [subscribedPageIds, setSubscribedPageIds] = useState(new Set());
+  const [formSearch, setFormSearch] = useState("");
+  const [formStatusFilter, setFormStatusFilter] = useState("ALL");
+  const [formsPage, setFormsPage] = useState(0);
+  const [selectedFormId, setSelectedFormId] = useState("");
+  const [mappingModalFormId, setMappingModalFormId] = useState("");
   const [loadingPages, setLoadingPages] = useState(false);
   const [loadingForms, setLoadingForms] = useState(false);
   const [error, setError] = useState("");
@@ -42,6 +48,41 @@ export default function FacebookLeads() {
   }, [mappings]);
 
   const activePipelines = pipelines.filter((pipeline) => pipeline.status === "ACTIVE");
+  const filteredForms = useMemo(() => {
+    const query = formSearch.trim().toLowerCase();
+    return forms.filter((form) => {
+      const mapping = mappingByFormId.get(String(form.id));
+      const matchesSearch = !query
+        || String(form.name || "").toLowerCase().includes(query)
+        || String(form.id || "").toLowerCase().includes(query);
+      const isMapped = Boolean(mapping);
+      const hasError = Boolean(mapping?.lastWebhookError);
+      const matchesStatus = formStatusFilter === "ALL"
+        || (formStatusFilter === "MAPPED" && isMapped)
+        || (formStatusFilter === "UNMAPPED" && !isMapped)
+        || (formStatusFilter === "ERROR" && hasError)
+        || (formStatusFilter === "RECENT" && Boolean(mapping?.lastImportedAt || mapping?.lastWebhookReceivedAt));
+      return matchesSearch && matchesStatus;
+    });
+  }, [formSearch, formStatusFilter, forms, mappingByFormId]);
+  const pagedForms = useMemo(() => {
+    const start = formsPage * FORMS_PAGE_SIZE;
+    return filteredForms.slice(start, start + FORMS_PAGE_SIZE);
+  }, [filteredForms, formsPage]);
+  const selectedForm = useMemo(() => (
+    forms.find((form) => String(form.id) === String(selectedFormId))
+    || pagedForms[0]
+    || filteredForms[0]
+    || null
+  ), [filteredForms, forms, pagedForms, selectedFormId]);
+  const modalForm = useMemo(() => (
+    forms.find((form) => String(form.id) === String(mappingModalFormId)) || null
+  ), [forms, mappingModalFormId]);
+  const formCounts = useMemo(() => ({
+    all: forms.length,
+    mapped: forms.filter((form) => mappingByFormId.has(String(form.id))).length,
+    error: forms.filter((form) => mappingByFormId.get(String(form.id))?.lastWebhookError).length,
+  }), [forms, mappingByFormId]);
   const checklist = useMemo(() => {
     const pageConnected = Boolean(pageId);
     const formsLoaded = forms.length > 0;
@@ -109,7 +150,10 @@ export default function FacebookLeads() {
         api.get("/api/facebook-leads/forms", { params: { pageId: nextPageId } }),
         loadMappings(nextPageId),
       ]);
-      setForms(Array.isArray(formsResponse.data) ? formsResponse.data : []);
+      const nextForms = Array.isArray(formsResponse.data) ? formsResponse.data : [];
+      setForms(nextForms);
+      setSelectedFormId(nextForms[0]?.id || "");
+      setFormsPage(0);
       setHistoryFormId("");
       loadImportHistory(nextPageId, "", 0);
     } catch (err) {
@@ -178,8 +222,10 @@ export default function FacebookLeads() {
       });
       setMappings((current) => upsertByFormId(current, response.data));
       setSuccess(`Mapping saved for ${form.name || form.id}.`);
+      return true;
     } catch (err) {
       setError(errorMessage(err, "Could not save form mapping."));
+      return false;
     } finally {
       setSavingFormId("");
     }
@@ -297,6 +343,25 @@ export default function FacebookLeads() {
     if (pageId) loadImportHistory(pageId, historyFormId, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyFormId]);
+
+  useEffect(() => {
+    setFormsPage(0);
+  }, [formSearch, formStatusFilter]);
+
+  useEffect(() => {
+    if (filteredForms.length === 0) {
+      setSelectedFormId("");
+      return;
+    }
+    if (!filteredForms.some((form) => String(form.id) === String(selectedFormId))) {
+      setSelectedFormId(filteredForms[0].id);
+    }
+  }, [filteredForms, selectedFormId]);
+
+  const openMappingModal = (formId) => {
+    setSelectedFormId(formId);
+    setMappingModalFormId(formId);
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 p-3 sm:p-6">
@@ -417,29 +482,54 @@ export default function FacebookLeads() {
                 No forms found for this page yet.
               </div>
             ) : (
-              forms.map((form) => (
-                <FormMappingCard
-                  key={form.id}
-                  form={form}
-                  mapping={mappingByFormId.get(String(form.id))}
-                  pipelines={activePipelines}
-                  stages={stages}
-                  users={users}
-                  onPipelineFocus={loadStages}
-                  onSave={saveMapping}
-                  onSync={syncSelectedForm}
-                  onRetryWebhook={retryWebhook}
-                  onSuggestMapping={suggestMapping}
-                  aiSuggestion={aiSuggestions[form.id]}
-                  aiLoading={aiLoadingFormId === form.id}
-                  retrying={retryingEventId && String(retryingEventId) === String(mappingByFormId.get(String(form.id))?.lastWebhookEventId)}
-                  saving={savingFormId === form.id}
-                  syncing={syncingKey === form.id}
-                />
-              ))
+              <FormsWorkspace
+                forms={forms}
+                pagedForms={pagedForms}
+                filteredCount={filteredForms.length}
+                formCounts={formCounts}
+                mappingByFormId={mappingByFormId}
+                search={formSearch}
+                statusFilter={formStatusFilter}
+                page={formsPage}
+                selectedFormId={selectedForm?.id || ""}
+                onSearch={setFormSearch}
+                onStatusFilter={setFormStatusFilter}
+                onPage={setFormsPage}
+                onSelectForm={openMappingModal}
+              />
             )}
           </div>
         </section>
+
+        {modalForm && (
+          <MappingModal
+            formName={modalForm.name || modalForm.id}
+            onClose={() => setMappingModalFormId("")}
+          >
+            <FormMappingCard
+              key={modalForm.id}
+              form={modalForm}
+              mapping={mappingByFormId.get(String(modalForm.id))}
+              pipelines={activePipelines}
+              stages={stages}
+              users={users}
+              onPipelineFocus={loadStages}
+              onSave={async (form, draft) => {
+                const saved = await saveMapping(form, draft);
+                if (saved) setMappingModalFormId("");
+              }}
+              onSync={syncSelectedForm}
+              onRetryWebhook={retryWebhook}
+              onSuggestMapping={suggestMapping}
+              aiSuggestion={aiSuggestions[modalForm.id]}
+              aiLoading={aiLoadingFormId === modalForm.id}
+              retrying={retryingEventId && String(retryingEventId) === String(mappingByFormId.get(String(modalForm.id))?.lastWebhookEventId)}
+              saving={savingFormId === modalForm.id}
+              syncing={syncingKey === modalForm.id}
+              inModal
+            />
+          </MappingModal>
+        )}
 
         {result && (
           <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
@@ -487,6 +577,177 @@ function SetupChecklist({ items }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function FormsWorkspace({
+  forms,
+  pagedForms,
+  filteredCount,
+  formCounts,
+  mappingByFormId,
+  search,
+  statusFilter,
+  page,
+  selectedFormId,
+  onSearch,
+  onStatusFilter,
+  onPage,
+  onSelectForm,
+}) {
+  const totalPages = Math.max(1, Math.ceil(filteredCount / FORMS_PAGE_SIZE));
+  const filters = [
+    { key: "ALL", label: "All", count: formCounts.all },
+    { key: "MAPPED", label: "Mapped", count: formCounts.mapped },
+    { key: "UNMAPPED", label: "Unmapped", count: Math.max(0, formCounts.all - formCounts.mapped) },
+    { key: "ERROR", label: "Errors", count: formCounts.error },
+    { key: "RECENT", label: "Recent", count: null },
+  ];
+
+  return (
+    <section>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Forms</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              {filteredCount} of {forms.length} forms shown. Select one form to edit mapping.
+            </p>
+          </div>
+          <input
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search form name or ID"
+            className="min-h-10 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-400 lg:w-64"
+          />
+        </div>
+
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {filters.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => onStatusFilter(filter.key)}
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-black ${
+                statusFilter === filter.key
+                  ? "bg-blue-700 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {filter.label}{filter.count == null ? "" : ` ${filter.count}`}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+          <div className="hidden grid-cols-[minmax(0,1.5fr)_0.7fr_0.7fr_0.7fr_0.7fr] bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-400 md:grid">
+            <div>Form</div>
+            <div>Status</div>
+            <div>Imported</div>
+            <div>Webhook</div>
+            <div className="text-right">Action</div>
+          </div>
+          <div className="max-h-[620px] overflow-y-auto divide-y divide-slate-100">
+            {pagedForms.length === 0 ? (
+              <div className="px-3 py-10 text-center text-sm font-bold text-slate-400">
+                No forms match this filter.
+              </div>
+            ) : pagedForms.map((form) => {
+              const mapping = mappingByFormId.get(String(form.id));
+              const selected = String(selectedFormId) === String(form.id);
+              return (
+                <button
+                  key={form.id}
+                  type="button"
+                  onClick={() => onSelectForm(form.id)}
+                  className={`block w-full px-3 py-3 text-left transition hover:bg-blue-50 ${
+                    selected ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : "bg-white"
+                  }`}
+                >
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,1.5fr)_0.7fr_0.7fr_0.7fr_0.7fr] md:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-slate-950">{form.name || form.id}</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-400">ID: {form.id}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <CompactBadge tone={mapping ? "emerald" : "amber"}>{mapping ? "Mapped" : "Unmapped"}</CompactBadge>
+                      {mapping?.lastWebhookError && <CompactBadge tone="red">Error</CompactBadge>}
+                    </div>
+                    <div className="text-xs font-bold text-slate-600">{mapping?.importedCount ?? 0}</div>
+                    <div className="text-xs font-bold text-slate-500">
+                      {mapping?.lastWebhookReceivedAt ? "Received" : mapping?.pageSubscribedAt ? "Active" : "Not active"}
+                    </div>
+                    <div className="text-left text-xs font-black text-blue-700 md:text-right">Open mapping</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-bold text-slate-400">
+            Page {page + 1} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 0}
+              onClick={() => onPage(Math.max(0, page - 1))}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-extrabold text-slate-600 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages - 1}
+              onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-extrabold text-slate-600 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MappingModal({ formName, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Form mapping</p>
+            <h2 className="mt-1 truncate text-lg font-black text-slate-950">{formName}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+        <div className="overflow-y-auto p-4 sm:p-5">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactBadge({ tone, children }) {
+  const styles = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    red: "bg-red-50 text-red-700",
+  };
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${styles[tone] || styles.amber}`}>
+      {children}
+    </span>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import api from "../api/axios";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useContext } from "react";
 import { messageContext } from "../store/messageContext";
 import vistaarLogo from "../assets/vistaar-flow-logo.png";
@@ -16,6 +16,7 @@ export default function Signup() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -51,6 +52,10 @@ export default function Signup() {
       return setError("Industry is required.");
     }
 
+    if (!acceptedTerms) {
+      return setError("Please accept the Terms & Conditions and Privacy Policy to continue.");
+    }
+
     try {
       setLoading(true);
 
@@ -60,6 +65,7 @@ export default function Signup() {
         password: form.password,
         country: form.country.trim(),
         industry: form.industry.trim(),
+        acceptedTerms: true,
       });
 
       const successMessage = "Tenant created successfully. Please log in.";
@@ -237,11 +243,31 @@ export default function Signup() {
               className="my-2 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-base outline-none focus:ring-2 focus:ring-blue-600"
             />
 
+            <label className="mt-3 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-5 text-slate-700">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 accent-blue-700"
+              />
+              <span>
+                I agree to the{" "}
+                <Link to="/terms-and-conditions" target="_blank" className="font-extrabold text-blue-700 hover:underline">
+                  Terms & Conditions
+                </Link>
+                {" "}and{" "}
+                <Link to="/privacy-policy" target="_blank" className="font-extrabold text-blue-700 hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+
             {/* BUTTON */}
 
             <button
               onClick={submit}
-              disabled={loading}
+              disabled={loading || !acceptedTerms}
               className="my-3 min-h-11 w-full rounded-lg bg-blue-800 px-4 py-2 text-base font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
             >
               {loading ? "Creating..." : "Signup"}

@@ -128,10 +128,10 @@ function QueueCard({ item, selected, onSelect, onOpen, onCreateTask, taskCreatin
         <button
           type="button"
           onClick={() => onSelect(item)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-sm font-black text-white hover:bg-teal-700"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-sm font-black text-white hover:bg-teal-800"
         >
           <Sparkles size={16} />
-          AI Help
+          Get AI recommendation
         </button>
       </div>
 
@@ -206,10 +206,10 @@ function LeadInboxCard({ item, selected, onSelect, onOpen, onCreateTask, taskCre
         <button
           type="button"
           onClick={() => onSelect(toAiContext(item))}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-sm font-black text-white hover:bg-teal-700 sm:w-auto"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-sm font-black text-white hover:bg-teal-800 sm:w-auto"
         >
           <Sparkles size={16} />
-          AI Help
+          Get AI recommendation
         </button>
       </div>
       <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">{item.summary}</p>
@@ -273,6 +273,49 @@ function toAiContext(item) {
   };
 }
 
+function AiHelpModal({ item, onClose }) {
+  const title = item.opportunityTitle || item.contactName || "Selected CRM record";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-3 sm:p-6">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-700">AI help for this record</p>
+              <h2 className="mt-1 truncate text-xl font-black text-slate-950">{title}</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+                Choose what you want AI to do. Summary explains the record, Reply drafts a customer message, and Recommendation gives the next best sales action.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+            {item.contactName && <span className="rounded-full bg-slate-100 px-2.5 py-1">Contact: {item.contactName}</span>}
+            {item.stage && <span className="rounded-full bg-slate-100 px-2.5 py-1">Stage: {item.stage}</span>}
+            {item.leadScore != null && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700">Score: {item.leadScore}</span>}
+            {item.reasonLabel && <span className="rounded-full bg-teal-50 px-2.5 py-1 text-teal-700">{item.reasonLabel}</span>}
+          </div>
+        </div>
+        <div className="overflow-y-auto p-4 sm:p-5">
+          <AiAssistPanel
+            contactId={item.contactId}
+            opportunityId={item.opportunityId}
+            title={title}
+            contextPrompt={recommendationPrompt(item)}
+            replyPrompt={replyPrompt(item)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AiWorkQueue() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("queue");
@@ -282,6 +325,7 @@ export default function AiWorkQueue() {
   const [inboxLoading, setInboxLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [taskCreating, setTaskCreating] = useState("");
 
   const grouped = useMemo(() => {
@@ -343,6 +387,11 @@ export default function AiWorkQueue() {
   const openRecord = (item) => {
     const opportunityId = item.opportunityId || item.openOpportunityId;
     navigate(item.targetPath || (opportunityId ? `/dashboard/opportunities/${opportunityId}` : "/dashboard/contacts"));
+  };
+
+  const openAiHelp = (item) => {
+    setSelectedItem(item);
+    setAiModalOpen(true);
   };
 
   const createTask = async (item) => {
@@ -427,7 +476,7 @@ export default function AiWorkQueue() {
           </div>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="space-y-5">
           <section className="space-y-5">
             {activeTab === "queue" && loading ? (
               <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -462,7 +511,7 @@ export default function AiWorkQueue() {
                             key={item.id}
                             item={item}
                             selected={selectedItem?.id === item.id}
-                            onSelect={setSelectedItem}
+                            onSelect={openAiHelp}
                             onOpen={openRecord}
                             onCreateTask={createTask}
                             taskCreating={taskCreating}
@@ -506,7 +555,7 @@ export default function AiWorkQueue() {
                             key={item.id}
                             item={item}
                             selected={selectedItem?.id === item.id}
-                            onSelect={setSelectedItem}
+                            onSelect={openAiHelp}
                             onOpen={openRecord}
                             onCreateTask={createTask}
                             taskCreating={taskCreating}
@@ -519,30 +568,14 @@ export default function AiWorkQueue() {
               })
             )}
           </section>
-
-          <aside className="xl:sticky xl:top-4 xl:self-start">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles size={18} className="text-teal-700" />
-                <h2 className="text-base font-black">AI Recommendation</h2>
-              </div>
-              {selectedItem ? (
-                <AiAssistPanel
-                  contactId={selectedItem.contactId}
-                  opportunityId={selectedItem.opportunityId}
-                  title={selectedItem.opportunityTitle || selectedItem.contactName || "Selected CRM record"}
-                  contextPrompt={recommendationPrompt(selectedItem)}
-                  replyPrompt={replyPrompt(selectedItem)}
-                  compact
-                />
-              ) : (
-                <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                  Select a queue card to ask AI for a recommendation.
-                </p>
-              )}
-            </div>
-          </aside>
         </div>
+
+        {aiModalOpen && selectedItem && (
+          <AiHelpModal
+            item={selectedItem}
+            onClose={() => setAiModalOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

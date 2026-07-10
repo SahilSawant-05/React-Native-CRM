@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, CalendarCheck2, IndianRupee, Target, Trophy, UsersRound } from "lucide-react";
+import { BriefcaseBusiness, CalendarCheck2, IndianRupee, PhoneCall, Target, Trophy, UsersRound } from "lucide-react";
 import api from "../api/axios";
 import DateRangeFilter, { dateRangeParams, presetDateRange } from "../components/common/DateRangeFilter";
 
@@ -227,6 +227,54 @@ function AgentPerformancePanel({ items = [] }) {
   );
 }
 
+function CallAgentPerformancePanel({ items = [] }) {
+  return (
+    <section className="min-w-0 rounded-lg border border-gray-200 bg-white p-4 shadow-sm xl:col-span-2 sm:p-5">
+      <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-gray-950">Call Outcome by Agent</h2>
+          <p className="mt-1 text-sm text-gray-500">Connected, missed, callback pending, and converted call outcomes.</p>
+        </div>
+        <span className="w-fit shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{items.length} agents</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+          No call report data yet.
+        </div>
+      ) : (
+        <div className="max-w-full overflow-x-auto">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Agent</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Connected</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Missed</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Callback Pending</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Converted</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-700">Connect Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.agentUserId || item.agentEmail} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-3 font-semibold text-gray-950">{item.agentEmail}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{item.totalCalls}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-emerald-700">{item.connectedCalls}</td>
+                  <td className="px-4 py-3 text-right text-red-700">{item.missedCalls}</td>
+                  <td className="px-4 py-3 text-right text-indigo-700">{item.callbackPending}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-teal-700">{item.convertedCalls}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-blue-700">{formatPercent(item.connectRate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Reports() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -393,6 +441,13 @@ export default function Reports() {
             icon={CalendarCheck2}
             accent="bg-cyan-50 text-cyan-700"
           />
+          <MetricCard
+            label="Call Outcomes"
+            value={(summary?.callOutcomes || []).reduce((sum, item) => sum + Number(item.count || 0), 0)}
+            helper="Connected, missed, callback, converted"
+            icon={PhoneCall}
+            accent="bg-indigo-50 text-indigo-700"
+          />
         </div>
 
         <div className="grid min-w-0 gap-6 xl:grid-cols-2">
@@ -420,8 +475,15 @@ export default function Reports() {
             items={summary?.appointmentOutcomes || []}
             chart="donut"
           />
+          <BreakdownPanel
+            title="Call Outcome Report"
+            description="Call outcomes from Exotel and agent disposition updates."
+            items={summary?.callOutcomes || []}
+            chart="donut"
+          />
           <SourceToWonPanel items={summary?.sourceToWon || []} />
           <AgentPerformancePanel items={summary?.agentPerformance || []} />
+          <CallAgentPerformancePanel items={summary?.callAgentPerformance || []} />
           <section className="min-w-0 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-950">Recommended Follow-up</h2>
             <div className="mt-4 space-y-3 text-sm text-gray-600">

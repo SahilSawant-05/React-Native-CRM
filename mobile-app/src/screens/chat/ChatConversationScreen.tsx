@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   Image,
   ImageBackground,
@@ -1303,6 +1304,12 @@ export default function ChatConversationScreen({ route }: Props) {
   // apply it once the gesture settles, instead of merging immediately.
   const isTouchingRef = useRef(false);
   const pendingContentRef = useRef<Message[] | null>(null);
+  // Prevents overlapping poll requests: on a slow/flaky connection a fetch
+  // can still be in flight when the next tick fires. Without this guard,
+  // requests pile up and their responses can land out of order, which is
+  // exactly what makes polling feel "unreliable" instead of just slower.
+  const isRefreshInFlightRef = useRef(false);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
     async (p = 0) => {
@@ -1352,7 +1359,16 @@ export default function ChatConversationScreen({ route }: Props) {
 
   // Silent page-0 refresh (no loading spinner) used by the live poll so new
   // inbound messages stream in while the chat is open, WhatsApp-style.
+  //
+  // Guarded against overlap: if a previous refreshLatest() call hasn't
+  // resolved yet (slow network), a new tick is skipped entirely rather than
+  // firing another request on top of it. Without this, a slow response can
+  // still be in flight when 2-3 more ticks fire, and their responses can
+  // resolve in any order — which reads as "sometimes new messages just
+  // don't show up" even though a poll technically ran on schedule.
   const refreshLatest = useCallback(async () => {
+    if (isRefreshInFlightRef.current) return;
+    isRefreshInFlightRef.current = true;
     try {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
@@ -1366,6 +1382,8 @@ export default function ChatConversationScreen({ route }: Props) {
       setMessages((prev) => mergeMessages(prev, content));
     } catch {
       // Ignore poll errors — the next tick will retry.
+    } finally {
+      isRefreshInFlightRef.current = false;
     }
   }, [inbox.contactId]);
 
@@ -1382,12 +1400,46 @@ export default function ChatConversationScreen({ route }: Props) {
 
   // Live polling: while this screen is mounted (i.e. the chat is open) fetch
   // the latest messages every few seconds so inbound replies stream in
-  // WhatsApp-style without leaving the screen. A plain mounted interval is
-  // used (rather than focus-only) so it keeps ticking reliably; it is torn
-  // down automatically when the user navigates away and the screen unmounts.
+  // WhatsApp-style without leaving the screen.
+  //
+  // Two changes from a plain `setInterval`:
+  //  1. Self-rescheduling `setTimeout` chain — the next tick is only queued
+  //     AFTER the current refreshLatest() call finishes, so a slow response
+  //     can never cause a pile-up of overlapping requests.
+  //  2. An AppState listener that force-refreshes the instant the app comes
+  //     back to the foreground. JS timers are paused/throttled while the
+  //     app is backgrounded, so a message that arrives while the phone is
+  //     locked or the app is minimized would otherwise just sit there,
+  //     unseen, until the (delayed) next tick eventually fires — this is
+  //     the single most common reason polling "sometimes" misses a message
+  //     on a real device. `useFocusEffect` below only covers in-app
+  //     navigation focus changes, not the app being backgrounded/foregrounded.
   useEffect(() => {
-    const id = setInterval(refreshLatest, 3500);
-    return () => clearInterval(id);
+    let cancelled = false;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      pollTimeoutRef.current = setTimeout(tick, 3500);
+    };
+
+    const tick = () => {
+      if (cancelled) return;
+      refreshLatest().finally(scheduleNext);
+    };
+
+    scheduleNext();
+
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      refreshLatest().finally(scheduleNext);
+    });
+
+    return () => {
+      cancelled = true;
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      appStateSub.remove();
+    };
   }, [refreshLatest]);
 
   // Also refresh immediately whenever the screen regains focus (e.g. coming

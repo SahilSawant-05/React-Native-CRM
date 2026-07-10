@@ -2047,14 +2047,14 @@ export default function Phase2Settings() {
                             onClick={() => setTemplateEditorMode("rich")}
                             className={`rounded-md px-3 py-1.5 text-xs font-bold ${templateEditorMode === "rich" ? "bg-teal-700 text-white" : "text-gray-600 hover:bg-gray-50"}`}
                           >
-                            Designer
+                            Designer HTML
                           </button>
                           <button
                             type="button"
                             onClick={() => setTemplateEditorMode("text")}
                             className={`rounded-md px-3 py-1.5 text-xs font-bold ${templateEditorMode === "text" ? "bg-teal-700 text-white" : "text-gray-600 hover:bg-gray-50"}`}
                           >
-                            Plain Text
+                            Plain Text Fallback
                           </button>
                           <button
                             type="button"
@@ -2064,6 +2064,9 @@ export default function Phase2Settings() {
                             Preview
                           </button>
                         </div>
+                        <p className="w-full rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 lg:w-auto">
+                          Designer HTML is the main email body used by compose, automation, and test send. Plain text is only a fallback.
+                        </p>
                         <div className="flex flex-wrap gap-1">
                           {["{{contactName}}", "{{contactPhone}}", "{{contactEmail}}", "{{leadSource}}"].map((variable) => (
                             <span
@@ -2119,15 +2122,19 @@ export default function Phase2Settings() {
                       )}
                     </div>
 
-                    <div>
-                      <FieldLabel>Plain text fallback</FieldLabel>
-                      <TextArea
-                        rows={4}
-                        value={templateForm.bodyText}
-                        onChange={(event) => setTemplateValue("bodyText", event.target.value)}
-                        placeholder="Optional fallback for mail clients that do not render HTML."
-                      />
-                    </div>
+                    <details className="rounded-lg border border-gray-200 bg-gray-50">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Plain text fallback
+                      </summary>
+                      <div className="border-t border-gray-200 p-3">
+                        <TextArea
+                          rows={4}
+                          value={templateForm.bodyText}
+                          onChange={(event) => setTemplateValue("bodyText", event.target.value)}
+                          placeholder="Optional fallback for mail clients that do not render HTML."
+                        />
+                      </div>
+                    </details>
                     <label className="flex items-center gap-2 text-sm text-gray-700">
                       <input
                         type="checkbox"

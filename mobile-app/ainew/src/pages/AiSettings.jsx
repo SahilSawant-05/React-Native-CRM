@@ -42,9 +42,31 @@ const MODEL_OPTIONS = {
   ],
 };
 
+const TRANSCRIPTION_PROVIDER_OPTIONS = [
+  { value: "OPENAI", label: "OpenAI", helper: "Recommended for reliable call transcription." },
+  { value: "GEMINI", label: "Gemini", helper: "Useful if you prefer Google AI billing for audio transcription." },
+  { value: "CLAUDE", label: "Claude", helper: "Claude is not supported for direct audio transcription in this CRM yet.", disabled: true },
+];
+
+const TRANSCRIPTION_MODEL_OPTIONS = {
+  OPENAI: [
+    { value: "gpt-4o-mini-transcribe", label: "GPT-4o mini transcribe", helper: "Recommended lower-cost OpenAI transcription model." },
+    { value: "gpt-4o-transcribe", label: "GPT-4o transcribe", helper: "Higher quality OpenAI transcription model if your account has access." },
+  ],
+  GEMINI: [
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", helper: "Recommended Gemini model for fast transcription." },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", helper: "Compatibility fallback for Gemini audio transcription." },
+  ],
+  CLAUDE: [
+    { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", helper: "Not supported for direct audio transcription." },
+  ],
+};
+
 const emptySettings = {
   provider: "OPENAI",
   model: "gpt-5.4-mini",
+  transcriptionProvider: "OPENAI",
+  transcriptionModel: "gpt-4o-mini-transcribe",
   active: false,
   hasApiKey: false,
   maskSensitiveData: true,
@@ -77,6 +99,9 @@ export default function AiSettings() {
 
   const modelOptions = MODEL_OPTIONS[selectedProvider.key] || [];
   const selectedModel = modelOptions.find((model) => model.value === settings.model) || modelOptions[0];
+  const transcriptionProvider = TRANSCRIPTION_PROVIDER_OPTIONS.find((provider) => provider.value === settings.transcriptionProvider) || TRANSCRIPTION_PROVIDER_OPTIONS[0];
+  const transcriptionModels = TRANSCRIPTION_MODEL_OPTIONS[transcriptionProvider.value] || TRANSCRIPTION_MODEL_OPTIONS.OPENAI;
+  const selectedTranscriptionModel = transcriptionModels.find((model) => model.value === settings.transcriptionModel) || transcriptionModels[0];
   const currentPlan = useMemo(
     () => (billingSummary?.plans || []).find((plan) => plan.planKey === billingSummary?.planKey) || null,
     [billingSummary]
@@ -85,6 +110,7 @@ export default function AiSettings() {
   const setupSteps = [
     { label: "Choose provider", complete: Boolean(settings.provider) },
     { label: "Select model", complete: Boolean(settings.model) },
+    { label: "Set transcript model", complete: Boolean(settings.transcriptionProvider && settings.transcriptionModel) },
     { label: "Save API key", complete: Boolean(settings.hasApiKey || apiKey.trim()) },
     { label: "Enable AI", complete: Boolean(settings.active) },
   ];
@@ -101,10 +127,15 @@ export default function AiSettings() {
           const provider = PROVIDERS.find((item) => item.key === nextSettings.provider) || PROVIDERS[0];
           const availableModels = MODEL_OPTIONS[provider.key] || [];
           const validModel = availableModels.some((model) => model.value === nextSettings.model);
+          const transcriptProvider = TRANSCRIPTION_PROVIDER_OPTIONS.find((item) => item.value === nextSettings.transcriptionProvider && !item.disabled) || TRANSCRIPTION_PROVIDER_OPTIONS[0];
+          const availableTranscriptModels = TRANSCRIPTION_MODEL_OPTIONS[transcriptProvider.value] || TRANSCRIPTION_MODEL_OPTIONS.OPENAI;
+          const validTranscriptModel = availableTranscriptModels.some((model) => model.value === nextSettings.transcriptionModel);
           setSettings({
             ...nextSettings,
             provider: provider.key,
             model: validModel ? nextSettings.model : provider.defaultModel,
+            transcriptionProvider: transcriptProvider.value,
+            transcriptionModel: validTranscriptModel ? nextSettings.transcriptionModel : availableTranscriptModels[0].value,
           });
           setBillingSummary(billingResponse.data || null);
         }
@@ -132,6 +163,8 @@ export default function AiSettings() {
       const response = await api.post("/api/ai/settings", {
         provider: settings.provider,
         model: settings.model,
+        transcriptionProvider: settings.transcriptionProvider,
+        transcriptionModel: settings.transcriptionModel,
         active: settings.active,
         maskSensitiveData: settings.maskSensitiveData,
         apiKey: apiKey.trim() || null,
@@ -315,6 +348,59 @@ export default function AiSettings() {
                     : "No API key saved yet. Paste your provider key, then save and test connection."}
                 </div>
               </label>
+            </div>
+            <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-sky-950">Call transcription model</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-sky-800">
+                    Used only when an agent clicks Generate transcript on a call recording. Your AI provider may charge separately based on model, audio length, and provider pricing.
+                  </p>
+                </div>
+                <span className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase text-sky-700">
+                  Manual use only
+                </span>
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wide text-sky-700">Transcript provider</span>
+                  <select
+                    value={settings.transcriptionProvider || "OPENAI"}
+                    onChange={(event) => {
+                      const nextProvider = event.target.value;
+                      const nextModels = TRANSCRIPTION_MODEL_OPTIONS[nextProvider] || TRANSCRIPTION_MODEL_OPTIONS.OPENAI;
+                      setSettings((current) => ({
+                        ...current,
+                        transcriptionProvider: nextProvider,
+                        transcriptionModel: nextModels[0].value,
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  >
+                    {TRANSCRIPTION_PROVIDER_OPTIONS.map((provider) => (
+                      <option key={provider.value} value={provider.value} disabled={provider.disabled}>
+                        {provider.label}{provider.disabled ? " - not supported yet" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-sky-700">{transcriptionProvider.helper}</p>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-black uppercase tracking-wide text-sky-700">Transcript model</span>
+                  <select
+                    value={settings.transcriptionModel || selectedTranscriptionModel?.value || ""}
+                    onChange={(event) => setSettings((current) => ({ ...current, transcriptionModel: event.target.value }))}
+                    className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  >
+                    {transcriptionModels.map((model) => (
+                      <option key={model.value} value={model.value}>{model.label}</option>
+                    ))}
+                  </select>
+                  {selectedTranscriptionModel && (
+                    <p className="mt-1 text-xs font-semibold leading-5 text-sky-700">{selectedTranscriptionModel.helper}</p>
+                  )}
+                </label>
+              </div>
             </div>
             <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
               <input

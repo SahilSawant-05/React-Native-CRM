@@ -109,6 +109,31 @@ const formatAmount = (amount) => {
 
 const formatCount = (value) => new Intl.NumberFormat("en-IN").format(Number(value) || 0);
 
+const displayDateTime = (raw) => {
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime())
+    ? raw
+    : date.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+};
+
+const appointmentTypeLabel = (value) => {
+  const labels = {
+    SITE_VISIT: "Site Visit",
+    COUNSELLING_SESSION: "Counselling",
+    DEMO_CLASS: "Demo",
+    TEST_RIDE: "Test Ride",
+    FOLLOW_UP_MEETING: "Follow-up",
+    GENERAL: "Appointment",
+  };
+  return labels[String(value || "").toUpperCase()] || "Appointment";
+};
+
 const industryLabel = (value) => {
   const option = INDUSTRY_OPTIONS.find((industry) => industry.key === value);
   if (option) return option.label;
@@ -212,6 +237,11 @@ const toCard = (opportunity, stages) => {
     notes: opportunity.notes || "",
     detailsJson: opportunity.detailsJson || "",
     details: parseOpportunityDetails(opportunity.detailsJson),
+    nextAppointmentId: opportunity.nextAppointmentId || "",
+    nextAppointmentTitle: opportunity.nextAppointmentTitle || "",
+    nextAppointmentType: opportunity.nextAppointmentType || "",
+    nextAppointmentStatus: opportunity.nextAppointmentStatus || "",
+    nextAppointmentAt: opportunity.nextAppointmentAt || "",
     industryKey: opportunity.industryKey || "",
     domainItemId: opportunity.domainItemId || "",
     domainItemName: opportunity.domainItemName || "",
@@ -377,6 +407,22 @@ function OpportunityCard({ card, stage, onClick, onEdit, onEmail, onDelete, onDr
           </span>
         )}
       </div>
+
+      {card.nextAppointmentAt && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-black uppercase tracking-wide text-emerald-700">
+              Appointment scheduled
+            </span>
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+              {card.nextAppointmentStatus || "SCHEDULED"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs font-bold text-emerald-950">
+            {appointmentTypeLabel(card.nextAppointmentType)} · {displayDateTime(card.nextAppointmentAt)}
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-[11px] text-gray-400">
         <span>{displayDate(card.updatedAt) || "No activity"}</span>

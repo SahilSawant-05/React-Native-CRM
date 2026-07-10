@@ -59,6 +59,10 @@ export default function TaskModal({
       setError("Task title is required.");
       return;
     }
+    if (!form.dueAt) {
+      setError("Due date and time is required.");
+      return;
+    }
 
     setError("");
     const payload = {
@@ -134,7 +138,7 @@ export default function TaskModal({
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Description</label>
+            <label className="block text-xs text-gray-500 mb-1">Description <span className="text-gray-400">(optional)</span></label>
             <textarea
               rows={3}
               placeholder="Task description"
@@ -174,7 +178,7 @@ export default function TaskModal({
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Due Date & Time</label>
+            <label className="block text-xs text-gray-500 mb-1">Due Date & Time *</label>
             <input
               type="datetime-local"
               value={form.dueAt}

@@ -8,9 +8,13 @@ import DeleteContact from "./DeleteContact";
 import EditContact from "./EditContact";
 import TaskModal from "./TaskModal";
 import DateRangeFilter, { dateRangeParams, presetDateRange } from "../components/common/DateRangeFilter";
+import CallRecordingPlayer from "../components/common/CallRecordingPlayer";
 import SendWhatsAppFlowModal from "../components/whatsapp/SendWhatsAppFlowModal";
 import PlanUpgradePrompt, { errorMessage, isPlanLimitError } from "../components/billing/PlanUpgradePrompt";
 import AiAssistPanel from "../components/ai/AiAssistPanel";
+import AiCallActionPanel from "../components/ai/AiCallActionPanel";
+import AiCallSummaryButton from "../components/ai/AiCallSummaryButton";
+import CallTranscriptButton from "../components/ai/CallTranscriptButton";
 import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "../config/leadSources";
 
 const fmtDate = (raw) => {
@@ -48,6 +52,15 @@ const normTags = (raw) => {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+};
+
+const enumLabel = (value, fallback = "—") => {
+  if (!value) return fallback;
+  return String(value)
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 };
 
 const getTokenRole = () => {
@@ -232,6 +245,8 @@ const TimelineIcon = ({ itemType }) => {
               ? "📅"
             : itemType === "OPPORTUNITY"
               ? "₹"
+              : itemType === "CALL"
+                ? "☎"
               : "•";
   return (
     <span className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs flex-shrink-0">
@@ -256,15 +271,21 @@ const ContactSidebar = ({
   onEditContact,
   onOpenTask,
   onOpenFlow,
+  onCallLogged,
   onContactUpdated,
 }) => {
   const navigate = useNavigate();
   const [aiInsightsOpen, setAiInsightsOpen] = useState(false);
+  const [callLoading, setCallLoading] = useState(false);
+  const [callNotice, setCallNotice] = useState("");
 
   if (!contact) return null;
 
   const tags = normTags(contact.tags);
   const timeline = workspace?.timeline?.items ?? [];
+  const recentTimeline = [...timeline].sort(
+    (a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime()
+  );
   const notes = workspace?.notes ?? [];
   const tasks = workspace?.tasks ?? [];
   const timelineMeta = workspace?.timeline ?? null;
@@ -275,16 +296,63 @@ const ContactSidebar = ({
     .filter((field) => field.active !== false && customFieldValues?.[field.fieldKey])
     .sort((a, b) => (a.displayOrder ?? 100) - (b.displayOrder ?? 100));
 
+  const openDeviceDialer = () => {
+    const phone = String(contact.phone || "").replace(/[^0-9+]/g, "");
+    if (phone) window.location.href = `tel:${phone.startsWith("+") ? phone : `+${phone}`}`;
+  };
+
+  const shouldUseDeviceDialer = (message) => {
+    const lower = String(message || "").toLowerCase();
+    return lower.includes("telephony is not active")
+      || lower.includes("configure provider settings")
+      || lower.includes("provider credentials are missing")
+      || lower.includes("calling number is not configured")
+      || lower.includes("exotel account sid is required")
+      || lower.includes("exotel api key is required")
+      || lower.includes("exotel caller id is required");
+  };
+
+  const startCrmCall = async () => {
+    if (!contact.phone) return;
+    setCallLoading(true);
+    setCallNotice("");
+    try {
+      const response = await api.post("/api/telephony/calls/click-to-call", {
+        contactId: contact.id || contact._id,
+      });
+      const result = response.data || {};
+      if (String(result.status || "").toUpperCase() === "FAILED") {
+        const reason = result.failureReason || "Call could not be started.";
+        if (shouldUseDeviceDialer(reason)) {
+          openDeviceDialer();
+          setCallNotice("Telephony is not ready, so we opened your device dialer.");
+        } else {
+          setCallNotice(reason);
+        }
+      } else {
+        setCallNotice(`Call ${String(result.status || "queued").toLowerCase().replaceAll("_", " ")}.`);
+      }
+      onCallLogged?.();
+    } catch (error) {
+      const reason = error?.response?.data?.message || error?.response?.data?.error || error.message || "Call could not be started.";
+      if (shouldUseDeviceDialer(reason)) {
+        openDeviceDialer();
+        setCallNotice("Telephony is not ready, so we opened your device dialer.");
+      } else {
+        setCallNotice(reason);
+      }
+    } finally {
+      setCallLoading(false);
+    }
+  };
+
   const contactActions = [
     {
       icon: "📞",
       label: "Call",
       disabled: !contact.phone,
       unavailableLabel: "No phone number available",
-      onClick: () => {
-        const phone = String(contact.phone || "").replace(/[^0-9+]/g, "");
-        if (phone) window.location.href = `tel:${phone.startsWith("+") ? phone : `+${phone}`}`;
-      },
+      onClick: startCrmCall,
     },
     {
       icon: "✉️",
@@ -303,7 +371,7 @@ const ContactSidebar = ({
   ];
 
   return (
-    <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md sm:w-72 sm:flex-shrink-0">
+    <aside className="flex h-[calc(100dvh-4rem)] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md sm:sticky sm:top-4 sm:h-[calc(100vh-2rem)] sm:w-72 sm:flex-shrink-0">
       <div className="bg-gradient-to-br from-teal-500 to-teal-600 px-5 py-6 text-white relative">
         <button
           onClick={onClose}
@@ -328,7 +396,7 @@ const ContactSidebar = ({
                 type="button"
                 title={disabled ? unavailableLabel : label === "Call" ? "Call using your device or connected dialer" : label}
                 aria-label={disabled ? `${label}: ${unavailableLabel}` : label}
-                disabled={disabled}
+                disabled={disabled || (label === "Call" && callLoading)}
                 onClick={onClick}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-sm transition-colors hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -336,10 +404,15 @@ const ContactSidebar = ({
               </button>
             ))}
           </div>
+          {callNotice && (
+            <p className="mt-3 rounded-lg bg-white/15 px-3 py-2 text-xs leading-5 text-white">
+              {callNotice}
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 text-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-3 text-sm">
         <AiAssistPanel
           contactId={contact.id || contact._id}
           onContactUpdated={onContactUpdated}
@@ -616,7 +689,7 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
             <div className="space-y-2">
               {notes.slice(0, 3).map((note) => (
                 <div key={note.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  <p className="text-gray-700 text-xs leading-relaxed">{note.note}</p>
+                  <p className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-700">{note.note}</p>
                   <p className="mt-1 text-[11px] text-gray-400">
                     {note.createdByUserEmail || "Unknown"} · {fmtDate(note.createdAt)}{" "}
                     {fmtTime(note.createdAt)}
@@ -661,7 +734,7 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-gray-700">{task.title}</p>
                       {task.description && (
-                        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                        <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500">
                           {task.description}
                         </p>
                       )}
@@ -685,17 +758,75 @@ Latest activity: ${timeline.slice(0, 3).map((item) => item.description || item.t
           <div className="border-t border-gray-100 pt-3">
             <SectionTitle>Recent Activity</SectionTitle>
             <div className="space-y-3">
-              {timeline.slice(0, 6).map((item, index) => (
-                <div key={`${item.itemType}-${item.emailId || item.opportunityId || item.appointmentId || item.messageId || item.noteId || item.taskId || index}`} className="flex gap-2">
+              {recentTimeline.slice(0, 8).map((item, index) => (
+                <div key={`${item.itemType}-${item.callLogId || item.emailId || item.opportunityId || item.appointmentId || item.messageId || item.noteId || item.taskId || index}`} className="flex gap-2">
                   <TimelineIcon itemType={item.itemType} />
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-700">
-                      {item.title || item.description || item.textBody || item.eventType || item.itemType}
-                    </p>
-                    {(item.description || item.textBody) && item.title && (
-                      <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-                        {item.description || item.textBody}
-                      </p>
+                    {item.itemType === "CALL" ? (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-extrabold text-blue-950">
+                            {enumLabel(item.direction, "Call")} call
+                          </p>
+                          <span className="rounded-full border border-blue-100 bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase text-blue-700">
+                            {enumLabel(item.status, "Logged")}
+                          </span>
+                          {item.disposition && (
+                            <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-extrabold uppercase text-indigo-700">
+                              {enumLabel(item.disposition)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-blue-800">
+                          {item.description || "Call activity logged."}
+                        </p>
+                        {item.textBody && (
+                          <p className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-white px-2 py-2 text-xs leading-5 text-gray-600">
+                            {item.textBody}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                          {item.durationSeconds && <span className="text-blue-700">{item.durationSeconds}s duration</span>}
+                          {item.followUpTaskId && <span className="text-indigo-700">Task #{item.followUpTaskId}</span>}
+                          <CallRecordingPlayer recordingUrl={item.recordingUrl} callId={item.callLogId} compact />
+                        </div>
+                        <AiCallSummaryButton
+                          callId={item.callLogId}
+                          contactId={contact.id}
+                          opportunityId={item.opportunityId}
+                          compact
+                          onSaved={onCallLogged}
+                        />
+                        <CallTranscriptButton
+                          callId={item.callLogId}
+                          recordingUrl={item.recordingUrl}
+                          transcriptText={item.transcriptText}
+                          transcriptStatus={item.transcriptStatus}
+                          transcriptError={item.transcriptError}
+                          transcriptProvider={item.transcriptProvider}
+                          transcriptModel={item.transcriptModel}
+                          compact
+                          onDone={onCallLogged}
+                        />
+                        <AiCallActionPanel
+                          callId={item.callLogId}
+                          contactId={contact.id}
+                          opportunityId={item.opportunityId}
+                          compact
+                          onSaved={onCallLogged}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs font-medium text-gray-700">
+                          {item.title || item.description || item.textBody || item.eventType || item.itemType}
+                        </p>
+                        {(item.description || item.textBody) && item.title && (
+                          <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500">
+                            {item.description || item.textBody}
+                          </p>
+                        )}
+                      </>
                     )}
                     <p className="mt-1 text-[11px] text-gray-400">
                       {item.actorUserEmail || "System"} · {fmtDate(item.occurredAt)}{" "}
@@ -1688,6 +1819,7 @@ export default function Contacts() {
             error={workspaceError}
             onOpenTask={() => setTaskModal(selectedContact)}
             onOpenFlow={() => setFlowContact(selectedContact)}
+            onCallLogged={() => setWorkspaceReloadKey((value) => value + 1)}
             onEditContact={() => {
               openEditContact(selectedContact);
             }}
@@ -1823,7 +1955,7 @@ export default function Contacts() {
               setSelectedId(null);
             }}
           />
-          <div className="relative h-[calc(100dvh-4rem)] w-full overflow-y-auto overscroll-contain rounded-t-2xl bg-white shadow-2xl">
+          <div className="relative h-[calc(100dvh-4rem)] w-full overflow-hidden rounded-t-2xl bg-white shadow-2xl">
             <ContactSidebar
               contact={selectedContact}
               workspace={workspace}
@@ -1838,6 +1970,7 @@ export default function Contacts() {
               error={workspaceError}
               onOpenTask={() => setTaskModal(selectedContact)}
               onOpenFlow={() => setFlowContact(selectedContact)}
+              onCallLogged={() => setWorkspaceReloadKey((value) => value + 1)}
               onEditContact={() => {
                 openEditContact(selectedContact);
               }}

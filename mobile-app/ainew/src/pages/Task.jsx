@@ -333,7 +333,7 @@ function TaskFormModal({ open, onClose, onSave, initial, colId, columns, users, 
   const submit = () => {
     const e = {};
     if (!form.title.trim()) e.title = "Task name is required";
-    if (!form.text.trim())  e.text  = "Description is required";
+    if (!form.date) e.date = "Due date and time is required";
     if (Object.keys(e).length) { setErrors(e); return; }
     onSave({ ...form, id: initial?.id || uid(), colId: form.colId || colId });
     onClose();
@@ -346,7 +346,7 @@ function TaskFormModal({ open, onClose, onSave, initial, colId, columns, users, 
       <Field label="Task Name *" error={errors.title}>
         <input value={form.title} onChange={e => { set("title", e.target.value); setErrors(er => ({ ...er, title:"" })); }} placeholder="Enter task name…" className={inputCls} />
       </Field>
-      <Field label="Description *" error={errors.text}>
+      <Field label="Description (optional)" error={errors.text}>
         <textarea value={form.text} onChange={e => { set("text", e.target.value); setErrors(er => ({ ...er, text:"" })); }} placeholder="What needs to be done?" rows={3} className={`${inputCls} resize-none`} />
       </Field>
 
@@ -365,8 +365,8 @@ function TaskFormModal({ open, onClose, onSave, initial, colId, columns, users, 
             })}
           </div>
         </Field>
-        <Field label="Due Date & Time">
-          <input type="datetime-local" value={form.date} onChange={e => set("date", e.target.value)} className={`${inputCls} [color-scheme:light]`} />
+        <Field label="Due Date & Time *" error={errors.date}>
+          <input type="datetime-local" value={form.date} onChange={e => { set("date", e.target.value); setErrors(er => ({ ...er, date:"" })); }} className={`${inputCls} [color-scheme:light]`} />
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               ["Today 10:00", quickDateTimeValue(0, 10)],

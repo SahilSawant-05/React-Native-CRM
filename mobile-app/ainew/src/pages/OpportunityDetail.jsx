@@ -20,6 +20,11 @@ import EmailTemplatePicker from "../components/email/EmailTemplatePicker";
 import MediaLibraryDialog from "../components/media/MediaLibraryDialog";
 import SendWhatsAppFlowModal from "../components/whatsapp/SendWhatsAppFlowModal";
 import AiAssistPanel from "../components/ai/AiAssistPanel";
+import AiCallActionPanel from "../components/ai/AiCallActionPanel";
+import AiCallSummaryButton from "../components/ai/AiCallSummaryButton";
+import CallTranscriptButton from "../components/ai/CallTranscriptButton";
+import CallRecordingPlayer from "../components/common/CallRecordingPlayer";
+import { plainTextToEmailHtml } from "../components/email/emailUtils";
 import {
   OPPORTUNITY_INDUSTRY_OPTIONS,
   opportunityFieldConfig,
@@ -42,9 +47,11 @@ function EmailComposeModal({
   onChange,
   onDesignChange,
   onTemplateApply,
+  onAiDraftApply,
   onMediaAsset,
 }) {
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
 
   if (!open || !opportunity) return null;
 
@@ -92,17 +99,21 @@ Contact: ${contact?.name || opportunity.contactName || ""}
 Phone: ${contact?.phone || opportunity.contactPhone || ""}
 Subject: ${form.subject || ""}
 Current draft:
-${form.bodyText || ""}`}
+${form.bodyText || textPreview(form.bodyHtml) || ""}`}
             replyPrompt={`Write a concise CRM follow-up email body for this opportunity. Include one clear next step.
 Opportunity: ${opportunity.title || ""}
 Stage: ${opportunity.stage || ""}
 Contact: ${contact?.name || opportunity.contactName || "Customer"}
 Pipeline: ${mergeData.pipelineName || ""}
 Subject: ${form.subject || ""}`}
-            onApply={(text) => onChange("bodyText", [form.bodyText, text].filter(Boolean).join(form.bodyText ? "\n\n" : ""))}
-            applyLabel="Use in email"
+            onApply={onAiDraftApply}
+            applyLabel="Use in designer"
             compact
           />
+
+          <div className="rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800">
+            The designed email below is what will be sent. AI and templates load into this designer; plain text is only the fallback copy.
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
             <button
@@ -137,13 +148,27 @@ Subject: ${form.subject || ""}`}
             </div>
           </Suspense>
 
-          <textarea
-            rows={4}
-            value={form.bodyText}
-            onChange={(event) => onChange("bodyText", event.target.value)}
-            placeholder="Plain text fallback"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
-          />
+          <div className="rounded-lg border border-gray-200 bg-gray-50">
+            <button
+              type="button"
+              onClick={() => setFallbackOpen((open) => !open)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-gray-500"
+            >
+              Plain text fallback
+              <span className="normal-case tracking-normal text-gray-400">{fallbackOpen ? "Hide" : "Show"}</span>
+            </button>
+            {fallbackOpen && (
+              <div className="border-t border-gray-200 p-3">
+                <textarea
+                  rows={4}
+                  value={form.bodyText}
+                  onChange={(event) => onChange("bodyText", event.target.value)}
+                  placeholder="Optional fallback for simple email clients"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
@@ -200,6 +225,16 @@ const APPOINTMENT_LABELS = {
   FOLLOW_UP_MEETING: "Follow-up Meeting",
   GENERAL: "General Appointment",
 };
+
+const CALL_DISPOSITION_OPTIONS = [
+  { value: "INTERESTED", label: "Interested" },
+  { value: "NOT_INTERESTED", label: "Not Interested" },
+  { value: "CALL_BACK_LATER", label: "Call Back Later" },
+  { value: "WRONG_NUMBER", label: "Wrong Number" },
+  { value: "CONVERTED", label: "Converted" },
+  { value: "NOT_REACHABLE", label: "Not Reachable" },
+];
+const CALL_NOTE_CHIPS = ["Interested", "Asked for pricing", "Wants callback", "Wrong number", "Not reachable"];
 
 const APPOINTMENT_STATUSES = ["SCHEDULED", "COMPLETED", "NO_SHOW", "CANCELLED"];
 const INDUSTRY_OPTIONS = OPPORTUNITY_INDUSTRY_OPTIONS;
@@ -291,8 +326,12 @@ const timelineLabel = (item) => {
   }
   if (item.itemType === "TASK") return "Task";
   if (item.itemType === "NOTE") return "Note";
+  if (item.itemType === "CALL") return "Call";
   return item.itemType || "Activity";
 };
+
+const callOutcomeLabel = (value) =>
+  CALL_DISPOSITION_OPTIONS.find((option) => option.value === value)?.label || String(value || "No outcome").replaceAll("_", " ");
 
 const stageTone = (stage) => {
   const normalized = String(stage || "").toUpperCase();
@@ -616,6 +655,14 @@ export default function OpportunityDetail() {
   });
   const [appointmentEdits, setAppointmentEdits] = useState({});
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
+  const [callOutcomeForm, setCallOutcomeForm] = useState({
+    callId: null,
+    disposition: "INTERESTED",
+    notes: "",
+    followUpAt: "",
+    followUpTitle: "Call back lead",
+  });
+  const [savingCallOutcome, setSavingCallOutcome] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -624,6 +671,7 @@ export default function OpportunityDetail() {
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [calling, setCalling] = useState(false);
   const [message, setMessage] = useState("");
 
   const currentStage = useMemo(
@@ -649,7 +697,7 @@ export default function OpportunityDetail() {
   );
 
   const timelineCounts = useMemo(() => {
-    const counts = { MESSAGE: 0, TASK: 0, EMAIL: 0, APPOINTMENT: 0 };
+    const counts = { MESSAGE: 0, TASK: 0, EMAIL: 0, APPOINTMENT: 0, CALL: 0 };
     timeline.forEach((item) => {
       if (counts[item.itemType] !== undefined) counts[item.itemType] += 1;
     });
@@ -905,6 +953,40 @@ export default function OpportunityDetail() {
     setEmailTemplateVersion((version) => version + 1);
   };
 
+  const applyAiDraftToEmail = (text) => {
+    const draftText = [emailForm.bodyText, text].filter(Boolean).join(emailForm.bodyText ? "\n\n" : "");
+    setEmailForm((current) => ({
+      ...current,
+      bodyHtml: plainTextToEmailHtml(draftText),
+      bodyText: draftText,
+      designJson: "",
+      mjml: "",
+    }));
+    setEmailTemplateVersion((version) => version + 1);
+  };
+
+  const startOpportunityCall = async () => {
+    if (!opportunity?.id) return;
+    setCalling(true);
+    setMessage("");
+    try {
+      const response = await api.post("/api/telephony/calls/click-to-call", {
+        opportunityId: opportunity.id,
+      });
+      const result = response.data || {};
+      if (String(result.status || "").toUpperCase() === "FAILED") {
+        setMessage(result.failureReason || "Call could not be started.");
+      } else {
+        setMessage(`Call ${String(result.status || "queued").toLowerCase().replaceAll("_", " ")}.`);
+      }
+      await loadDetail();
+    } catch (error) {
+      setMessage(error?.response?.data?.message || error?.response?.data?.error || error.message || "Call could not be started.");
+    } finally {
+      setCalling(false);
+    }
+  };
+
   const insertEmailMedia = (asset) => {
     const htmlSnippet = mediaHtmlSnippet(asset);
     const textSnippet = `${asset.name || asset.originalFileName}: ${asset.publicUrl}`;
@@ -945,7 +1027,7 @@ export default function OpportunityDetail() {
         endAt: appointmentForm.endAt ? new Date(appointmentForm.endAt).toISOString() : null,
         allDay: false,
       });
-      setMessage("Appointment scheduled.");
+      setMessage(`Appointment scheduled for ${formatDate(new Date(appointmentForm.startAt).toISOString())}. It will now appear in this opportunity, calendar, and the pipeline card.`);
       setAppointmentForm((current) => ({
         ...current,
         startAt: toDateTimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)),
@@ -1001,6 +1083,49 @@ export default function OpportunityDetail() {
     }
   };
 
+  const openCallOutcome = (item) => {
+    setCallOutcomeForm({
+      callId: item.callLogId,
+      disposition: item.disposition || "INTERESTED",
+      notes: item.textBody || "",
+      followUpAt: "",
+      followUpTitle: "Call back lead",
+    });
+  };
+
+  const saveCallOutcome = async (event) => {
+    event.preventDefault();
+    if (!callOutcomeForm.callId) return;
+    setSavingCallOutcome(true);
+    setMessage("");
+    try {
+      await api.post(`/api/telephony/calls/${callOutcomeForm.callId}/disposition`, {
+        disposition: callOutcomeForm.disposition,
+        notes: callOutcomeForm.notes || null,
+        followUpAt: callOutcomeForm.disposition === "CALL_BACK_LATER" && callOutcomeForm.followUpAt
+          ? new Date(callOutcomeForm.followUpAt).toISOString()
+          : null,
+        followUpTitle: callOutcomeForm.followUpTitle || "Call back lead",
+      });
+      setCallOutcomeForm({ callId: null, disposition: "INTERESTED", notes: "", followUpAt: "", followUpTitle: "Call back lead" });
+      setMessage(callOutcomeForm.disposition === "CALL_BACK_LATER"
+        ? "Call outcome saved. Follow-up task was created if a date was selected."
+        : "Call outcome saved.");
+      await loadDetail();
+    } catch (error) {
+      setMessage(error?.response?.data?.message || error.message || "Call outcome update failed");
+    } finally {
+      setSavingCallOutcome(false);
+    }
+  };
+
+  const addCallOutcomeNote = (note) => {
+    setCallOutcomeForm((current) => ({
+      ...current,
+      notes: [current.notes, note].filter(Boolean).join(current.notes ? "\n" : ""),
+    }));
+  };
+
   if (loading && !opportunity) {
     return <div className="min-h-screen bg-slate-50 p-6 text-sm text-gray-500">Loading opportunity...</div>;
   }
@@ -1040,6 +1165,7 @@ export default function OpportunityDetail() {
         onChange={setEmailValue}
         onDesignChange={setEmailDesign}
         onTemplateApply={applyEmailTemplate}
+        onAiDraftApply={applyAiDraftToEmail}
         onMediaAsset={insertEmailMedia}
       />
       <SendWhatsAppFlowModal
@@ -1049,6 +1175,89 @@ export default function OpportunityDetail() {
         onClose={() => setFlowModalOpen(false)}
         onSent={handleFlowSent}
       />
+      {callOutcomeForm.callId && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/40 px-4 py-4 sm:items-center">
+          <form onSubmit={saveCallOutcome} className="w-full max-w-xl rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-lg font-extrabold text-gray-950">Update call outcome</h2>
+              <p className="mt-1 text-sm text-gray-500">Save the call result directly on this opportunity timeline.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold text-gray-700 sm:col-span-2">
+                Outcome
+                <select
+                  value={callOutcomeForm.disposition}
+                  onChange={(event) => setCallOutcomeForm((current) => ({ ...current, disposition: event.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {CALL_DISPOSITION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-gray-700 sm:col-span-2">
+                Call notes
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {CALL_NOTE_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => addCallOutcomeNote(chip)}
+                      className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-700 hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={callOutcomeForm.notes}
+                  onChange={(event) => setCallOutcomeForm((current) => ({ ...current, notes: event.target.value }))}
+                  rows={4}
+                  placeholder="Example: Customer asked for project brochure and weekend visit."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              {callOutcomeForm.disposition === "CALL_BACK_LATER" && (
+                <>
+                  <label className="space-y-1 text-sm font-semibold text-gray-700">
+                    Follow-up date and time
+                    <input
+                      type="datetime-local"
+                      value={callOutcomeForm.followUpAt}
+                      onChange={(event) => setCallOutcomeForm((current) => ({ ...current, followUpAt: event.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm font-semibold text-gray-700">
+                    Task title
+                    <input
+                      value={callOutcomeForm.followUpTitle}
+                      onChange={(event) => setCallOutcomeForm((current) => ({ ...current, followUpTitle: event.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setCallOutcomeForm({ callId: null, disposition: "INTERESTED", notes: "", followUpAt: "", followUpTitle: "Call back lead" })}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingCallOutcome}
+                className="rounded-lg bg-gray-950 px-4 py-2 text-sm font-extrabold text-white hover:bg-gray-800 disabled:opacity-60"
+              >
+                {savingCallOutcome ? "Saving..." : "Save outcome"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       <div className="mx-auto max-w-[1500px]">
         <header className="mb-6 rounded-lg border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 p-5">
@@ -1093,6 +1302,15 @@ export default function OpportunityDetail() {
                   <MessageCircle size={16} />
                   WhatsApp
                 </Link>
+                <button
+                  type="button"
+                  onClick={startOpportunityCall}
+                  disabled={calling || !opportunity.contactId}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Phone size={16} />
+                  {calling ? "Calling..." : "Call"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setFlowModalOpen(true)}
@@ -1177,6 +1395,7 @@ export default function OpportunityDetail() {
             <WorkspaceMetric icon={Mail} label="Emails" value={emails.length} helper={latestEmail ? latestEmail.subject || "Latest email" : "No email yet"} />
             <WorkspaceMetric icon={MessageCircle} label="WhatsApp" value={timelineCounts.MESSAGE} helper="Linked chat activity" />
             <WorkspaceMetric icon={CalendarPlus} label="Appointments" value={appointments.length} helper={nextAppointment ? formatDate(nextAppointment.startAt) : "No upcoming appointment"} />
+            <WorkspaceMetric icon={Phone} label="Calls" value={timelineCounts.CALL} helper="Tracked call activity" />
             <WorkspaceMetric icon={Clock3} label="Tasks" value={timelineCounts.TASK} helper={opportunity.activitySlaBreached ? "SLA overdue" : "Follow-up workload"} />
           </div>
         </header>
@@ -1229,6 +1448,7 @@ export default function OpportunityDetail() {
                 <div className="flex flex-wrap gap-2">
                   <a href="#send-email" className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800">Send Email</a>
                   <Link to="/dashboard/chat" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Open WhatsApp</Link>
+                  <button type="button" onClick={startOpportunityCall} disabled={calling || !opportunity.contactId} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">{calling ? "Calling..." : "Call Lead"}</button>
                   <button type="button" onClick={() => setFlowModalOpen(true)} disabled={!opportunity.contactId} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50">Send Flow</button>
                   <a href="#appointments" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Schedule</a>
                 </div>
@@ -1514,17 +1734,63 @@ Next appointment: ${nextAppointment ? formatDate(nextAppointment.startAt) : "No 
               </form>
               <div className="mt-4 space-y-3">
                 {recentTimeline.slice(0, 12).map((item, index) => (
-                  <article key={`${item.itemType}-${item.emailId || item.opportunityId || item.messageId || item.taskId || item.noteId || index}`} className="flex gap-3 rounded-lg border border-gray-100 bg-white p-3">
+                  <article key={`${item.itemType}-${item.callLogId || item.emailId || item.opportunityId || item.messageId || item.taskId || item.noteId || index}`} className="flex gap-3 rounded-lg border border-gray-100 bg-white p-3">
                     <div className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-teal-600" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-gray-900">
                           {timelineLabel(item)}: {item.title || item.description || item.eventType}
                         </p>
                         {item.status && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{item.status.replaceAll("_", " ")}</span>}
+                        {item.durationSeconds && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{item.durationSeconds}s</span>}
+                        {item.itemType === "CALL" && (
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                            {callOutcomeLabel(item.disposition)}
+                          </span>
+                        )}
                       </div>
                       {(item.description || item.textBody) && (
                         <p className="mt-1 line-clamp-2 text-sm leading-6 text-gray-600">{item.description || item.textBody}</p>
+                      )}
+                      {item.itemType === "CALL" && (
+                        <>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openCallOutcome(item)}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                            >
+                              Update outcome
+                            </button>
+                            <CallRecordingPlayer recordingUrl={item.recordingUrl} callId={item.callLogId} compact />
+                            {item.followUpTaskId && <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">Task #{item.followUpTaskId}</span>}
+                          </div>
+                          <AiCallSummaryButton
+                            callId={item.callLogId}
+                            contactId={opportunity.contactId}
+                            opportunityId={opportunity.id}
+                            compact
+                            onSaved={loadDetail}
+                          />
+                          <CallTranscriptButton
+                            callId={item.callLogId}
+                            recordingUrl={item.recordingUrl}
+                            transcriptText={item.transcriptText}
+                            transcriptStatus={item.transcriptStatus}
+                            transcriptError={item.transcriptError}
+                            transcriptProvider={item.transcriptProvider}
+                            transcriptModel={item.transcriptModel}
+                            compact
+                            onDone={loadDetail}
+                          />
+                          <AiCallActionPanel
+                            callId={item.callLogId}
+                            contactId={opportunity.contactId}
+                            opportunityId={opportunity.id}
+                            compact
+                            onSaved={loadDetail}
+                          />
+                        </>
                       )}
                       <p className="mt-1 text-xs text-gray-400">{item.actorUserEmail || "System"} · {formatDate(item.occurredAt)}</p>
                     </div>

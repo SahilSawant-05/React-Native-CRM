@@ -5,6 +5,8 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Home from "./pages/Home";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsAndConditions from "./pages/TermsAndConditions";
 import Contacts from "./pages/Contacts";
 import UploadCsv from "./pages/UploadCsv";
 import WhatsAppConnect from "./pages/WhatsAppConnect";
@@ -46,6 +48,7 @@ import Billing from "./pages/Billing";
 import PlatformBillingAdmin from "./pages/PlatformBillingAdmin";
 import AiSettings from "./pages/AiSettings";
 import AiWorkQueue from "./pages/AiWorkQueue";
+import Telephony from "./pages/Telephony";
 
 /*
  * ROLE REFERENCE
@@ -72,6 +75,8 @@ export default function App() {
 
           {/* ── PUBLIC ─────────────────────────────────────────── */}
           <Route path="/" element={<Home />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
           <Route path="/login"  element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -102,6 +107,7 @@ export default function App() {
             <Route path="mail/:id"       element={<MailDetail />} />
             <Route path="notifications"  element={<Notifications />} />
             <Route path="task"           element={<Task />} />
+            <Route path="telephony"      element={<Telephony />} />
             <Route path="chat"           element={<Chat />} />
             <Route path="logout"         element={<Logout />} />
 

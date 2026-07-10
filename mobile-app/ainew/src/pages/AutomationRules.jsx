@@ -19,6 +19,10 @@ const emptyForm = {
   conditionPipelineId: "",
   conditionLeadSource: "",
   conditionIndustryKey: "",
+  conditionCallStatus: "",
+  conditionCallDisposition: "",
+  conditionCallDirection: "",
+  conditionAgentUserId: "",
   actionType: "CREATE_TASK",
   taskTitle: "Follow up with {{contactName}}",
   taskDescription: "Automation triggered from {{emailSubject}}{{opportunityTitle}}",
@@ -68,7 +72,12 @@ const triggerLabels = {
   WHATSAPP_RECEIVED: "WhatsApp received",
   WHATSAPP_FLOW_SUBMITTED: "WhatsApp Flow submitted",
   OPPORTUNITY_STAGE_CHANGED: "Stage changed",
+  CALL_OUTCOME_UPDATED: "Call outcome updated",
 };
+
+const CALL_STATUS_OPTIONS = ["REQUESTED", "RINGING", "IN_PROGRESS", "COMPLETED", "NO_ANSWER", "BUSY", "FAILED", "CANCELLED"];
+const CALL_DISPOSITION_OPTIONS = ["INTERESTED", "NOT_INTERESTED", "CALL_BACK_LATER", "FOLLOW_UP_REQUIRED", "WRONG_NUMBER", "NO_ANSWER", "CONVERTED"];
+const CALL_DIRECTION_OPTIONS = ["OUTBOUND", "INBOUND"];
 
 const actionLabels = {
   CREATE_TASK: "Create task",
@@ -97,6 +106,7 @@ export default function AutomationRules() {
   const [rules, setRules] = useState([]);
   const [pipelines, setPipelines] = useState([]);
   const [stages, setStages] = useState([]);
+  const [users, setUsers] = useState([]);
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [whatsappTemplates, setWhatsappTemplates] = useState([]);
   const [queue, setQueue] = useState([]);
@@ -123,15 +133,16 @@ export default function AutomationRules() {
     [stages]
   );
 
-  const nodes = useMemo(() => buildNodes(form, stageOptions, pipelines, selectedPanel, nodePositions), [form, stageOptions, pipelines, selectedPanel, nodePositions]);
+  const nodes = useMemo(() => buildNodes(form, stageOptions, pipelines, users, selectedPanel, nodePositions), [form, stageOptions, pipelines, users, selectedPanel, nodePositions]);
   const edges = useMemo(() => buildEdges(nodes), [nodes]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [rulesResponse, pipelinesResponse, emailTemplatesResponse, whatsappTemplatesResponse, queueResponse, logsResponse] = await Promise.all([
+      const [rulesResponse, pipelinesResponse, usersResponse, emailTemplatesResponse, whatsappTemplatesResponse, queueResponse, logsResponse] = await Promise.all([
         api.get("/api/automation-rules"),
         api.get("/api/pipelines"),
+        api.get("/api/users").catch(() => ({ data: [] })),
         api.get("/api/crm-config/communication-templates", { params: { channel: "EMAIL" } }),
         api.get("/api/templates"),
         api.get("/api/automation-rules/queue", { params: { page: queuePage, size: executionPageSize } }),
@@ -141,6 +152,7 @@ export default function AutomationRules() {
       const nextLogs = normalizePage(logsResponse.data, logsPage, executionPageSize);
       setRules(normalizeList(rulesResponse.data));
       setPipelines(normalizeList(pipelinesResponse.data));
+      setUsers(normalizeList(usersResponse.data));
       setEmailTemplates(normalizeList(emailTemplatesResponse.data));
       setWhatsappTemplates(normalizeList(whatsappTemplatesResponse.data));
       setQueue(nextQueue.content);
@@ -190,9 +202,15 @@ export default function AutomationRules() {
       if (field === "triggerType" && value !== "OPPORTUNITY_STAGE_CHANGED") {
         next.conditionStage = "";
         next.conditionPipelineId = "";
-        if (current.actionType === "MOVE_OPPORTUNITY_STAGE") {
+        if (current.actionType === "MOVE_OPPORTUNITY_STAGE" && value !== "CALL_OUTCOME_UPDATED") {
           next.actionType = "CREATE_TASK";
         }
+      }
+      if (field === "triggerType" && value !== "CALL_OUTCOME_UPDATED") {
+        next.conditionCallStatus = "";
+        next.conditionCallDisposition = "";
+        next.conditionCallDirection = "";
+        next.conditionAgentUserId = "";
       }
       if (field === "triggerType" && value === "OPPORTUNITY_STAGE_CHANGED") {
         next.conditionLeadSource = "";
@@ -239,6 +257,10 @@ export default function AutomationRules() {
       conditionPipelineId: form.conditionPipelineId ? Number(form.conditionPipelineId) : null,
       conditionLeadSource: form.conditionLeadSource || null,
       conditionIndustryKey: null,
+      conditionCallStatus: form.conditionCallStatus || null,
+      conditionCallDisposition: form.conditionCallDisposition || null,
+      conditionCallDirection: form.conditionCallDirection || null,
+      conditionAgentUserId: form.conditionAgentUserId ? Number(form.conditionAgentUserId) : null,
       targetStage: form.targetStage || null,
       targetPipelineId: form.targetPipelineId ? Number(form.targetPipelineId) : null,
       opportunityTitle: form.opportunityTitle || null,
@@ -280,6 +302,10 @@ export default function AutomationRules() {
       conditionPipelineId: rule.conditionPipelineId ? String(rule.conditionPipelineId) : "",
       conditionLeadSource: rule.conditionLeadSource || "",
       conditionIndustryKey: "",
+      conditionCallStatus: rule.conditionCallStatus || "",
+      conditionCallDisposition: rule.conditionCallDisposition || "",
+      conditionCallDirection: rule.conditionCallDirection || "",
+      conditionAgentUserId: rule.conditionAgentUserId ? String(rule.conditionAgentUserId) : "",
       actionType: rule.actionType || "CREATE_TASK",
       taskTitle: rule.taskTitle || "",
       taskDescription: rule.taskDescription || "",
@@ -382,7 +408,7 @@ export default function AutomationRules() {
             <div className="border-t border-gray-100 bg-white px-5 py-4">
               <div className="grid gap-3 md:grid-cols-3">
                 <WorkflowHint title="1. Pick trigger" text={triggerLabels[form.triggerType] || labelFor(form.triggerType)} active={selectedPanel === "trigger"} onClick={() => setSelectedPanel("trigger")} />
-                <WorkflowHint title="2. Filter leads" text={conditionSummary(form, stageOptions, pipelines)} active={selectedPanel === "filters"} onClick={() => setSelectedPanel("filters")} />
+                <WorkflowHint title="2. Filter leads" text={conditionSummary(form, stageOptions, pipelines, users)} active={selectedPanel === "filters"} onClick={() => setSelectedPanel("filters")} />
                 <WorkflowHint title="3. Run action" text={actionLabels[form.actionType] || labelFor(form.actionType)} active={["action", "details", "timing"].includes(selectedPanel)} onClick={() => setSelectedPanel("action")} />
               </div>
             </div>
@@ -416,17 +442,19 @@ export default function AutomationRules() {
                 selectedPanel={selectedPanel}
                 stageOptions={stageOptions}
                 pipelines={pipelines}
+                users={users}
                 onSelect={setSelectedPanel}
               />
 
               <div className="space-y-4 p-5">
-                <PanelHeader id={selectedPanel} form={form} stageOptions={stageOptions} pipelines={pipelines} />
+                <PanelHeader id={selectedPanel} form={form} stageOptions={stageOptions} pipelines={pipelines} users={users} />
                 <PanelFields
                   panel={selectedPanel}
                   form={form}
                   setValue={setValue}
                   stageOptions={stageOptions}
                   pipelines={pipelines}
+                  users={users}
                   emailTemplates={emailTemplates}
                   whatsappTemplates={whatsappTemplates}
                 />
@@ -436,7 +464,7 @@ export default function AutomationRules() {
               <div className="border-t border-gray-100 bg-slate-50 p-4">
                 <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
                   <StepSummary label="Trigger" value={triggerLabels[form.triggerType] || labelFor(form.triggerType)} />
-                  <StepSummary label="Condition" value={conditionSummary(form, stageOptions, pipelines)} />
+                  <StepSummary label="Condition" value={conditionSummary(form, stageOptions, pipelines, users)} />
                   <StepSummary label="Action" value={actionLabels[form.actionType] || labelFor(form.actionType)} />
                   <StepSummary label="Timing" value={timingSummary(form)} />
                 </div>
@@ -478,6 +506,10 @@ export default function AutomationRules() {
                     {rule.conditionStage ? ` when ${labelFor(rule.conditionStage)}` : ""}
                     {rule.conditionPipelineId ? ` in ${pipelineName(pipelines, rule.conditionPipelineId)}` : ""}
                     {rule.conditionLeadSource ? ` from ${labelFor(rule.conditionLeadSource)}` : ""}
+                    {rule.conditionCallDisposition ? ` outcome ${labelFor(rule.conditionCallDisposition)}` : ""}
+                    {rule.conditionCallStatus ? ` status ${labelFor(rule.conditionCallStatus)}` : ""}
+                    {rule.conditionCallDirection ? ` ${labelFor(rule.conditionCallDirection)}` : ""}
+                    {rule.conditionAgentUserId ? ` by ${userLabel(users, rule.conditionAgentUserId)}` : ""}
                     {rule.targetPipelineId ? ` pipeline ${pipelineName(pipelines, rule.targetPipelineId)}` : ""}
                     {rule.targetStage ? ` to ${labelFor(rule.targetStage)}` : ""}
                     {rule.delayInHours ? ` after ${rule.delayInHours}h` : ""}
@@ -532,12 +564,14 @@ export default function AutomationRules() {
   );
 }
 
-function buildNodes(form, stageOptions, pipelines, selectedPanel, nodePositions = {}) {
+function buildNodes(form, stageOptions, pipelines, users, selectedPanel, nodePositions = {}) {
   const filterText = form.triggerType === "OPPORTUNITY_STAGE_CHANGED"
     ? [
         form.conditionPipelineId ? `Pipeline: ${pipelineName(pipelines, form.conditionPipelineId)}` : "Any pipeline",
         form.conditionStage ? `Stage: ${stageLabel(stageOptions, form.conditionStage)}` : "Any stage",
       ].join(" / ")
+    : form.triggerType === "CALL_OUTCOME_UPDATED"
+      ? conditionSummary(form, stageOptions, pipelines, users)
     : [
         form.conditionLeadSource ? `Source: ${labelFor(form.conditionLeadSource)}` : "Any source",
       ].join(" / ");
@@ -600,7 +634,7 @@ function WorkflowNode({ data }) {
   );
 }
 
-function workflowSteps(form, stageOptions, pipelines) {
+function workflowSteps(form, stageOptions, pipelines, users = []) {
   return [
     {
       id: "trigger",
@@ -610,7 +644,7 @@ function workflowSteps(form, stageOptions, pipelines) {
     {
       id: "filters",
       title: "Conditions",
-      value: conditionSummary(form, stageOptions, pipelines),
+      value: conditionSummary(form, stageOptions, pipelines, users),
     },
     {
       id: "action",
@@ -630,10 +664,10 @@ function workflowSteps(form, stageOptions, pipelines) {
   ];
 }
 
-function StepRail({ form, selectedPanel, stageOptions, pipelines, onSelect }) {
+function StepRail({ form, selectedPanel, stageOptions, pipelines, users, onSelect }) {
   return (
     <div className="grid grid-cols-2 border-b border-gray-100 bg-white sm:grid-cols-5">
-      {workflowSteps(form, stageOptions, pipelines).map((step, index) => {
+      {workflowSteps(form, stageOptions, pipelines, users).map((step, index) => {
         const selected = selectedPanel === step.id;
         return (
           <button
@@ -699,8 +733,9 @@ function PanelNavFooter({ selectedPanel, onSelect }) {
   );
 }
 
-function PanelHeader({ id, form, stageOptions, pipelines }) {
-  const step = workflowSteps(form, stageOptions, pipelines).find((item) => item.id === id) || workflowSteps(form, stageOptions, pipelines)[0];
+function PanelHeader({ id, form, stageOptions, pipelines, users }) {
+  const steps = workflowSteps(form, stageOptions, pipelines, users);
+  const step = steps.find((item) => item.id === id) || steps[0];
   const Icon = panelIcons[id] || Sparkles;
   return (
     <div className="flex items-start gap-3 rounded-xl border border-teal-100 bg-teal-50 p-4">
@@ -715,7 +750,7 @@ function PanelHeader({ id, form, stageOptions, pipelines }) {
   );
 }
 
-function PanelFields({ panel, form, setValue, stageOptions, pipelines, emailTemplates, whatsappTemplates }) {
+function PanelFields({ panel, form, setValue, stageOptions, pipelines, users, emailTemplates, whatsappTemplates }) {
   if (panel === "trigger") {
     return (
       <div className="space-y-4">
@@ -726,6 +761,7 @@ function PanelFields({ panel, form, setValue, stageOptions, pipelines, emailTemp
             <option value="WHATSAPP_RECEIVED">WhatsApp message received</option>
             <option value="WHATSAPP_FLOW_SUBMITTED">WhatsApp Flow submitted</option>
             <option value="OPPORTUNITY_STAGE_CHANGED">Opportunity stage changed</option>
+            <option value="CALL_OUTCOME_UPDATED">Call outcome updated</option>
           </select>
         </Field>
         <p className="rounded-lg bg-slate-50 p-3 text-xs leading-5 text-gray-500">
@@ -738,7 +774,40 @@ function PanelFields({ panel, form, setValue, stageOptions, pipelines, emailTemp
   if (panel === "filters") {
     return (
       <div className="space-y-4">
-        {form.triggerType !== "OPPORTUNITY_STAGE_CHANGED" ? (
+        {form.triggerType === "CALL_OUTCOME_UPDATED" ? (
+          <>
+            <Field label="Call status">
+              <select value={form.conditionCallStatus} onChange={(event) => setValue("conditionCallStatus", event.target.value)} className={inputClass}>
+                <option value="">Any status</option>
+                {CALL_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{labelFor(status)}</option>)}
+              </select>
+            </Field>
+            <Field label="Call outcome">
+              <select value={form.conditionCallDisposition} onChange={(event) => setValue("conditionCallDisposition", event.target.value)} className={inputClass}>
+                <option value="">Any outcome</option>
+                {CALL_DISPOSITION_OPTIONS.map((outcome) => <option key={outcome} value={outcome}>{labelFor(outcome)}</option>)}
+              </select>
+            </Field>
+            <Field label="Direction">
+              <select value={form.conditionCallDirection} onChange={(event) => setValue("conditionCallDirection", event.target.value)} className={inputClass}>
+                <option value="">Any direction</option>
+                {CALL_DIRECTION_OPTIONS.map((direction) => <option key={direction} value={direction}>{labelFor(direction)}</option>)}
+              </select>
+            </Field>
+            <Field label="Agent">
+              <select value={form.conditionAgentUserId} onChange={(event) => setValue("conditionAgentUserId", event.target.value)} className={inputClass}>
+                <option value="">Any agent</option>
+                {users.map((user) => <option key={user.id} value={user.id}>{userName(user)}</option>)}
+              </select>
+            </Field>
+            <Field label="Contact source">
+              <select value={form.conditionLeadSource} onChange={(event) => setValue("conditionLeadSource", event.target.value)} className={inputClass}>
+                <option value="">Any source</option>
+                {LEAD_SOURCE_OPTIONS.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
+              </select>
+            </Field>
+          </>
+        ) : form.triggerType !== "OPPORTUNITY_STAGE_CHANGED" ? (
           <>
             <Field label="Lead source filter">
               <select value={form.conditionLeadSource} onChange={(event) => setValue("conditionLeadSource", event.target.value)} className={inputClass}>
@@ -781,7 +850,7 @@ function PanelFields({ panel, form, setValue, stageOptions, pipelines, emailTemp
             <option value="SEND_WHATSAPP_TEMPLATE">Send WhatsApp template</option>
             <option value="NOTIFY_AGENT">Notify agent</option>
             <option value="AI_LEAD_SCORE">Run AI lead score</option>
-            {form.triggerType === "OPPORTUNITY_STAGE_CHANGED" && (
+            {(form.triggerType === "OPPORTUNITY_STAGE_CHANGED" || form.triggerType === "CALL_OUTCOME_UPDATED") && (
               <option value="MOVE_OPPORTUNITY_STAGE">Move opportunity stage</option>
             )}
           </select>
@@ -841,7 +910,7 @@ function ActionQuickPicks({ form, setValue }) {
     ["NOTIFY_AGENT", "Notify"],
     ["AI_LEAD_SCORE", "AI score"],
   ];
-  if (form.triggerType === "OPPORTUNITY_STAGE_CHANGED") actions.push(["MOVE_OPPORTUNITY_STAGE", "Move stage"]);
+  if (form.triggerType === "OPPORTUNITY_STAGE_CHANGED" || form.triggerType === "CALL_OUTCOME_UPDATED") actions.push(["MOVE_OPPORTUNITY_STAGE", "Move stage"]);
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -1032,11 +1101,20 @@ function timingSummary(form) {
   return "Run immediately";
 }
 
-function conditionSummary(form, stageOptions, pipelines = []) {
+function conditionSummary(form, stageOptions, pipelines = [], users = []) {
   if (form.triggerType === "OPPORTUNITY_STAGE_CHANGED") {
     const pipeline = form.conditionPipelineId ? pipelineName(pipelines, form.conditionPipelineId) : "Any pipeline";
     const stage = form.conditionStage ? stageLabel(stageOptions, form.conditionStage) : "Any stage";
     return `${pipeline} / ${stage}`;
+  }
+  if (form.triggerType === "CALL_OUTCOME_UPDATED") {
+    const parts = [];
+    parts.push(form.conditionCallDisposition ? `Outcome: ${labelFor(form.conditionCallDisposition)}` : "Any outcome");
+    parts.push(form.conditionCallStatus ? `Status: ${labelFor(form.conditionCallStatus)}` : "Any status");
+    if (form.conditionCallDirection) parts.push(`Direction: ${labelFor(form.conditionCallDirection)}`);
+    if (form.conditionAgentUserId) parts.push(`Agent: ${userLabel(users, form.conditionAgentUserId)}`);
+    if (form.conditionLeadSource) parts.push(`Source: ${labelFor(form.conditionLeadSource)}`);
+    return parts.join(" / ");
   }
   const parts = [];
   parts.push(form.conditionLeadSource ? `Source: ${labelFor(form.conditionLeadSource)}` : "Any source");
@@ -1049,6 +1127,14 @@ function stageLabel(stageOptions, key) {
 
 function pipelineName(pipelines, pipelineId) {
   return pipelines.find((pipeline) => String(pipeline.id) === String(pipelineId))?.name || `Pipeline #${pipelineId}`;
+}
+
+function userName(user) {
+  return user?.name || user?.fullName || user?.email || `User #${user?.id}`;
+}
+
+function userLabel(users, userId) {
+  return userName(users.find((user) => String(user.id) === String(userId))) || `User #${userId}`;
 }
 
 function WorkflowPanel({ id, title, subtitle, selectedPanel, onSelect, children }) {
@@ -1179,6 +1265,10 @@ function toRulePayload(rule) {
     conditionPipelineId: rule.conditionPipelineId || null,
     conditionLeadSource: rule.conditionLeadSource || null,
     conditionIndustryKey: null,
+    conditionCallStatus: rule.conditionCallStatus || null,
+    conditionCallDisposition: rule.conditionCallDisposition || null,
+    conditionCallDirection: rule.conditionCallDirection || null,
+    conditionAgentUserId: rule.conditionAgentUserId || null,
     actionType: rule.actionType || "CREATE_TASK",
     taskTitle: rule.taskTitle || null,
     taskDescription: rule.taskDescription || null,
