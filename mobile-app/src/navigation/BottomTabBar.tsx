@@ -8,7 +8,7 @@ const TABS = [
   { name: "Contacts", label: "Contacts", active: "people",       inactive: "people-outline" },
   { name: "Chat",     label: "Messages", active: "chatbubbles",  inactive: "chatbubbles-outline" },
   { name: "Mail",     label: "Mail",     active: "mail",         inactive: "mail-outline" },
-  { name: "Pipeline", label: "Pipeline", active: "git-branch",   inactive: "git-branch-outline" },
+  { name: "Telephony", label: "Calls",   active: "call",         inactive: "call-outline" },
 ] as const;
 
 export default function BottomTabBar({
