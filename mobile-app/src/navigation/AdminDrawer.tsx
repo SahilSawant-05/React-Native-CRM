@@ -43,6 +43,7 @@ import LeadAssignmentScreen from "../screens/leadassignment/LeadAssignmentScreen
 import AiSettingsScreen from "../screens/ai/AiSettingsScreen";
 import AiWorkQueueScreen from "../screens/ai/AiWorkQueueScreen";
 import FacebookLeadsScreen from "../screens/facebook/FacebookLeadsScreen";
+import TelephonyScreen from "../screens/telephony/TelephonyScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "AiWorkQueue",   label: "AI Work Queue",   icon: "sparkles-outline" },
       { name: "Chat",          label: "Messages",         icon: "chatbubbles-outline" },
       { name: "Mail",          label: "Mail",             icon: "mail-outline" },
+      { name: "Telephony",     label: "Calls",            icon: "call-outline" },
       { name: "Tasks",         label: "Tasks",            icon: "checkbox-outline" },
       { name: "Calendar",      label: "Calendar",         icon: "calendar-outline" },
       { name: "Notifications", label: "Notifications",    icon: "notifications-outline" },
@@ -319,6 +321,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
   AiSettings:      withHeader(AiSettingsScreen,       "AI Settings"),
   AiWorkQueue:     withHeader(AiWorkQueueScreen,      "AI Work Queue"),
+  Telephony:       withHeader(TelephonyScreen,        "Calls"),
   FacebookLeads:   withHeader(FacebookLeadsScreen,    "Facebook Leads"),
   AutomationRules: withHeader(AutomationRulesScreen, "Automation Rules"),
   LeadAssignment:  withHeader(LeadAssignmentScreen,  "Lead Assignment"),

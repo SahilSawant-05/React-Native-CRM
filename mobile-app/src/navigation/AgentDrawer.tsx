@@ -33,6 +33,7 @@ import DomainCatalogScreen from "../screens/catalog/DomainCatalogScreen";
 import MediaLibraryScreen from "../screens/media/MediaLibraryScreen";
 import ReportsScreen from "../screens/reports/ReportsScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
+import TelephonyScreen from "../screens/telephony/TelephonyScreen";
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "Dashboard",     label: "Dashboard",      icon: "grid-outline" },
       { name: "Chat",          label: "Messages",       icon: "chatbubbles-outline" },
       { name: "Mail",          label: "Mail",           icon: "mail-outline" },
+      { name: "Telephony",     label: "Calls",          icon: "call-outline" },
       { name: "Tasks",         label: "Tasks",          icon: "checkbox-outline" },
       { name: "Notifications", label: "Notifications",  icon: "notifications-outline" },
       { name: "Calendar",      label: "Calendar",       icon: "calendar-outline" },
@@ -291,6 +293,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Dashboard:     withHeader(DashboardScreen,    "Dashboard"),
   Chat:          ChatNavigator,
   Mail:          MailNavigator,
+  Telephony:     withHeader(TelephonyScreen,     "Calls"),
   Tasks:         withHeader(TasksScreen,         "My Tasks"),
   Notifications: withHeader(NotificationsScreen, "Notifications"),
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
