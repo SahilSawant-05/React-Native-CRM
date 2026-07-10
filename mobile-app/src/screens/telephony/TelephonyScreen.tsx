@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -66,7 +67,67 @@ interface CallLog {
   nextActionHint?: string | null;
   failureReason?: string | null;
   createdAt?: string;
+  opportunityId?: number | null;
+  transcriptText?: string | null;
+  transcriptStatus?: string | null;
+  transcriptError?: string | null;
+  transcriptProvider?: string | null;
+  transcriptModel?: string | null;
 }
+
+interface CrmUser {
+  id: number | string;
+  name?: string;
+  email?: string;
+  role?: string;
+}
+
+interface AgentMapping {
+  id?: number;
+  userId: number | string;
+  userEmail?: string;
+  userRole?: string;
+  phoneNumber?: string;
+  active?: boolean;
+}
+
+interface TelephonyConfig {
+  provider: string;
+  active: boolean;
+  clickToCallEnabled: boolean;
+  accountSid: string;
+  apiKey: string;
+  apiBaseUrl: string;
+  apiToken: string;
+  callerId: string;
+  inboundNumber: string;
+  inboundWebhookUrl: string;
+  webhookSecret: string;
+  region: string;
+  notes: string;
+}
+
+const DEFAULT_CONFIG: TelephonyConfig = {
+  provider: "EXOTEL",
+  active: false,
+  clickToCallEnabled: false,
+  accountSid: "",
+  apiKey: "",
+  apiBaseUrl: "",
+  apiToken: "",
+  callerId: "",
+  inboundNumber: "",
+  inboundWebhookUrl: "",
+  webhookSecret: "",
+  region: "IN",
+  notes: "",
+};
+
+const PROVIDER_OPTIONS = [
+  { value: "EXOTEL", label: "Exotel", hint: "Best first choice for India calling." },
+  { value: "TWILIO", label: "Twilio", hint: "Good for Canada and international calling." },
+  { value: "PLIVO",  label: "Plivo",  hint: "Flexible provider for international calling." },
+];
 
 interface CallReport {
   totalCalls?: number;
@@ -167,6 +228,529 @@ function Badge({ label, bg, text }: { label: string; bg: string; text: string })
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <Text style={s.fieldLabel}>{children}</Text>;
+}
+
+// Collapsible "dropdown" section — tap the header to show/hide its content.
+function Section({
+  title, icon, subtitle, open, onToggle, children,
+}: {
+  title: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  subtitle?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={s.section}>
+      <TouchableOpacity style={s.sectionHeader} onPress={onToggle} activeOpacity={0.7}>
+        <View style={s.sectionIconWrap}>
+          <Ionicons name={icon} size={17} color="#0f766e" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.sectionTitle}>{title}</Text>
+          {!!subtitle && <Text style={s.sectionSubtitle}>{subtitle}</Text>}
+        </View>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#9ca3af" />
+      </TouchableOpacity>
+      {open && <View style={s.sectionBody}>{children}</View>}
+    </View>
+  );
+}
+
+// ─── Per-call AI panel: summary + transcript (mirrors web's
+// AiCallSummaryButton and CallTranscriptButton) ───────────────────────────────
+
+function CallAiPanel({
+  call, onInfo, onRefresh,
+}: {
+  call: CallLog;
+  onInfo: (msg: string) => void;
+  onRefresh: () => void;
+}) {
+  const [summary, setSummary] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  const transcriptStatus =
+    call.transcriptStatus || (call.transcriptText ? "COMPLETED" : "NOT_REQUESTED");
+
+  async function generateSummary() {
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    setError("");
+    try {
+      const res = await api.post(`/api/ai/calls/${call.id}/summary`);
+      setSummary(res.data?.text || "No AI call summary returned.");
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "AI call summary failed."));
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  async function saveSummaryAsNote() {
+    if (!call.contactId || !summary.trim() || savingNote) return;
+    setSavingNote(true);
+    setError("");
+    try {
+      await api.post(`/api/contacts/${call.contactId}/notes`, {
+        note: `AI call summary:\n\n${summary.trim()}`,
+        opportunityId: call.opportunityId || null,
+      });
+      onInfo("AI call summary saved as a CRM note.");
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Could not save AI summary as note."));
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function generateTranscript() {
+    if (transcribing) return;
+    if (!call.recordingUrl) {
+      setError("Recording is not available yet. Wait for the provider recording callback first.");
+      return;
+    }
+    setTranscribing(true);
+    setError("");
+    try {
+      await api.post(`/api/ai/calls/${call.id}/transcript`);
+      onInfo("Call transcript generated.");
+      onRefresh();
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Call transcription failed."));
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  return (
+    <View style={s.aiPanel}>
+      <View style={s.aiBtnRow}>
+        <TouchableOpacity
+          style={[s.aiBtn, s.aiBtnSummary, summaryLoading && { opacity: 0.6 }]}
+          onPress={generateSummary}
+          disabled={summaryLoading}
+          activeOpacity={0.8}
+        >
+          {summaryLoading ? (
+            <ActivityIndicator size="small" color="#7c3aed" />
+          ) : (
+            <Ionicons name="sparkles-outline" size={13} color="#7c3aed" />
+          )}
+          <Text style={s.aiBtnSummaryText}>{summaryLoading ? "Thinking…" : "AI summary"}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.aiBtn, s.aiBtnTranscript, transcribing && { opacity: 0.6 }]}
+          onPress={generateTranscript}
+          disabled={transcribing}
+          activeOpacity={0.8}
+        >
+          {transcribing ? (
+            <ActivityIndicator size="small" color="#0369a1" />
+          ) : (
+            <Ionicons name="document-text-outline" size={13} color="#0369a1" />
+          )}
+          <Text style={s.aiBtnTranscriptText}>
+            {call.transcriptText ? "Regenerate transcript" : transcribing ? "Transcribing…" : "Transcript"}
+          </Text>
+        </TouchableOpacity>
+
+        <Badge
+          label={String(transcriptStatus).replaceAll("_", " ")}
+          bg="#f3f4f6"
+          text="#4b5563"
+        />
+      </View>
+
+      {(call.transcriptProvider || call.transcriptModel) && (
+        <Text style={s.aiMetaText}>
+          Generated with {[call.transcriptProvider, call.transcriptModel].filter(Boolean).join(" · ")}
+        </Text>
+      )}
+
+      {!!error && (
+        <View style={s.aiResultBox}>
+          <Text style={s.aiErrorText}>{error}</Text>
+        </View>
+      )}
+
+      {!!summary && (
+        <View style={s.aiResultBox}>
+          <Text style={s.aiResultText}>{summary}</Text>
+          {!!call.contactId && (
+            <TouchableOpacity
+              style={[s.aiSaveNoteBtn, savingNote && { opacity: 0.6 }]}
+              onPress={saveSummaryAsNote}
+              disabled={savingNote}
+            >
+              <Text style={s.aiSaveNoteText}>{savingNote ? "Saving…" : "Save as note"}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {!!call.transcriptText && (
+        <>
+          <TouchableOpacity onPress={() => setTranscriptOpen((v) => !v)}>
+            <Text style={s.aiToggleText}>
+              {transcriptOpen ? "Hide transcript" : "View transcript"}
+            </Text>
+          </TouchableOpacity>
+          {transcriptOpen && (
+            <View style={s.aiResultBox}>
+              <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+                <Text style={s.aiResultText}>{call.transcriptText}</Text>
+              </ScrollView>
+            </View>
+          )}
+        </>
+      )}
+      {!!call.transcriptError && (
+        <View style={s.aiResultBox}>
+          <Text style={s.aiErrorText}>{call.transcriptError}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Telephony settings form (mirrors web Telephony Settings card) ────────────
+
+function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
+  const [config, setConfig] = useState<TelephonyConfig>(DEFAULT_CONFIG);
+  const [hasToken, setHasToken] = useState(false);
+  const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const activeProvider =
+    PROVIDER_OPTIONS.find((p) => p.value === config.provider) || PROVIDER_OPTIONS[0];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get("/api/telephony/config");
+        const data = res.data || {};
+        setConfig({
+          provider: data.provider || "EXOTEL",
+          active: Boolean(data.active),
+          clickToCallEnabled: Boolean(data.clickToCallEnabled),
+          accountSid: data.accountSid || "",
+          apiKey: data.apiKey || "",
+          apiBaseUrl: data.apiBaseUrl || "",
+          apiToken: data.hasApiToken ? "********" : "",
+          callerId: data.callerId || "",
+          inboundNumber: data.inboundNumber || "",
+          inboundWebhookUrl: data.inboundWebhookUrl || "",
+          webhookSecret: data.hasWebhookSecret ? "********" : "",
+          region: data.region || "IN",
+          notes: data.notes || "",
+        });
+        setHasToken(Boolean(data.hasApiToken));
+        setHasWebhookSecret(Boolean(data.hasWebhookSecret));
+      } catch (err: any) {
+        setError(apiErrorMessage(err, "Failed to load telephony settings."));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function update(field: keyof TelephonyConfig, value: string | boolean) {
+    setConfig((cur) => ({ ...cur, [field]: value }));
+  }
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      // Same masking rule as web: a still-masked secret means "keep existing".
+      const { inboundWebhookUrl, ...editable } = config;
+      await api.post("/api/telephony/config", {
+        ...editable,
+        apiToken: config.apiToken === "********" ? null : config.apiToken,
+        webhookSecret: config.webhookSecret === "********" ? null : config.webhookSecret,
+      });
+      onInfo("Telephony settings saved.");
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Failed to save telephony settings."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <ActivityIndicator color="#0f766e" style={{ marginVertical: 16 }} />;
+
+  return (
+    <View style={{ gap: 12 }}>
+      {!!error && (
+        <View style={s.errorBox}><Text style={s.errorBoxText}>{error}</Text></View>
+      )}
+
+      <View style={s.statusRow}>
+        <Badge
+          label={config.active ? "Active" : "Not active"}
+          bg={config.active ? "#ecfdf5" : "#f3f4f6"}
+          text={config.active ? "#047857" : "#6b7280"}
+        />
+        <Text style={s.providerHint}>{activeProvider.hint}</Text>
+      </View>
+
+      <FieldLabel>Provider</FieldLabel>
+      <View style={s.chipWrap}>
+        {PROVIDER_OPTIONS.map((p) => {
+          const active = config.provider === p.value;
+          return (
+            <TouchableOpacity
+              key={p.value}
+              style={[s.chip, active && s.chipActive]}
+              onPress={() => update("provider", p.value)}
+            >
+              <Text style={[s.chipText, active && s.chipTextActive]}>{p.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={s.field}>
+        <FieldLabel>Region</FieldLabel>
+        <TextInput style={s.input} value={config.region} onChangeText={(v) => update("region", v)} placeholder="IN, CA, US" placeholderTextColor="#9ca3af" autoCapitalize="characters" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>Account SID / App ID</FieldLabel>
+        <TextInput style={s.input} value={config.accountSid} onChangeText={(v) => update("accountSid", v)} placeholder="Provider account identifier" placeholderTextColor="#9ca3af" autoCapitalize="none" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>API Key</FieldLabel>
+        <TextInput style={s.input} value={config.apiKey} onChangeText={(v) => update("apiKey", v)} placeholder="Provider API key" placeholderTextColor="#9ca3af" autoCapitalize="none" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>API Base URL</FieldLabel>
+        <TextInput style={s.input} value={config.apiBaseUrl} onChangeText={(v) => update("apiBaseUrl", v)} placeholder="https://api.exotel.com" placeholderTextColor="#9ca3af" autoCapitalize="none" keyboardType="url" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>API Token</FieldLabel>
+        <TextInput style={s.input} value={config.apiToken} onChangeText={(v) => update("apiToken", v)} placeholder={hasToken ? "Saved token hidden" : "Provider API token"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>Webhook Secret</FieldLabel>
+        <TextInput style={s.input} value={config.webhookSecret} onChangeText={(v) => update("webhookSecret", v)} placeholder={hasWebhookSecret ? "Saved secret hidden" : "Optional callback verification secret"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>Caller ID</FieldLabel>
+        <TextInput style={s.input} value={config.callerId} onChangeText={(v) => update("callerId", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
+      </View>
+      <View style={s.field}>
+        <FieldLabel>Inbound Number</FieldLabel>
+        <TextInput style={s.input} value={config.inboundNumber} onChangeText={(v) => update("inboundNumber", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
+      </View>
+
+      <View style={s.switchRow}>
+        <Text style={s.switchLabel}>Provider active</Text>
+        <Switch value={config.active} onValueChange={(v) => update("active", v)} trackColor={{ true: "#0f766e" }} />
+      </View>
+      <View style={s.switchRow}>
+        <Text style={s.switchLabel}>Enable click-to-call</Text>
+        <Switch value={config.clickToCallEnabled} onValueChange={(v) => update("clickToCallEnabled", v)} trackColor={{ true: "#0f766e" }} />
+      </View>
+
+      <View style={s.field}>
+        <FieldLabel>Internal notes</FieldLabel>
+        <TextInput style={[s.input, s.inputMultiline]} value={config.notes} onChangeText={(v) => update("notes", v)} placeholder="Example: Exotel number, support contact, provider account owner." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
+      </View>
+
+      {!!config.inboundWebhookUrl && (
+        <View style={s.webhookBox}>
+          <Text style={s.webhookLabel}>Inbound webhook URL (add in the provider's incoming-call flow)</Text>
+          <Text style={s.webhookUrl} selectable>{config.inboundWebhookUrl}</Text>
+        </View>
+      )}
+
+      <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
+        {saving ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <>
+            <Ionicons name="save-outline" size={16} color="#fff" />
+            <Text style={s.primaryBtnText}>Save telephony settings</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Agent phone mapping (mirrors web Agent Phone Mapping card) ───────────────
+
+function AgentMappingForm({ onInfo }: { onInfo: (msg: string) => void }) {
+  const [users, setUsers] = useState<CrmUser[]>([]);
+  const [mappings, setMappings] = useState<AgentMapping[]>([]);
+  const [userId, setUserId] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [active, setActive] = useState(true);
+  const [userPickerOpen, setUserPickerOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const [usersRes, mappingsRes] = await Promise.all([
+        api.get("/api/users"),
+        api.get("/api/telephony/agent-mappings"),
+      ]);
+      const u = usersRes.data;
+      setUsers(Array.isArray(u) ? u : u?.items ?? u?.content ?? []);
+      const m = mappingsRes.data;
+      setMappings(Array.isArray(m) ? m : m?.items ?? m?.content ?? []);
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Failed to load agent phone mappings."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const selectedUser = users.find((u) => String(u.id) === userId);
+
+  function pickUser(u: CrmUser) {
+    const existing = mappings.find((m) => String(m.userId) === String(u.id));
+    setUserId(String(u.id));
+    setPhoneNumber(existing?.phoneNumber || "");
+    setActive(existing?.active !== false);
+    setUserPickerOpen(false);
+  }
+
+  async function save() {
+    if (!userId || !phoneNumber.trim()) {
+      setError("Select an agent and enter a phone number before saving.");
+      return;
+    }
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.post("/api/telephony/agent-mappings", {
+        userId: Number(userId),
+        phoneNumber: phoneNumber.trim(),
+        active,
+      });
+      onInfo("Agent phone mapping saved.");
+      setUserId("");
+      setPhoneNumber("");
+      setActive(true);
+      await load();
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Failed to save agent phone mapping."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <ActivityIndicator color="#0f766e" style={{ marginVertical: 16 }} />;
+
+  return (
+    <View style={{ gap: 12 }}>
+      <Text style={s.sheetHint}>
+        Map each CRM user to their calling number once. Contact, Opportunity and Chat call buttons use it automatically.
+      </Text>
+      {!!error && (
+        <View style={s.errorBox}><Text style={s.errorBoxText}>{error}</Text></View>
+      )}
+
+      <View style={s.field}>
+        <FieldLabel>User / Agent</FieldLabel>
+        <TouchableOpacity style={s.selectBox} onPress={() => setUserPickerOpen(true)} activeOpacity={0.7}>
+          <Text style={[s.selectText, !selectedUser && { color: "#9ca3af" }]}>
+            {selectedUser ? (selectedUser.email || selectedUser.name || `User #${selectedUser.id}`) : "Select user"}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={s.field}>
+        <FieldLabel>Calling number</FieldLabel>
+        <TextInput style={s.input} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
+      </View>
+
+      <View style={s.switchRow}>
+        <Text style={s.switchLabel}>Active</Text>
+        <Switch value={active} onValueChange={setActive} trackColor={{ true: "#0f766e" }} />
+      </View>
+
+      <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
+        {saving ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <>
+            <Ionicons name="save-outline" size={16} color="#fff" />
+            <Text style={s.primaryBtnText}>Save mapping</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      {mappings.length === 0 ? (
+        <Text style={s.emptyMappingText}>No agent numbers mapped yet.</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {mappings.map((m) => (
+            <TouchableOpacity
+              key={String(m.id ?? m.userId)}
+              style={s.mappingCard}
+              onPress={() => {
+                setUserId(String(m.userId));
+                setPhoneNumber(m.phoneNumber || "");
+                setActive(m.active !== false);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.mappingEmail} numberOfLines={1}>
+                  {m.userEmail || `User #${m.userId}`}
+                </Text>
+                <Text style={s.mappingPhone}>{m.phoneNumber}</Text>
+              </View>
+              <Badge
+                label={m.active === false ? "Inactive" : "Active"}
+                bg={m.active === false ? "#f3f4f6" : "#ecfdf5"}
+                text={m.active === false ? "#6b7280" : "#047857"}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* User picker sheet */}
+      <Modal visible={userPickerOpen} transparent animationType="fade" onRequestClose={() => setUserPickerOpen(false)}>
+        <TouchableOpacity style={s.pickerOverlay} activeOpacity={1} onPress={() => setUserPickerOpen(false)}>
+          <View style={s.pickerSheet}>
+            <Text style={s.pickerTitle}>Select user</Text>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {users.map((u) => (
+                <TouchableOpacity key={String(u.id)} style={s.pickerItem} onPress={() => pickUser(u)}>
+                  <Text style={s.pickerItemText} numberOfLines={1}>
+                    {u.email || u.name || `User #${u.id}`}
+                    {u.role ? `  (${u.role})` : ""}
+                  </Text>
+                  {String(u.id) === userId && <Ionicons name="checkmark" size={18} color="#0f766e" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
 }
 
 // ─── Click-to-call sheet ──────────────────────────────────────────────────────
@@ -582,12 +1166,15 @@ function CreateLeadSheet({
 // ─── Call card ────────────────────────────────────────────────────────────────
 
 function CallCard({
-  call, onOutcome, onCreateLead,
+  call, onOutcome, onCreateLead, onInfo, onRefresh,
 }: {
   call: CallLog;
   onOutcome: (c: CallLog) => void;
   onCreateLead: (c: CallLog) => void;
+  onInfo: (msg: string) => void;
+  onRefresh: () => void;
 }) {
+  const [aiOpen, setAiOpen] = useState(false);
   const sc = statusColors(call.status);
   const rec = recordingBadge(call);
   const direction = String(call.direction || "").toUpperCase();
@@ -662,7 +1249,17 @@ function CallCard({
           <Ionicons name="create-outline" size={14} color="#374151" />
           <Text style={s.outcomeBtnText}>Outcome</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.outcomeBtn, aiOpen && s.aiToggleBtnActive]}
+          onPress={() => setAiOpen((v) => !v)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="sparkles-outline" size={14} color={aiOpen ? "#7c3aed" : "#374151"} />
+          <Text style={[s.outcomeBtnText, aiOpen && { color: "#7c3aed" }]}>AI</Text>
+        </TouchableOpacity>
       </View>
+
+      {aiOpen && <CallAiPanel call={call} onInfo={onInfo} onRefresh={onRefresh} />}
     </View>
   );
 }
@@ -684,6 +1281,10 @@ export default function TelephonyScreen() {
   const [newCallOpen, setNewCallOpen] = useState(false);
   const [outcomeCall, setOutcomeCall] = useState<CallLog | null>(null);
   const [leadCall, setLeadCall] = useState<CallLog | null>(null);
+  // Dropdown sections — call logs open by default, admin setup collapsed.
+  const [logsOpen, setLogsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mappingOpen, setMappingOpen] = useState(false);
 
   const loadCalls = useCallback(
     async (p = 0, st = status, disp = disposition) => {
@@ -766,16 +1367,23 @@ export default function TelephonyScreen() {
       )}
 
       <FlatList
-        data={calls}
+        data={logsOpen ? calls : []}
         keyExtractor={(c) => String(c.id)}
         renderItem={({ item }) => (
-          <CallCard call={item} onOutcome={setOutcomeCall} onCreateLead={setLeadCall} />
+          <CallCard
+            call={item}
+            onOutcome={setOutcomeCall}
+            onCreateLead={setLeadCall}
+            onInfo={handleDone}
+            onRefresh={refreshAll}
+          />
         )}
         onEndReached={() => {
-          if (!loadingMore && page + 1 < totalPages) loadCalls(page + 1);
+          if (logsOpen && !loadingMore && page + 1 < totalPages) loadCalls(page + 1);
         }}
         onEndReachedThreshold={0.4}
         contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: 96 }}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={s.headerWrap}>
             {/* Report tiles */}
@@ -789,56 +1397,88 @@ export default function TelephonyScreen() {
               ))}
             </ScrollView>
 
-            {/* Status filter */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
-              {STATUS_OPTIONS.map((st) => {
-                const active = status === st;
-                return (
-                  <TouchableOpacity
-                    key={st}
-                    style={[s.filterChip, active && s.filterChipActive]}
-                    onPress={() => { setStatus(st); loadCalls(0, st, disposition); }}
-                  >
-                    <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
-                      {st.replace("_", " ")}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            {/* Admin setup — collapsed dropdowns */}
+            <Section
+              title="Telephony Settings"
+              icon="settings-outline"
+              subtitle="Provider, credentials, caller ID"
+              open={settingsOpen}
+              onToggle={() => setSettingsOpen((v) => !v)}
+            >
+              <SettingsForm onInfo={handleDone} />
+            </Section>
 
-            {/* Outcome filter */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
-              {[{ value: "ALL", label: "All outcomes" }, ...DISPOSITION_OPTIONS].map((o) => {
-                const active = disposition === o.value;
-                return (
-                  <TouchableOpacity
-                    key={o.value}
-                    style={[s.filterChip, active && s.filterChipActive]}
-                    onPress={() => { setDisposition(o.value); loadCalls(0, status, o.value); }}
-                  >
-                    <Text style={[s.filterChipText, active && s.filterChipTextActive]}>{o.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <Section
+              title="Agent Phone Mapping"
+              icon="people-outline"
+              subtitle="Map CRM users to their calling numbers"
+              open={mappingOpen}
+              onToggle={() => setMappingOpen((v) => !v)}
+            >
+              <AgentMappingForm onInfo={handleDone} />
+            </Section>
 
-            <Text style={s.countText}>{totalElements} tracked call{totalElements === 1 ? "" : "s"}</Text>
+            {/* Call logs dropdown — filters + list only when open */}
+            <Section
+              title="Call Logs"
+              icon="list-outline"
+              subtitle={`${totalElements} tracked call${totalElements === 1 ? "" : "s"}`}
+              open={logsOpen}
+              onToggle={() => setLogsOpen((v) => !v)}
+            >
+              <View style={{ gap: 10 }}>
+                {/* Status filter */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
+                  {STATUS_OPTIONS.map((st) => {
+                    const active = status === st;
+                    return (
+                      <TouchableOpacity
+                        key={st}
+                        style={[s.filterChip, active && s.filterChipActive]}
+                        onPress={() => { setStatus(st); loadCalls(0, st, disposition); }}
+                      >
+                        <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
+                          {st.replace("_", " ")}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Outcome filter */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
+                  {[{ value: "ALL", label: "All outcomes" }, ...DISPOSITION_OPTIONS].map((o) => {
+                    const active = disposition === o.value;
+                    return (
+                      <TouchableOpacity
+                        key={o.value}
+                        style={[s.filterChip, active && s.filterChipActive]}
+                        onPress={() => { setDisposition(o.value); loadCalls(0, status, o.value); }}
+                      >
+                        <Text style={[s.filterChipText, active && s.filterChipTextActive]}>{o.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </Section>
           </View>
         }
         ListEmptyComponent={
-          <View style={s.emptyWrap}>
-            <View style={s.emptyIconWrap}>
-              <Ionicons name="call-outline" size={30} color="#0f766e" />
+          logsOpen ? (
+            <View style={s.emptyWrap}>
+              <View style={s.emptyIconWrap}>
+                <Ionicons name="call-outline" size={30} color="#0f766e" />
+              </View>
+              <Text style={s.emptyTitle}>No call logs yet</Text>
+              <Text style={s.emptySub}>
+                Configure a telephony provider above, then start a tracked call with the + button.
+              </Text>
             </View>
-            <Text style={s.emptyTitle}>No call logs yet</Text>
-            <Text style={s.emptySub}>
-              Configure a telephony provider on the web CRM, then start a tracked call with the + button.
-            </Text>
-          </View>
+          ) : null
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator color="#0f766e" style={{ marginVertical: 12 }} /> : null
+          logsOpen && loadingMore ? <ActivityIndicator color="#0f766e" style={{ marginVertical: 12 }} /> : null
         }
       />
 
@@ -1002,4 +1642,101 @@ const s = StyleSheet.create({
   guidanceBox: { borderRadius: 12, padding: 12, gap: 3 },
   guidanceTitle: { fontSize: 13, fontWeight: "700" },
   guidanceBody: { fontSize: 12.5, lineHeight: 18 },
+
+  // Collapsible sections
+  section: {
+    backgroundColor: "#fff", borderRadius: 14, overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 11,
+    paddingHorizontal: 13, paddingVertical: 12,
+  },
+  sectionIconWrap: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(15,118,110,0.08)",
+    alignItems: "center", justifyContent: "center",
+  },
+  sectionTitle: {
+    fontSize: 14.5, fontWeight: "600", color: "#111827",
+    fontFamily: mediumFont, letterSpacing: iosTight,
+  },
+  sectionSubtitle: { fontSize: 11.5, color: "#9ca3af", marginTop: 1 },
+  sectionBody: {
+    paddingHorizontal: 13, paddingBottom: 14, paddingTop: 2,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.1)",
+  },
+
+  // Settings form
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  providerHint: { flex: 1, fontSize: 11.5, color: "#6b7280" },
+  switchRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "rgba(118,118,128,0.05)", borderRadius: 12,
+    paddingHorizontal: 13, paddingVertical: 8,
+  },
+  switchLabel: {
+    fontSize: 13.5, fontWeight: "600", color: "#374151",
+    fontFamily: mediumFont,
+  },
+  webhookBox: { backgroundColor: "#eff6ff", borderRadius: 12, padding: 12, gap: 5 },
+  webhookLabel: { fontSize: 11.5, fontWeight: "700", color: "#1e40af" },
+  webhookUrl: { fontSize: 11.5, color: "#1f2937" },
+
+  // Agent mapping
+  selectBox: {
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 13, backgroundColor: "rgba(118,118,128,0.06)",
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+  },
+  selectText: { fontSize: 15, color: "#111827", flex: 1 },
+  emptyMappingText: { fontSize: 12.5, color: "#9ca3af", textAlign: "center", paddingVertical: 8 },
+  mappingCard: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "rgba(118,118,128,0.05)", borderRadius: 12, padding: 11,
+  },
+  mappingEmail: { fontSize: 13, fontWeight: "600", color: "#111827", fontFamily: mediumFont },
+  mappingPhone: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerSheet: {
+    backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18,
+    padding: 16, paddingBottom: 30, gap: 2,
+  },
+  pickerTitle: {
+    fontSize: 15, fontWeight: "600", color: "#111827", marginBottom: 8,
+    fontFamily: mediumFont, letterSpacing: iosTight,
+  },
+  pickerItem: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingVertical: 13, paddingHorizontal: 10, borderRadius: 10,
+  },
+  pickerItemText: { fontSize: 14, color: "#374151", flex: 1 },
+
+  // Per-call AI panel
+  aiToggleBtnActive: { backgroundColor: "rgba(124,58,237,0.08)" },
+  aiPanel: {
+    gap: 8, paddingTop: 9,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)",
+  },
+  aiBtnRow: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" },
+  aiBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    borderRadius: 9, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  aiBtnSummary: { backgroundColor: "rgba(124,58,237,0.08)" },
+  aiBtnSummaryText: { fontSize: 12, fontWeight: "700", color: "#7c3aed" },
+  aiBtnTranscript: { backgroundColor: "rgba(3,105,161,0.08)" },
+  aiBtnTranscriptText: { fontSize: 12, fontWeight: "700", color: "#0369a1" },
+  aiMetaText: { fontSize: 11, fontWeight: "600", color: "#0369a1" },
+  aiResultBox: {
+    backgroundColor: "rgba(118,118,128,0.05)", borderRadius: 10, padding: 11, gap: 8,
+  },
+  aiResultText: { fontSize: 12.5, color: "#374151", lineHeight: 18 },
+  aiErrorText: { fontSize: 12.5, color: "#dc2626", lineHeight: 18 },
+  aiSaveNoteBtn: {
+    alignSelf: "flex-start", backgroundColor: "#fff", borderRadius: 8,
+    paddingHorizontal: 11, paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)",
+  },
+  aiSaveNoteText: { fontSize: 11.5, fontWeight: "700", color: "#374151" },
+  aiToggleText: { fontSize: 12, fontWeight: "700", color: "#0369a1" },
 });
