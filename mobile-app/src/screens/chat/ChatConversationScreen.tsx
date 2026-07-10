@@ -26,6 +26,7 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
 import { useBadges } from "../../state/BadgeContext";
+import { useChatSocket } from "../../realtime/chatSocket";
 
 type Props = {
   route: RouteProp<{ ChatConversation: { inbox: InboxItem } }, "ChatConversation">;
@@ -1386,6 +1387,24 @@ export default function ChatConversationScreen({ route }: Props) {
       isRefreshInFlightRef.current = false;
     }
   }, [inbox.contactId]);
+
+  // Real-time updates over the same STOMP topic the web app uses
+  // (/topic/chat/{tenantId}) — messages appear instantly, no poll wait.
+  // The poll below stays as a fallback for when the socket is down.
+  useChatSocket((payload) => {
+    if (String(payload?.contactId ?? "") !== String(inbox.contactId)) return;
+    const incoming = [payload as Message];
+    if (isTouchingRef.current) {
+      // Same mid-gesture buffering as the poll: apply when the finger lifts.
+      pendingContentRef.current = [...(pendingContentRef.current ?? []), ...incoming];
+    } else {
+      setMessages((prev) => mergeMessages(prev, incoming));
+    }
+    // Chat is open, so inbound messages are read immediately (web parity).
+    if (String(payload?.direction ?? "").toUpperCase() === "INBOUND") {
+      markAsRead(inbox.contactId).catch(() => {});
+    }
+  });
 
   // Applies whatever the most recent poll fetched but held back, called
   // once the current touch/scroll gesture ends.
