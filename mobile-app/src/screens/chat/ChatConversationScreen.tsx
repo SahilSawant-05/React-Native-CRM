@@ -1304,7 +1304,18 @@ export default function ChatConversationScreen({ route }: Props) {
   // or breaks the scroll — so we hold onto the freshest fetch and only
   // apply it once the gesture settles, instead of merging immediately.
   const isTouchingRef = useRef(false);
+  // When the touch began. RN's scroll-end callbacks are not 100% reliable
+  // (cancelled touches, interactive keyboard dismiss, taps that register as
+  // drags) — if one is missed, isTouchingRef would stay true forever and
+  // every poll/socket update would be buffered and NEVER shown, which reads
+  // as "new messages only appear after leaving and coming back". So a touch
+  // older than TOUCH_STALE_MS no longer blocks merging.
+  const touchStartedAtRef = useRef(0);
+  const TOUCH_STALE_MS = 2000;
+  const isActivelyTouching = () =>
+    isTouchingRef.current && Date.now() - touchStartedAtRef.current < TOUCH_STALE_MS;
   const pendingContentRef = useRef<Message[] | null>(null);
+  const pendingFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Prevents overlapping poll requests: on a slow/flaky connection a fetch
   // can still be in flight when the next tick fires. Without this guard,
   // requests pile up and their responses can land out of order, which is
@@ -1373,11 +1384,14 @@ export default function ChatConversationScreen({ route }: Props) {
     try {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
-      if (isTouchingRef.current) {
+      if (isActivelyTouching()) {
         // Don't merge mid-gesture — hold the latest fetch and apply it as
         // soon as the user's finger lifts, so a poll can never yank the
-        // list out from under an active swipe.
+        // list out from under an active swipe. A timed fallback flush
+        // guarantees the buffer is applied even if the scroll-end callback
+        // never fires.
         pendingContentRef.current = content;
+        schedulePendingFlush();
         return;
       }
       setMessages((prev) => mergeMessages(prev, content));
@@ -1394,9 +1408,11 @@ export default function ChatConversationScreen({ route }: Props) {
   useChatSocket((payload) => {
     if (String(payload?.contactId ?? "") !== String(inbox.contactId)) return;
     const incoming = [payload as Message];
-    if (isTouchingRef.current) {
-      // Same mid-gesture buffering as the poll: apply when the finger lifts.
+    if (isActivelyTouching()) {
+      // Same mid-gesture buffering as the poll: apply when the finger lifts,
+      // with the timed fallback so it can never be held forever.
       pendingContentRef.current = [...(pendingContentRef.current ?? []), ...incoming];
+      schedulePendingFlush();
     } else {
       setMessages((prev) => mergeMessages(prev, incoming));
     }
@@ -1410,12 +1426,26 @@ export default function ChatConversationScreen({ route }: Props) {
   // once the current touch/scroll gesture ends.
   const flushPendingContent = useCallback(() => {
     isTouchingRef.current = false;
+    if (pendingFlushTimerRef.current) {
+      clearTimeout(pendingFlushTimerRef.current);
+      pendingFlushTimerRef.current = null;
+    }
     if (pendingContentRef.current) {
       const content = pendingContentRef.current;
       pendingContentRef.current = null;
       setMessages((prev) => mergeMessages(prev, content));
     }
   }, []);
+
+  // Safety net: guarantees buffered content is applied within TOUCH_STALE_MS
+  // even when RN never fires the scroll-end callback for a gesture.
+  const schedulePendingFlush = useCallback(() => {
+    if (pendingFlushTimerRef.current) return;
+    pendingFlushTimerRef.current = setTimeout(() => {
+      pendingFlushTimerRef.current = null;
+      flushPendingContent();
+    }, TOUCH_STALE_MS);
+  }, [flushPendingContent]);
 
   // Live polling: while this screen is mounted (i.e. the chat is open) fetch
   // the latest messages every few seconds so inbound replies stream in
@@ -1771,6 +1801,7 @@ export default function ChatConversationScreen({ route }: Props) {
             scrollEventThrottle={80}
             onScrollBeginDrag={() => {
               isTouchingRef.current = true;
+              touchStartedAtRef.current = Date.now();
             }}
             onScrollEndDrag={flushPendingContent}
             onMomentumScrollEnd={flushPendingContent}
