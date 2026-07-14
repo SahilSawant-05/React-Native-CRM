@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  Image,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -195,9 +196,17 @@ function MailMediaPicker({
             contentContainerStyle={{ padding: 14, gap: 8 }}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.mediaPickerRow} onPress={() => onSelect(item)} activeOpacity={0.7}>
-                <View style={styles.mediaPickerIcon}>
-                  <Ionicons name={attachmentIcon(item.mediaType)} size={20} color="#0f766e" />
-                </View>
+                {item.mediaType === "IMAGE" && item.publicUrl ? (
+                  <Image
+                    source={{ uri: item.publicUrl }}
+                    style={styles.mediaPickerThumb}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.mediaPickerThumb, styles.mediaPickerThumbPlaceholder]}>
+                    <Ionicons name={attachmentIcon(item.mediaType)} size={22} color="#0f766e" />
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.mediaPickerName} numberOfLines={1}>{item.name}</Text>
                   <Text style={styles.mediaPickerType}>{item.mediaType}</Text>
@@ -334,7 +343,13 @@ function ComposeModal({
               <View style={styles.attachList}>
                 {composer.attachments.map((a) => (
                   <View key={String(a.id)} style={styles.attachChip}>
-                    <Ionicons name={attachmentIcon(a.mediaType)} size={14} color="#0f766e" />
+                    {a.mediaType === "IMAGE" && a.publicUrl ? (
+                      <Image source={{ uri: a.publicUrl }} style={styles.attachChipThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.attachChipThumb, styles.mediaPickerThumbPlaceholder]}>
+                        <Ionicons name={attachmentIcon(a.mediaType)} size={15} color="#0f766e" />
+                      </View>
+                    )}
                     <Text style={styles.attachChipText} numberOfLines={1}>{a.name}</Text>
                     <TouchableOpacity onPress={() => onRemoveAttachment(a.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="close-circle" size={16} color="#9ca3af" />
@@ -867,11 +882,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderRadius: 12, padding: 11,
     borderWidth: 1, borderColor: "#e2e8f0",
   },
-  mediaPickerIcon: {
-    width: 38, height: 38, borderRadius: 19,
+  mediaPickerThumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: "#f1f5f9" },
+  mediaPickerThumbPlaceholder: {
     backgroundColor: "rgba(15,118,110,0.08)",
     alignItems: "center", justifyContent: "center",
   },
+  attachChipThumb: { width: 34, height: 34, borderRadius: 6, backgroundColor: "#f1f5f9" },
   mediaPickerName: { fontSize: 13.5, fontWeight: "600", color: "#0f172a" },
   mediaPickerType: { fontSize: 11, color: "#0f766e", fontWeight: "600", marginTop: 1 },
   modalHeader: {
