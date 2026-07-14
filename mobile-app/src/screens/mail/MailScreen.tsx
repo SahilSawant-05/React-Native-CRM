@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import * as DocumentPicker from "expo-document-picker";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -55,7 +56,48 @@ const FOLDERS: { key: Folder; label: string }[] = [
 
 const PAGE_SIZE = 20;
 
-const emptyComposer = { toEmail: "", subject: "", bodyText: "" };
+// Media asset from /api/media-assets — same shape the web's
+// MediaLibraryDialog works with (publicUrl is what gets embedded).
+interface MailAttachment {
+  id: string | number;
+  publicUrl: string;
+  mediaType: string; // "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO"
+  name: string;
+}
+
+const emptyComposer = {
+  toEmail: "",
+  subject: "",
+  bodyText: "",
+  attachments: [] as MailAttachment[],
+};
+
+// ── Web parity (Mail.jsx mediaHtmlSnippet/escapeHtml): media isn't sent as a
+// multipart attachment — it's embedded in the email body as an <img> (images)
+// or a link, using the asset's already-hosted publicUrl. ──
+function escapeHtml(value: string): string {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function mediaHtmlSnippet(asset: MailAttachment): string {
+  if (!asset.publicUrl) return "";
+  const label = asset.name || "Media";
+  if (asset.mediaType === "IMAGE") {
+    return `<p><img src="${escapeHtml(asset.publicUrl)}" alt="${escapeHtml(label)}" style="max-width:100%;height:auto;border-radius:8px;" /></p>`;
+  }
+  return `<p><a href="${escapeHtml(asset.publicUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></p>`;
+}
+
+function attachmentIcon(mediaType: string): React.ComponentProps<typeof Ionicons>["name"] {
+  if (mediaType === "IMAGE") return "image-outline";
+  if (mediaType === "VIDEO") return "videocam-outline";
+  if (mediaType === "AUDIO") return "musical-notes-outline";
+  return "document-outline";
+}
 
 type FolderCounts = Record<Folder, number | null>;
 
@@ -94,6 +136,82 @@ function formatCount(n: number | null): string {
   return String(n);
 }
 
+// ─── Media Library picker (mirrors web's MediaLibraryDialog for compose) ─────
+
+function MailMediaPicker({
+  visible, onClose, onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (asset: MailAttachment) => void;
+}) {
+  const [assets, setAssets] = useState<MailAttachment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setLoading(true);
+    setError("");
+    api
+      .get("/api/media-assets")
+      .then((r) => {
+        const d = r.data ?? {};
+        const items: any[] = Array.isArray(d) ? d : d.items ?? d.content ?? [];
+        setAssets(
+          items.map((a) => ({
+            id: a.id,
+            publicUrl: a.publicUrl || "",
+            mediaType: a.mediaType || "DOCUMENT",
+            name: a.name || a.originalFileName || "Untitled",
+          }))
+        );
+      })
+      .catch((err) => setError(err?.response?.data?.message || err?.message || "Failed to load media"))
+      .finally(() => setLoading(false));
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={styles.modalSafe}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Media Library</Text>
+          <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+            <Text style={styles.modalCloseText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+        {loading ? (
+          <ActivityIndicator color="#0f766e" style={{ marginTop: 40 }} />
+        ) : error ? (
+          <Text style={styles.mediaPickerEmpty}>{error}</Text>
+        ) : assets.length === 0 ? (
+          <Text style={styles.mediaPickerEmpty}>
+            No media assets yet. Upload from your device or from the web CRM's Media Library.
+          </Text>
+        ) : (
+          <FlatList
+            data={assets}
+            keyExtractor={(a) => String(a.id)}
+            contentContainerStyle={{ padding: 14, gap: 8 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.mediaPickerRow} onPress={() => onSelect(item)} activeOpacity={0.7}>
+                <View style={styles.mediaPickerIcon}>
+                  <Ionicons name={attachmentIcon(item.mediaType)} size={20} color="#0f766e" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mediaPickerName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.mediaPickerType}>{item.mediaType}</Text>
+                </View>
+                <Ionicons name="add-circle-outline" size={20} color="#0f766e" />
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ─── Compose Modal ────────────────────────────────────────────────────────────
 
 interface ComposeModalProps {
@@ -101,12 +219,58 @@ interface ComposeModalProps {
   saving: boolean;
   composer: typeof emptyComposer;
   onChange: (field: string, value: string) => void;
+  onAttach: (asset: MailAttachment) => void;
+  onRemoveAttachment: (id: MailAttachment["id"]) => void;
   onClose: () => void;
   onSend: () => void;
 }
 
-function ComposeModal({ visible, saving, composer, onChange, onClose, onSend }: ComposeModalProps) {
+function ComposeModal({
+  visible, saving, composer, onChange, onAttach, onRemoveAttachment, onClose, onSend,
+}: ComposeModalProps) {
   const canSend = composer.toEmail.trim() && composer.subject.trim() && composer.bodyText.trim();
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachError, setAttachError] = useState("");
+
+  // Upload a file from the phone to the CRM media library, then attach its
+  // hosted publicUrl — same pipeline the chat's "Upload from Device" uses.
+  async function uploadFromDevice() {
+    if (uploading) return;
+    let result;
+    try {
+      result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    } catch {
+      return;
+    }
+    if (result.canceled || !result.assets?.length) return;
+    const file = result.assets[0];
+    setUploading(true);
+    setAttachError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || "application/octet-stream",
+      } as any);
+      const res = await api.post("/api/media-assets", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const publicUrl: string = res.data?.publicUrl || res.data?.url || "";
+      if (!publicUrl) throw new Error("Upload succeeded but no public URL returned.");
+      const mimeType = file.mimeType || "";
+      const mediaType = mimeType.startsWith("image/") ? "IMAGE"
+        : mimeType.startsWith("video/") ? "VIDEO"
+        : mimeType.startsWith("audio/") ? "AUDIO"
+        : "DOCUMENT";
+      onAttach({ id: res.data?.id ?? `up-${file.name}-${file.size ?? ""}`, publicUrl, mediaType, name: file.name });
+    } catch (err: any) {
+      setAttachError(err?.response?.data?.message || err?.message || "Failed to upload file.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -147,6 +311,42 @@ function ComposeModal({ visible, saving, composer, onChange, onClose, onSend }: 
               multiline
               textAlignVertical="top"
             />
+
+            {/* Attachments — embedded in the email body as image/link via the
+                asset's hosted publicUrl (same as web's Insert media) */}
+            <Text style={styles.inputLabel}>Attachments</Text>
+            <View style={styles.attachBtnRow}>
+              <TouchableOpacity style={styles.attachBtn} onPress={() => setMediaPickerOpen(true)} activeOpacity={0.7}>
+                <Ionicons name="images-outline" size={16} color="#0f766e" />
+                <Text style={styles.attachBtnText}>Media Library</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.attachBtn} onPress={uploadFromDevice} disabled={uploading} activeOpacity={0.7}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#0f766e" />
+                ) : (
+                  <Ionicons name="folder-open-outline" size={16} color="#0f766e" />
+                )}
+                <Text style={styles.attachBtnText}>{uploading ? "Uploading…" : "Upload from Device"}</Text>
+              </TouchableOpacity>
+            </View>
+            {!!attachError && <Text style={styles.attachError}>{attachError}</Text>}
+            {composer.attachments.length > 0 && (
+              <View style={styles.attachList}>
+                {composer.attachments.map((a) => (
+                  <View key={String(a.id)} style={styles.attachChip}>
+                    <Ionicons name={attachmentIcon(a.mediaType)} size={14} color="#0f766e" />
+                    <Text style={styles.attachChipText} numberOfLines={1}>{a.name}</Text>
+                    <TouchableOpacity onPress={() => onRemoveAttachment(a.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <Text style={styles.attachHint}>
+                  Images appear inline in the email; other files are added as download links.
+                </Text>
+              </View>
+            )}
+
             <AiAssistPanel
               title="AI Email Assistant"
               contextPrompt={
@@ -175,6 +375,15 @@ function ComposeModal({ visible, saving, composer, onChange, onClose, onSend }: 
               <Text style={styles.btnPrimaryText}>{saving ? "Sending..." : "Send"}</Text>
             </TouchableOpacity>
           </View>
+
+          <MailMediaPicker
+            visible={mediaPickerOpen}
+            onClose={() => setMediaPickerOpen(false)}
+            onSelect={(asset) => {
+              setMediaPickerOpen(false);
+              onAttach(asset);
+            }}
+          />
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
@@ -312,14 +521,41 @@ export default function MailScreen({ navigation }: any) {
     setComposer((prev) => ({ ...prev, [field]: value }));
   };
 
+  const addAttachment = (asset: MailAttachment) => {
+    setComposer((prev) =>
+      prev.attachments.some((a) => String(a.id) === String(asset.id))
+        ? prev
+        : { ...prev, attachments: [...prev.attachments, asset] }
+    );
+  };
+
+  const removeAttachment = (id: MailAttachment["id"]) => {
+    setComposer((prev) => ({
+      ...prev,
+      attachments: prev.attachments.filter((a) => String(a.id) !== String(id)),
+    }));
+  };
+
   const sendEmail = async () => {
     if (!composer.toEmail.trim() || !composer.subject.trim() || !composer.bodyText.trim()) return;
     setSaving(true);
     try {
+      // Web parity: attachments ride inside the email body — images inline,
+      // other files as links — using each asset's hosted publicUrl.
+      const typed = composer.bodyText.trim();
+      const attachmentTextLines = composer.attachments
+        .map((a) => `${a.name}: ${a.publicUrl}`)
+        .join("\n");
+      const bodyText = [typed, attachmentTextLines].filter(Boolean).join("\n\n");
+      const bodyHtml = composer.attachments.length
+        ? `<p>${escapeHtml(typed).replaceAll("\n", "<br/>")}</p>` +
+          composer.attachments.map(mediaHtmlSnippet).join("")
+        : null;
       await api.post("/api/email/send", {
         toEmail: composer.toEmail.trim(),
         subject: composer.subject.trim(),
-        bodyText: composer.bodyText.trim(),
+        bodyText,
+        ...(bodyHtml ? { bodyHtml } : {}),
       });
       setComposer(emptyComposer);
       setComposeOpen(false);
@@ -348,6 +584,8 @@ export default function MailScreen({ navigation }: any) {
         saving={saving}
         composer={composer}
         onChange={setComposerField}
+        onAttach={addAttachment}
+        onRemoveAttachment={removeAttachment}
         onClose={() => setComposeOpen(false)}
         onSend={sendEmail}
       />
@@ -604,6 +842,38 @@ const styles = StyleSheet.create({
 
   // Modal
   modalSafe: { flex: 1, backgroundColor: "#fff" },
+  attachBtnRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  attachBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    backgroundColor: "rgba(15,118,110,0.08)", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 9, flex: 1,
+  },
+  attachBtnText: { fontSize: 12.5, fontWeight: "600", color: "#0f766e" },
+  attachError: { fontSize: 12, color: "#dc2626", marginBottom: 8 },
+  attachList: { gap: 6, marginBottom: 8 },
+  attachChip: {
+    flexDirection: "row", alignItems: "center", gap: 7,
+    backgroundColor: "rgba(118,118,128,0.06)", borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8,
+  },
+  attachChipText: { flex: 1, fontSize: 12.5, color: "#111827", fontWeight: "500" },
+  attachHint: { fontSize: 11, color: "#9ca3af", lineHeight: 15 },
+  mediaPickerEmpty: {
+    color: "#94a3b8", textAlign: "center", marginTop: 40,
+    paddingHorizontal: 24, fontSize: 13.5, lineHeight: 20,
+  },
+  mediaPickerRow: {
+    flexDirection: "row", alignItems: "center", gap: 11,
+    backgroundColor: "#fff", borderRadius: 12, padding: 11,
+    borderWidth: 1, borderColor: "#e2e8f0",
+  },
+  mediaPickerIcon: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: "rgba(15,118,110,0.08)",
+    alignItems: "center", justifyContent: "center",
+  },
+  mediaPickerName: { fontSize: 13.5, fontWeight: "600", color: "#0f172a" },
+  mediaPickerType: { fontSize: 11, color: "#0f766e", fontWeight: "600", marginTop: 1 },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, paddingVertical: 14,
