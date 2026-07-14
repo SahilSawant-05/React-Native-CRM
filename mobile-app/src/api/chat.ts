@@ -132,39 +132,78 @@ export async function fetchInbox(params: {
 }
 
 export async function fetchMessages(contactId: string | number, page = 0): Promise<MessagesPage> {
-  // IMPORTANT: explicit newest-first sort.
-  //
-  // Previously this request had no `sort` param and relied on "the
-  // backend's default ordering", on the assumption that page 0 = the 30
-  // most recent messages. If the backend's default order is actually
-  // ascending (oldest-first) — which is a common default for a simple
-  // `findByContactId` query — then page 0 is really the OLDEST 30
-  // messages in the whole conversation. In that case a brand-new message
-  // can NEVER show up in page 0, no matter how many times the poll runs:
-  // it would only become visible once enough pages had been paged through
-  // (or never, on a long thread). That matches "push notification arrives
-  // but the open chat screen never shows the new message" exactly, since
-  // the notification comes from a separate channel that isn't affected by
-  // this pagination bug.
-  //
-  // Sending sort explicitly removes the guess. Confirm this matches your
-  // backend's actual sort syntax (Spring Data JPA typically accepts
-  // `sort=createdAt,desc`; adjust the field name/format if your API uses
-  // something else, e.g. `sort=-createdAt` or `sortBy`/`sortDir` params).
+  // Raw page fetch. NOTE: this backend paginates messages ASCENDING
+  // (verified on-device: page 0 = the OLDEST 30 messages; the newest live
+  // on the LAST page). It also ignores a `sort` request param. Use
+  // fetchLatestMessages() below to get the newest window.
   const res = await api.get(`/api/messages/contact/${contactId}/page`, {
-    params: { page, size: 30, sort: "createdAt,desc" },
+    params: { page, size: 30 },
   });
+  return normalizePage<Message>(res.data, "items", (raw, idx) => `msg-${contactId}-${raw.createdAt ?? raw.timestamp ?? idx}`);
+}
 
-  if (__DEV__) {
-    const items = res.data?.items ?? res.data?.content ?? [];
-    console.log(
-      `[chat api] fetchMessages page=${page} got ${items.length} items, ` +
-      `first=${JSON.stringify(items[0]?.createdAt ?? items[0]?.timestamp)} ` +
-      `last=${JSON.stringify(items[items.length - 1]?.createdAt ?? items[items.length - 1]?.timestamp)}`
-    );
+export interface LatestMessagesWindow {
+  content: Message[];
+  totalPages: number;
+  /** true when the backend pages oldest→newest (newest on the last page) */
+  ascending: boolean;
+  /** next page to fetch when the user scrolls up for older history, or null when exhausted */
+  nextOlderPage: number | null;
+}
+
+function pageIdNum(m?: Message): number {
+  const n = Number(m?.id ?? m?.messageId);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Fetches the NEWEST window of a conversation regardless of the backend's
+ * page direction. Detects ordering from page 0 (ids are monotonic): if
+ * ascending, the newest messages are on the LAST page, so that page (plus
+ * the one before it, to always have a full screen) is fetched too.
+ */
+export async function fetchLatestMessages(contactId: string | number): Promise<LatestMessagesWindow> {
+  const p0 = await fetchMessages(contactId, 0);
+  const items0 = p0.content;
+  const totalPages = Math.max(1, p0.totalPages || 1);
+
+  const firstId = pageIdNum(items0[0]);
+  const lastId = pageIdNum(items0[items0.length - 1]);
+  const ascending =
+    items0.length >= 2 && Number.isFinite(firstId) && Number.isFinite(lastId)
+      ? firstId < lastId
+      : true; // verified backend behaviour; assume ascending when undecidable
+
+  if (!ascending) {
+    // Descending backend: page 0 already IS the newest window.
+    return {
+      content: items0,
+      totalPages,
+      ascending,
+      nextOlderPage: totalPages > 1 ? 1 : null,
+    };
   }
 
-  return normalizePage<Message>(res.data, "items", (raw, idx) => `msg-${contactId}-${raw.createdAt ?? raw.timestamp ?? idx}`);
+  if (totalPages === 1) {
+    return { content: items0, totalPages, ascending, nextOlderPage: null };
+  }
+
+  // Ascending: newest messages are on the last page. Fetch it, and if it's
+  // sparse also the page before, so the thread always fills the screen.
+  const lastPage = await fetchMessages(contactId, totalPages - 1);
+  let content = lastPage.content;
+  let fetchedDownTo = totalPages - 1;
+  if (content.length < 30 && totalPages >= 2) {
+    const prev = await fetchMessages(contactId, totalPages - 2);
+    content = [...prev.content, ...content];
+    fetchedDownTo = totalPages - 2;
+  }
+  return {
+    content,
+    totalPages,
+    ascending,
+    nextOlderPage: fetchedDownTo - 1 >= 0 ? fetchedDownTo - 1 : null,
+  };
 }
 
 export async function markAsRead(contactId: string | number): Promise<void> {

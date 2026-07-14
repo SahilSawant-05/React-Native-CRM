@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import { RouteProp, useFocusEffect } from "@react-navigation/native";
-import { fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "../../api/chat";
+import { fetchLatestMessages, fetchMessages, markAsRead, sendTextMessage, Message, InboxItem } from "../../api/chat";
 import api from "../../api/client";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -1339,8 +1339,6 @@ export default function ChatConversationScreen({ route }: Props) {
   const [sending, setSending] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [attachOpen, setAttachOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
@@ -1387,40 +1385,61 @@ export default function ChatConversationScreen({ route }: Props) {
   const isRefreshInFlightRef = useRef(false);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Pagination direction is backend-dependent: this backend pages messages
+  // ASCENDING (page 0 = the OLDEST 30; the newest live on the LAST page) —
+  // verified on-device via the debug strip. fetchLatestMessages() detects
+  // the direction and always returns the newest window; these refs track
+  // where "older history" continues from for the scroll-up loader.
+  const ascendingRef = useRef(true);
+  const nextOlderPageRef = useRef<number | null>(null);
+  const serverTotalPagesRef = useRef(1);
+
   const load = useCallback(
-    async (p = 0) => {
-      if (p === 0) setLoading(true);
-      else setLoadingMore(true);
+    async () => {
+      setLoading(true);
       setError("");
       try {
-        const data = await fetchMessages(inbox.contactId, p);
-        // The backend's ordering isn't guaranteed to already be
-        // newest-first — some endpoints return ascending (oldest first)
-        // per page. Since this is an INVERTED FlatList, index 0 must
-        // always be the newest message or the whole thread renders out
-        // of order and new messages won't land at the bottom like
-        // WhatsApp. Sort explicitly rather than trust the API's order.
-        const content = data.content ?? [];
-        // Merge rather than replace so optimistic sends and previously
-        // loaded older pages survive a page-0 refresh (used by polling too).
-        setMessages((prev) => mergeMessages(prev, content));
-        setTotalPages(data.totalPages ?? 1);
-        setPage(p);
+        const win = await fetchLatestMessages(inbox.contactId);
+        ascendingRef.current = win.ascending;
+        nextOlderPageRef.current = win.nextOlderPage;
+        serverTotalPagesRef.current = win.totalPages;
+        setMessages((prev) => mergeMessages(prev, win.content));
       } catch (err: any) {
         setError(
           err?.response?.data?.message || err.message || "Failed to load messages"
         );
       } finally {
         setLoading(false);
-        setLoadingMore(false);
       }
     },
     [inbox.contactId]
   );
 
+  // Scroll-up loader: fetches the next OLDER page (lower page number on an
+  // ascending backend, higher on a descending one) and merges it in.
+  const loadOlder = useCallback(async () => {
+    const p = nextOlderPageRef.current;
+    if (p == null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await fetchMessages(inbox.contactId, p);
+      setMessages((prev) => mergeMessages(prev, data.content ?? []));
+      if (ascendingRef.current) {
+        nextOlderPageRef.current = p - 1 >= 0 ? p - 1 : null;
+      } else {
+        nextOlderPageRef.current =
+          p + 1 < serverTotalPagesRef.current ? p + 1 : null;
+      }
+    } catch {
+      // Leave the pointer unchanged — the next onEndReached retries.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [inbox.contactId, loadingMore]);
+
   const badges = useBadges();
   useEffect(() => {
-    load(0);
+    load();
     // Mark ONLY this conversation read (same as the web app), then pull the
     // badge down by this conversation's unread count so the tab updates
     // immediately instead of waiting for the next inbox load.
@@ -1446,20 +1465,18 @@ export default function ChatConversationScreen({ route }: Props) {
     if (isRefreshInFlightRef.current) return;
     isRefreshInFlightRef.current = true;
     try {
-      const data = await fetchMessages(inbox.contactId, 0);
-      const content = data.content ?? [];
+      // Latest-window fetch — on this (ascending) backend that means the
+      // LAST page, where new messages actually land. See fetchLatestMessages.
+      const win = await fetchLatestMessages(inbox.contactId);
+      ascendingRef.current = win.ascending;
+      serverTotalPagesRef.current = win.totalPages;
+      const content = win.content;
       {
-        const first = content[0];
-        const last = content[content.length - 1];
-        // Shows BOTH ends of page 0 so the server's ordering is visible:
-        // if first is older than last, page items are ascending; if the
-        // "newest" end is days old, page 0 isn't the newest page at all
-        // (or new messages belong to a different contactId).
+        const newest = win.ascending ? content[content.length - 1] : content[0];
         const line =
           `poll ${new Date().toLocaleTimeString()} ok:${content.length} c=${inbox.contactId} ` +
-          `pages=${data.totalPages} ` +
-          `first=${first?.id ?? first?.messageId}@${first?.createdAt ?? first?.timestamp} ` +
-          `last=${last?.id ?? last?.messageId}@${last?.createdAt ?? last?.timestamp}`;
+          `asc=${win.ascending} pages=${win.totalPages} ` +
+          `newest=${newest?.id ?? newest?.messageId}@${newest?.createdAt ?? newest?.timestamp}`;
         setDebugLine(line);
         if (__DEV__) console.log(`[chat] ${line}`);
       }
@@ -1891,9 +1908,7 @@ export default function ChatConversationScreen({ route }: Props) {
             // Memoized row (see MessageBubble) + onRetry for failed sends.
             renderItem={renderMessage}
             // onEndReached fires when the user scrolls UP to the top (inverted).
-            onEndReached={() => {
-              if (!loadingMore && page + 1 < totalPages) load(page + 1);
-            }}
+            onEndReached={loadOlder}
             onEndReachedThreshold={0.2}
             // Track whether the user is currently at the visual bottom of the
             // thread so incoming messages either auto-follow (WhatsApp-style)
