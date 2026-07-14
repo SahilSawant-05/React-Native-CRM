@@ -46,9 +46,14 @@ function parseFrames(data: string): Array<{ command: string; headers: Record<str
  * Reconnects automatically every 5s while mounted. onEvent is kept in a ref,
  * so callers can pass a fresh closure on every render without re-connecting.
  */
-export function useChatSocket(onEvent: (payload: ChatSocketPayload) => void) {
+export function useChatSocket(
+  onEvent: (payload: ChatSocketPayload) => void,
+  onStatus?: (status: string) => void
+) {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -76,6 +81,7 @@ export function useChatSocket(onEvent: (payload: ChatSocketPayload) => void) {
 
       ws.onopen = () => {
         if (__DEV__) console.log("[chat] socket open, sending CONNECT");
+        onStatusRef.current?.("open");
         // No heart-beats keeps the client tiny; the reconnect loop covers
         // silently-dead connections (next send/receive errors → onclose).
         ws?.send(
@@ -92,6 +98,7 @@ export function useChatSocket(onEvent: (payload: ChatSocketPayload) => void) {
         for (const frame of parseFrames(event.data)) {
           if (frame.command === "CONNECTED") {
             if (__DEV__) console.log("[chat] socket CONNECTED, subscribing to /topic/chat/" + tenantId);
+            onStatusRef.current?.("connected /topic/chat/" + tenantId);
             ws?.send(
               stompFrame("SUBSCRIBE", {
                 id: `chat-${tenantId}`,
@@ -100,6 +107,7 @@ export function useChatSocket(onEvent: (payload: ChatSocketPayload) => void) {
             );
           } else if (frame.command === "ERROR") {
             if (__DEV__) console.log("[chat] socket STOMP ERROR:", frame.headers.message || frame.body);
+            onStatusRef.current?.("STOMP ERROR: " + String(frame.headers.message || frame.body).slice(0, 80));
           } else if (frame.command === "MESSAGE") {
             if (__DEV__) console.log("[chat] socket MESSAGE received");
             try {
@@ -117,6 +125,7 @@ export function useChatSocket(onEvent: (payload: ChatSocketPayload) => void) {
 
       ws.onclose = (e) => {
         if (__DEV__) console.log("[chat] socket closed", (e as any)?.code, (e as any)?.reason);
+        onStatusRef.current?.(`closed ${(e as any)?.code ?? ""} ${(e as any)?.reason ?? ""}`.trim());
         ws = null;
         scheduleReconnect();
       };

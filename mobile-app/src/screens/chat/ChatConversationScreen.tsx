@@ -1358,6 +1358,7 @@ export default function ChatConversationScreen({ route }: Props) {
   // shows the latest poll result / socket event right in the chat header so
   // the pipeline can be debugged from a screenshot, without Metro access.
   const [debugLine, setDebugLine] = useState("waiting for first poll…");
+  const [sockLine, setSockLine] = useState("socket: connecting…");
   const flatListRef = useRef<FlatList>(null);
   // Inverted list: offset 0 == visually at the bottom (the newest message).
   const atBottomRef = useRef(true);
@@ -1448,10 +1449,17 @@ export default function ChatConversationScreen({ route }: Props) {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
       {
-        const newest = content[0];
+        const first = content[0];
+        const last = content[content.length - 1];
+        // Shows BOTH ends of page 0 so the server's ordering is visible:
+        // if first is older than last, page items are ascending; if the
+        // "newest" end is days old, page 0 isn't the newest page at all
+        // (or new messages belong to a different contactId).
         const line =
-          `poll ${new Date().toLocaleTimeString()} ok: ${content.length} msgs, ` +
-          `newest=${newest?.id ?? newest?.messageId} t=${messageTime(newest)}`;
+          `poll ${new Date().toLocaleTimeString()} ok:${content.length} c=${inbox.contactId} ` +
+          `pages=${data.totalPages} ` +
+          `first=${first?.id ?? first?.messageId}@${first?.createdAt ?? first?.timestamp} ` +
+          `last=${last?.id ?? last?.messageId}@${last?.createdAt ?? last?.timestamp}`;
         setDebugLine(line);
         if (__DEV__) console.log(`[chat] ${line}`);
       }
@@ -1511,6 +1519,8 @@ export default function ChatConversationScreen({ route }: Props) {
     if (String(payload?.direction ?? "").toUpperCase() === "INBOUND") {
       markAsRead(inbox.contactId).catch(() => {});
     }
+  }, (status) => {
+    setSockLine(`socket ${new Date().toLocaleTimeString()}: ${status}`);
   });
 
   // Applies whatever the most recent poll fetched but held back, called
@@ -1853,7 +1863,8 @@ export default function ChatConversationScreen({ route }: Props) {
 
         {/* TEMP debug strip — remove once live updates are confirmed */}
         <View style={styles.debugStrip}>
-          <Text style={styles.debugStripText} numberOfLines={2}>{debugLine}</Text>
+          <Text style={styles.debugStripText} numberOfLines={3}>{debugLine}</Text>
+          <Text style={styles.debugStripText} numberOfLines={2}>{sockLine}</Text>
         </View>
 
         <View style={{ flex: 1 }}>
