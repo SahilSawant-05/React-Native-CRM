@@ -92,9 +92,8 @@ function formatDate(dateStr?: string) {
 function parseMessageDate(raw: string): number {
   let t = new Date(raw).getTime();
   if (!Number.isNaN(t)) return t;
-  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish, and "+0530" → "+05:30"
-  const isoish = raw.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
-  t = new Date(isoish).getTime();
+  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish
+  t = new Date(raw.replace(" ", "T")).getTime();
   if (!Number.isNaN(t)) return t;
   // Epoch seconds/millis sent as a numeric string
   const n = Number(raw);
@@ -113,26 +112,35 @@ function messageTime(m?: Message): number {
 // A best-effort content signature used to recognise when an optimistic
 // (temp-) message we appended locally has come back from the server with a
 // real id, so we can drop the temp duplicate instead of showing both.
+//
+// NOTE: this is CONTENT-ONLY (direction + body + media) and deliberately
+// ignores id/time, because that's exactly what's needed to match an
+// optimistic bubble against its server-confirmed twin. It is NOT unique per
+// message — two genuinely different messages with identical text (e.g. the
+// same contact sending "ok" twice in a row) will collide. Do not reuse this
+// to detect "is there a new message"; use topMessageKey() below for that.
 function messageSignature(m: Message): string {
   const body = (m.textBody || m.body || m.text || "").trim();
   return `${m.direction}|${body}|${m.mediaUrl || ""}`;
 }
 
-// Web parity (normalizeMessage): messageId takes priority over id, so the
-// same message is keyed identically whether it arrived via the page fetch or
-// the websocket broadcast — otherwise it can show up twice.
 function realId(m: Message): string | null {
-  const id = m.messageId ?? m.id;
+  const id = m.id ?? m.messageId;
   return id != null && !String(id).startsWith("temp-") ? String(id) : null;
 }
 
-// Numeric DB id — monotonically increasing, so it's a reliable order key
-// even when createdAt can't be parsed (Hermes' Date is strict; browsers are
-// lenient, which is why the web can sort by date but mobile can't always).
-function numericId(m: Message): number {
+// Key used ONLY to detect "did the newest message in the thread change".
+// Prefers the real server id (always unique per message) so that two
+// consecutive messages with identical content (repeated "ok", a double-sent
+// "👍", etc.) are correctly recognised as two distinct messages instead of
+// colliding on messageSignature and silently failing to trigger the
+// auto-scroll / "New message" pill. Falls back to signature+time only for
+// optimistic (temp-) messages that don't have a real id yet.
+function topMessageKey(m?: Message): string {
+  if (!m) return "";
   const rid = realId(m);
-  const n = rid == null ? NaN : Number(rid);
-  return Number.isFinite(n) ? n : NaN;
+  if (rid) return rid;
+  return `${messageSignature(m)}|${messageTime(m)}`;
 }
 
 // True when two message objects represent the same message with the same
@@ -208,12 +216,6 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
     .sort(([keyA, a], [keyB, b]) => {
       const dt = messageTime(b) - messageTime(a);
       if (dt !== 0) return dt;
-      // Same/unparseable timestamps: fall back to the numeric DB id, which
-      // increases monotonically — this keeps newest-last ordering correct
-      // even when createdAt can't be parsed at all.
-      const ia = numericId(a);
-      const ib = numericId(b);
-      if (Number.isFinite(ia) && Number.isFinite(ib) && ia !== ib) return ib - ia;
       return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
     })
     .map(([, m]) => m);
@@ -1452,7 +1454,23 @@ export default function ChatConversationScreen({ route }: Props) {
   // (/topic/chat/{tenantId}) — messages appear instantly, no poll wait.
   // The poll below stays as a fallback for when the socket is down.
   useChatSocket((payload) => {
-    if (String(payload?.contactId ?? "") !== String(inbox.contactId)) return;
+    if (__DEV__) {
+      console.log(
+        `[chat] socket payload received: contactId=${(payload as any)?.contactId} ` +
+        `id=${(payload as any)?.id ?? (payload as any)?.messageId} ` +
+        `direction=${(payload as any)?.direction} raw=${JSON.stringify(payload)}`
+      );
+    }
+    if (String(payload?.contactId ?? "") !== String(inbox.contactId)) {
+      if (__DEV__) {
+        console.log(
+          `[chat] socket message IGNORED — contactId mismatch: payload=${(payload as any)?.contactId} ` +
+          `screen=${inbox.contactId}`
+        );
+      }
+      return;
+    }
+    if (__DEV__) console.log("[chat] socket message accepted, merging into thread");
     const incoming = [payload as Message];
     if (isActivelyTouching()) {
       // Same mid-gesture buffering as the poll: apply when the finger lifts,
@@ -1560,12 +1578,14 @@ export default function ChatConversationScreen({ route }: Props) {
   useEffect(() => {
     const top = messages[0];
     if (!top) return;
-    // Keyed by CONTENT (direction+text+media), not id. If we keyed off the
-    // id, an optimistic "temp-..." message getting resolved to its real
-    // server id on the next poll would look like a brand-new message and
-    // re-fire the scroll/pill logic every ~3.5s — which is exactly what
-    // made the thread feel jumpy/broken after sending.
-    const topKey = messageSignature(top);
+    // Keyed by real id when available (falls back to signature+time only
+    // for not-yet-confirmed optimistic messages). Using messageSignature
+    // alone here was the bug: two consecutive messages with identical
+    // content (e.g. the same contact sending "ok" twice) collide on the
+    // same signature, so the "did the newest message change" check never
+    // fired for the second one — no auto-scroll, no "New message" pill, and
+    // the poll looked like it had silently stopped working.
+    const topKey = topMessageKey(top);
 
     if (lastTopKeyRef.current === null) {
       // First load — nothing "new" yet, just record where we are.
@@ -1593,7 +1613,7 @@ export default function ChatConversationScreen({ route }: Props) {
     setMessages((prev) => [msg, ...prev]);
     // Our own sends should always land at the bottom immediately, the same
     // way WhatsApp snaps you down when you hit send.
-    lastTopKeyRef.current = messageSignature(msg);
+    lastTopKeyRef.current = topMessageKey(msg);
     requestAnimationFrame(() => scrollToLatest(true));
   };
 

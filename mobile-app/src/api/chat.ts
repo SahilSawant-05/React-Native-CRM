@@ -132,12 +132,38 @@ export async function fetchInbox(params: {
 }
 
 export async function fetchMessages(contactId: string | number, page = 0): Promise<MessagesPage> {
-  // Same request the web app makes (no sort param — the backend's default
-  // ordering is what the web relies on; passing an explicit sort can change
-  // which 30 messages page 0 contains).
+  // IMPORTANT: explicit newest-first sort.
+  //
+  // Previously this request had no `sort` param and relied on "the
+  // backend's default ordering", on the assumption that page 0 = the 30
+  // most recent messages. If the backend's default order is actually
+  // ascending (oldest-first) — which is a common default for a simple
+  // `findByContactId` query — then page 0 is really the OLDEST 30
+  // messages in the whole conversation. In that case a brand-new message
+  // can NEVER show up in page 0, no matter how many times the poll runs:
+  // it would only become visible once enough pages had been paged through
+  // (or never, on a long thread). That matches "push notification arrives
+  // but the open chat screen never shows the new message" exactly, since
+  // the notification comes from a separate channel that isn't affected by
+  // this pagination bug.
+  //
+  // Sending sort explicitly removes the guess. Confirm this matches your
+  // backend's actual sort syntax (Spring Data JPA typically accepts
+  // `sort=createdAt,desc`; adjust the field name/format if your API uses
+  // something else, e.g. `sort=-createdAt` or `sortBy`/`sortDir` params).
   const res = await api.get(`/api/messages/contact/${contactId}/page`, {
-    params: { page, size: 30 },
+    params: { page, size: 30, sort: "createdAt,desc" },
   });
+
+  if (__DEV__) {
+    const items = res.data?.items ?? res.data?.content ?? [];
+    console.log(
+      `[chat api] fetchMessages page=${page} got ${items.length} items, ` +
+      `first=${JSON.stringify(items[0]?.createdAt ?? items[0]?.timestamp)} ` +
+      `last=${JSON.stringify(items[items.length - 1]?.createdAt ?? items[items.length - 1]?.timestamp)}`
+    );
+  }
+
   return normalizePage<Message>(res.data, "items", (raw, idx) => `msg-${contactId}-${raw.createdAt ?? raw.timestamp ?? idx}`);
 }
 
