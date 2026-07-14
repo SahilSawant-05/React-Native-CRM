@@ -83,10 +83,29 @@ function formatDate(dateStr?: string) {
 
 // Returns a reliable epoch ms for a message regardless of which timestamp
 // field the API populated (createdAt vs timestamp), used for sorting.
+//
+// IMPORTANT: Hermes' Date parser only accepts ISO-8601. Backend timestamps
+// like "2026-07-14 10:30:00" (space instead of "T", no zone) parse to NaN,
+// which would make EVERY message sort with time 0 — new messages then land
+// in an arbitrary position instead of at the bottom, looking exactly like
+// "new messages don't appear until I reopen the chat". Normalise first.
+function parseMessageDate(raw: string): number {
+  let t = new Date(raw).getTime();
+  if (!Number.isNaN(t)) return t;
+  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish
+  t = new Date(raw.replace(" ", "T")).getTime();
+  if (!Number.isNaN(t)) return t;
+  // Epoch seconds/millis sent as a numeric string
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
+  return NaN;
+}
+
 function messageTime(m?: Message): number {
   if (!m) return 0;
   const raw = m.createdAt || m.timestamp;
-  const t = raw ? new Date(raw).getTime() : NaN;
+  if (!raw) return 0;
+  const t = parseMessageDate(String(raw));
   return Number.isNaN(t) ? 0 : t;
 }
 
@@ -1384,6 +1403,13 @@ export default function ChatConversationScreen({ route }: Props) {
     try {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
+      if (__DEV__) {
+        const newest = content[0];
+        console.log(
+          `[chat] poll ok: ${content.length} msgs, newest id=${newest?.id ?? newest?.messageId} ` +
+          `at=${newest?.createdAt ?? newest?.timestamp} parsed=${messageTime(newest)}`
+        );
+      }
       if (isActivelyTouching()) {
         // Don't merge mid-gesture — hold the latest fetch and apply it as
         // soon as the user's finger lifts, so a poll can never yank the
@@ -1395,8 +1421,9 @@ export default function ChatConversationScreen({ route }: Props) {
         return;
       }
       setMessages((prev) => mergeMessages(prev, content));
-    } catch {
+    } catch (err: any) {
       // Ignore poll errors — the next tick will retry.
+      if (__DEV__) console.log(`[chat] poll FAILED: ${err?.message ?? err}`);
     } finally {
       isRefreshInFlightRef.current = false;
     }
