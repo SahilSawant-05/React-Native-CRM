@@ -124,11 +124,91 @@ const DEFAULT_CONFIG: TelephonyConfig = {
   notes: "",
 };
 
+// Provider-specific labels/hints — mirrors the web's providerOptions so the
+// form speaks each provider's language (Exotel "ExoPhone", Twilio "Auth
+// Token", Plivo "Auth ID", …).
 const PROVIDER_OPTIONS = [
-  { value: "EXOTEL", label: "Exotel", hint: "Best first choice for India calling." },
-  { value: "TWILIO", label: "Twilio", hint: "Good for Canada and international calling." },
-  { value: "PLIVO",  label: "Plivo",  hint: "Flexible provider for international calling." },
+  {
+    value: "EXOTEL",
+    label: "Exotel",
+    hint: "Best first choice for India calling.",
+    accountLabel: "Account SID",
+    apiKeyLabel: "API Key",
+    tokenLabel: "API Token",
+    callerLabel: "Caller ID / ExoPhone",
+    inboundLabel: "Inbound ExoPhone",
+    basePlaceholder: "https://api.exotel.com",
+    baseHelp: "Leave blank to use https://api.exotel.com. If Exotel gives a region-specific URL, paste it here.",
+    webhookTitle: "Inbound call webhook for Exotel",
+    webhookHelp: "Add this URL inside the customer's Exotel incoming call Landing Flow.",
+  },
+  {
+    value: "TWILIO",
+    label: "Twilio",
+    hint: "Good for Canada and international calling.",
+    accountLabel: "Account SID",
+    apiKeyLabel: "API Key (optional)",
+    tokenLabel: "Auth Token",
+    callerLabel: "Twilio Phone Number",
+    inboundLabel: "Inbound Twilio Number",
+    basePlaceholder: "https://api.twilio.com",
+    baseHelp: "Leave blank to use https://api.twilio.com. Twilio click-to-call calls the agent first, then bridges the customer.",
+    webhookTitle: "Twilio Voice URL and status callback",
+    webhookHelp: "Use the Voice URL for 'A call comes in'. Use the Status Callback URL for completed call updates, recordings, and call history.",
+  },
+  {
+    value: "PLIVO",
+    label: "Plivo",
+    hint: "Flexible provider for India, Canada, and international calling.",
+    accountLabel: "Auth ID",
+    apiKeyLabel: "Auth ID / API Key",
+    tokenLabel: "Auth Token",
+    callerLabel: "Plivo Phone Number",
+    inboundLabel: "Inbound Plivo Number",
+    basePlaceholder: "https://api.plivo.com",
+    baseHelp: "Leave blank to use https://api.plivo.com. Plivo click-to-call calls the agent first, then bridges the customer.",
+    webhookTitle: "Inbound call webhook for Plivo",
+    webhookHelp: "Use this URL in Plivo application answer/callback settings for inbound and completed call updates.",
+  },
 ];
+
+function defaultRegionForProvider(provider: string): string {
+  if (provider === "TWILIO") return "CA";
+  if (provider === "EXOTEL") return "IN";
+  return "";
+}
+
+// The backend's inboundWebhookUrl ends in /webhook/{tenantId}/{provider}.
+// Rewrite the provider segment so the shown URL always matches the selected
+// provider, and derive the Voice URL (Twilio/Plivo) from the webhook path.
+function providerWebhookUrl(baseUrl: string, provider: string): string {
+  if (!baseUrl) return "";
+  return baseUrl.replace(/\/webhook\/(\d+)\/[^/?#]+/i, `/webhook/$1/${String(provider || "exotel").toLowerCase()}`);
+}
+
+function providerVoiceUrl(baseUrl: string, provider: string): string {
+  if (!baseUrl) return "";
+  return providerWebhookUrl(baseUrl, provider).replace(/\/webhook\//i, "/voice/");
+}
+
+// Blank credentials for a provider switch, so Exotel/Twilio/Plivo data never
+// mix (same rule as web's emptyProviderFields).
+function emptyProviderFields(provider: string) {
+  return {
+    provider,
+    active: false,
+    clickToCallEnabled: false,
+    accountSid: "",
+    apiKey: "",
+    apiBaseUrl: "",
+    apiToken: "",
+    callerId: "",
+    inboundNumber: "",
+    webhookSecret: "",
+    region: defaultRegionForProvider(provider),
+    notes: "",
+  };
+}
 
 interface CallReport {
   totalCalls?: number;
@@ -465,7 +545,27 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
   }, []);
 
   function update(field: keyof TelephonyConfig, value: string | boolean) {
-    setConfig((cur) => ({ ...cur, [field]: value }));
+    setConfig((cur) => {
+      // Only one provider can be active at a time (web parity): switching is
+      // locked while the current provider is active, and switching to a new
+      // provider starts with blank credentials so provider data never mixes.
+      if (field === "provider" && typeof value === "string") {
+        if (cur.active && value !== cur.provider) {
+          setError(`Deactivate ${cur.provider} before switching to another provider.`);
+          return cur;
+        }
+        if (value === cur.provider) return cur;
+        setHasToken(false);
+        setHasWebhookSecret(false);
+        setError("");
+        return {
+          ...cur,
+          ...emptyProviderFields(value),
+          inboundWebhookUrl: cur.inboundWebhookUrl,
+        };
+      }
+      return { ...cur, [field]: value };
+    });
   }
 
   async function save() {
@@ -510,49 +610,59 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
       <FieldLabel>Provider</FieldLabel>
       <View style={s.chipWrap}>
         {PROVIDER_OPTIONS.map((p) => {
-          const active = config.provider === p.value;
+          const selected = config.provider === p.value;
+          const locked = config.active && !selected;
           return (
             <TouchableOpacity
               key={p.value}
-              style={[s.chip, active && s.chipActive]}
+              style={[s.chip, selected && s.chipActive, locked && { opacity: 0.45 }]}
               onPress={() => update("provider", p.value)}
+              disabled={locked}
             >
-              <Text style={[s.chipText, active && s.chipTextActive]}>{p.label}</Text>
+              <Text style={[s.chipText, selected && s.chipTextActive]}>
+                {p.label}{locked ? " 🔒" : ""}
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
+      <Text style={s.providerLockHint}>
+        {config.active
+          ? `${activeProvider.label} is active — deactivate it before switching provider.`
+          : "Only one provider can be active at a time. Switching starts with blank credentials so provider data never mixes."}
+      </Text>
 
       <View style={s.field}>
         <FieldLabel>Region</FieldLabel>
         <TextInput style={s.input} value={config.region} onChangeText={(v) => update("region", v)} placeholder="IN, CA, US" placeholderTextColor="#9ca3af" autoCapitalize="characters" />
       </View>
       <View style={s.field}>
-        <FieldLabel>Account SID / App ID</FieldLabel>
+        <FieldLabel>{activeProvider.accountLabel}</FieldLabel>
         <TextInput style={s.input} value={config.accountSid} onChangeText={(v) => update("accountSid", v)} placeholder="Provider account identifier" placeholderTextColor="#9ca3af" autoCapitalize="none" />
       </View>
       <View style={s.field}>
-        <FieldLabel>API Key</FieldLabel>
+        <FieldLabel>{activeProvider.apiKeyLabel}</FieldLabel>
         <TextInput style={s.input} value={config.apiKey} onChangeText={(v) => update("apiKey", v)} placeholder="Provider API key" placeholderTextColor="#9ca3af" autoCapitalize="none" />
       </View>
       <View style={s.field}>
         <FieldLabel>API Base URL</FieldLabel>
-        <TextInput style={s.input} value={config.apiBaseUrl} onChangeText={(v) => update("apiBaseUrl", v)} placeholder="https://api.exotel.com" placeholderTextColor="#9ca3af" autoCapitalize="none" keyboardType="url" />
+        <TextInput style={s.input} value={config.apiBaseUrl} onChangeText={(v) => update("apiBaseUrl", v)} placeholder={activeProvider.basePlaceholder} placeholderTextColor="#9ca3af" autoCapitalize="none" keyboardType="url" />
+        <Text style={s.fieldHelp}>{activeProvider.baseHelp}</Text>
       </View>
       <View style={s.field}>
-        <FieldLabel>API Token</FieldLabel>
-        <TextInput style={s.input} value={config.apiToken} onChangeText={(v) => update("apiToken", v)} placeholder={hasToken ? "Saved token hidden" : "Provider API token"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
+        <FieldLabel>{activeProvider.tokenLabel}</FieldLabel>
+        <TextInput style={s.input} value={config.apiToken} onChangeText={(v) => update("apiToken", v)} placeholder={hasToken ? "Saved token hidden" : "Provider token"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
       </View>
       <View style={s.field}>
         <FieldLabel>Webhook Secret</FieldLabel>
         <TextInput style={s.input} value={config.webhookSecret} onChangeText={(v) => update("webhookSecret", v)} placeholder={hasWebhookSecret ? "Saved secret hidden" : "Optional callback verification secret"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
       </View>
       <View style={s.field}>
-        <FieldLabel>Caller ID</FieldLabel>
+        <FieldLabel>{activeProvider.callerLabel}</FieldLabel>
         <TextInput style={s.input} value={config.callerId} onChangeText={(v) => update("callerId", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
       </View>
       <View style={s.field}>
-        <FieldLabel>Inbound Number</FieldLabel>
+        <FieldLabel>{activeProvider.inboundLabel}</FieldLabel>
         <TextInput style={s.input} value={config.inboundNumber} onChangeText={(v) => update("inboundNumber", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
       </View>
 
@@ -570,12 +680,40 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
         <TextInput style={[s.input, s.inputMultiline]} value={config.notes} onChangeText={(v) => update("notes", v)} placeholder="Example: Exotel number, support contact, provider account owner." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
       </View>
 
-      {!!config.inboundWebhookUrl && (
-        <View style={s.webhookBox}>
-          <Text style={s.webhookLabel}>Inbound webhook URL (add in the provider's incoming-call flow)</Text>
-          <Text style={s.webhookUrl} selectable>{config.inboundWebhookUrl}</Text>
-        </View>
-      )}
+      {!!config.inboundWebhookUrl && (() => {
+        const webhookUrl = providerWebhookUrl(config.inboundWebhookUrl, config.provider);
+        const voiceUrl = providerVoiceUrl(config.inboundWebhookUrl, config.provider);
+        const needsVoiceUrl = config.provider === "TWILIO" || config.provider === "PLIVO";
+        return (
+          <View style={s.webhookBox}>
+            <Text style={s.webhookLabel}>{activeProvider.webhookTitle}</Text>
+            <Text style={s.webhookHelp}>{activeProvider.webhookHelp}</Text>
+
+            {needsVoiceUrl && (
+              <>
+                <Text style={s.webhookSubLabel}>Voice URL — for "A call comes in" (returns TwiML)</Text>
+                <Text style={s.webhookUrl} selectable>{voiceUrl}</Text>
+              </>
+            )}
+
+            <Text style={s.webhookSubLabel}>
+              {needsVoiceUrl ? "Status Callback URL — call status, completed calls, recordings" : "Base webhook URL"}
+            </Text>
+            <Text style={s.webhookUrl} selectable>{webhookUrl}</Text>
+
+            <Text style={s.webhookSubLabel}>Missed / No Answer branch</Text>
+            <Text style={s.webhookUrl} selectable>{`${webhookUrl}?Status=NO_ANSWER`}</Text>
+
+            <Text style={s.webhookSubLabel}>Answered / Completed branch</Text>
+            <Text style={s.webhookUrl} selectable>{`${webhookUrl}?Status=COMPLETED`}</Text>
+
+            <Text style={s.webhookHelp}>
+              Long-press any URL to copy. Incoming calls appear in Call Logs, unknown numbers become
+              phone leads, and missed calls create follow-up tasks automatically.
+            </Text>
+          </View>
+        );
+      })()}
 
       <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
         {saving ? (
@@ -854,18 +992,18 @@ function NewCallSheet({
               />
             </View>
             <View style={s.field}>
-              <FieldLabel>Customer number</FieldLabel>
+              <FieldLabel>Customer number to connect after agent answers</FieldLabel>
               <TextInput
                 style={s.input}
                 value={customerNumber}
                 onChangeText={setCustomerNumber}
                 keyboardType="phone-pad"
-                placeholder="+91…"
+                placeholder="+91 customer number"
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={s.field}>
-              <FieldLabel>Agent number (optional)</FieldLabel>
+              <FieldLabel>Agent number that rings first (optional)</FieldLabel>
               <TextInput
                 style={s.input}
                 value={agentNumber}
@@ -874,6 +1012,10 @@ function NewCallSheet({
                 placeholder="Uses your mapping if blank"
                 placeholderTextColor="#9ca3af"
               />
+              <Text style={s.fieldHelp}>
+                Do not enter the customer number here — this should be your agent phone. The provider
+                rings the agent first, then bridges the customer.
+              </Text>
             </View>
             <View style={s.field}>
               <FieldLabel>Notes</FieldLabel>
@@ -1701,8 +1843,15 @@ const s = StyleSheet.create({
     fontFamily: mediumFont,
   },
   webhookBox: { backgroundColor: "#eff6ff", borderRadius: 12, padding: 12, gap: 5 },
-  webhookLabel: { fontSize: 11.5, fontWeight: "700", color: "#1e40af" },
-  webhookUrl: { fontSize: 11.5, color: "#1f2937" },
+  webhookLabel: { fontSize: 12.5, fontWeight: "700", color: "#1e40af" },
+  webhookHelp: { fontSize: 11.5, color: "#1e40af", lineHeight: 16 },
+  webhookSubLabel: { fontSize: 10.5, fontWeight: "700", color: "#6b7280", marginTop: 6, textTransform: "uppercase", letterSpacing: 0.3 },
+  webhookUrl: {
+    fontSize: 11.5, color: "#1f2937", backgroundColor: "#fff",
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6,
+  },
+  providerLockHint: { fontSize: 11.5, color: "#6b7280", lineHeight: 16 },
+  fieldHelp: { fontSize: 11.5, color: "#9ca3af", lineHeight: 16 },
 
   // Agent mapping
   selectBox: {
