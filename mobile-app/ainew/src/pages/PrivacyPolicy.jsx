@@ -134,7 +134,6 @@ export default function PrivacyPolicy() {
           </section>
 
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-7 text-amber-900">
-            This page is a general privacy policy template for product use and Indian compliance readiness. Techoceanhub Private Limited should have final legal review before publishing for production or app marketplace submissions.
           </section>
         </div>
       </section>

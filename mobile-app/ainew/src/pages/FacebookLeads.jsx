@@ -115,8 +115,8 @@ export default function FacebookLeads() {
       const response = await api.get("/api/facebook-leads/pages");
       const nextPages = Array.isArray(response.data) ? response.data : [];
       setPages(nextPages);
-      if (!pageId && nextPages.length > 0) {
-        setPageId(nextPages[0].id);
+      if (pageId && !nextPages.some((page) => String(page.id) === String(pageId))) {
+        setPageId("");
       }
     } catch (err) {
       setError(errorMessage(err, "Unable to load Facebook pages. Reconnect Meta with lead permissions."));
@@ -335,7 +335,7 @@ export default function FacebookLeads() {
   }, []);
 
   useEffect(() => {
-    if (pageId) loadForms(pageId);
+    loadForms(pageId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
 

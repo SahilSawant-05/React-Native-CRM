@@ -164,7 +164,6 @@ export default function TermsAndConditions() {
           </section>
 
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-7 text-amber-900">
-            These Terms are a product-ready draft and should be reviewed by legal counsel before final production publishing, payment gateway submission, or app marketplace review.
           </section>
         </div>
       </section>

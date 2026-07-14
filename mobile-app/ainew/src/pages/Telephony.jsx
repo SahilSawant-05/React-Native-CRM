@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   Clipboard,
   Headphones,
@@ -10,6 +13,7 @@ import {
   RefreshCw,
   Save,
   Settings,
+  X,
   UserPlus,
 } from "lucide-react";
 import api from "../api/axios";
@@ -20,9 +24,60 @@ import AiCallSummaryButton from "../components/ai/AiCallSummaryButton";
 import CallTranscriptButton from "../components/ai/CallTranscriptButton";
 
 const providerOptions = [
-  { value: "EXOTEL", label: "Exotel", hint: "Best first choice for India calling." },
-  { value: "TWILIO", label: "Twilio", hint: "Good for Canada and international calling." },
-  { value: "PLIVO", label: "Plivo", hint: "Flexible provider for international calling." },
+  {
+    value: "EXOTEL",
+    label: "Exotel",
+    hint: "Best first choice for India calling.",
+    accountLabel: "Account SID",
+    apiKeyLabel: "API Key",
+    tokenLabel: "API Token",
+    callerLabel: "Caller ID / ExoPhone",
+    inboundLabel: "Inbound ExoPhone",
+    basePlaceholder: "https://api.exotel.com",
+    baseHelp: "Leave blank to use https://api.exotel.com. If Exotel gives a region-specific URL, paste it here.",
+    webhookTitle: "Inbound call webhook for Exotel",
+    webhookHelp: "Add this URL inside the customer's Exotel incoming call Landing Flow.",
+    logoType: "word",
+    logoText: "exo",
+    logoClass: "bg-gradient-to-br from-orange-500 to-rose-500 text-white",
+    logoRing: "ring-orange-100",
+  },
+  {
+    value: "TWILIO",
+    label: "Twilio",
+    hint: "Good for Canada and international calling.",
+    accountLabel: "Account SID",
+    apiKeyLabel: "API Key (optional)",
+    tokenLabel: "Auth Token",
+    callerLabel: "Twilio Phone Number",
+    inboundLabel: "Inbound Twilio Number",
+    basePlaceholder: "https://api.twilio.com",
+    baseHelp: "Leave blank to use https://api.twilio.com. Twilio click-to-call calls the agent first, then bridges the customer.",
+    webhookTitle: "Twilio Voice URL and status callback",
+    webhookHelp: "Use the Voice URL for 'A call comes in'. Use the Status Callback URL for completed call updates, recordings, and call history.",
+    logoType: "twilio",
+    logoText: "Tw",
+    logoClass: "bg-red-600 text-white",
+    logoRing: "ring-red-100",
+  },
+  {
+    value: "PLIVO",
+    label: "Plivo",
+    hint: "Flexible provider for India, Canada, and international calling.",
+    accountLabel: "Auth ID",
+    apiKeyLabel: "Auth ID / API Key",
+    tokenLabel: "Auth Token",
+    callerLabel: "Plivo Phone Number",
+    inboundLabel: "Inbound Plivo Number",
+    basePlaceholder: "https://api.plivo.com",
+    baseHelp: "Leave blank to use https://api.plivo.com. Plivo click-to-call calls the agent first, then bridges the customer.",
+    webhookTitle: "Inbound call webhook for Plivo",
+    webhookHelp: "Use this URL in Plivo application answer/callback settings for inbound and completed call updates.",
+    logoType: "word",
+    logoText: "plivo",
+    logoClass: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white",
+    logoRing: "ring-cyan-100",
+  },
 ];
 
 const statusOptions = ["ALL", "REQUESTED", "QUEUED", "RINGING", "ANSWERED", "COMPLETED", "MISSED", "FAILED", "BUSY", "NO_ANSWER"];
@@ -36,7 +91,41 @@ const dispositionOptions = [
 ];
 const callNoteChips = ["Interested", "Asked for pricing", "Wants callback", "Wrong number", "Not reachable"];
 
+function defaultRegionForProvider(provider) {
+  if (provider === "TWILIO") return "CA";
+  if (provider === "EXOTEL") return "IN";
+  return "";
+}
+
+function providerWebhookUrl(baseUrl, provider) {
+  if (!baseUrl) return "";
+  return baseUrl.replace(/\/webhook\/(\d+)\/[^/?#]+/i, `/webhook/$1/${String(provider || "exotel").toLowerCase()}`);
+}
+
+function providerVoiceUrl(baseUrl, provider) {
+  if (!baseUrl) return "";
+  return providerWebhookUrl(baseUrl, provider).replace(/\/webhook\//i, "/voice/");
+}
+
+function emptyProviderFields(provider) {
+  return {
+    provider,
+    active: false,
+    clickToCallEnabled: false,
+    accountSid: "",
+    apiKey: "",
+    apiBaseUrl: "",
+    apiToken: "",
+    callerId: "",
+    inboundNumber: "",
+    webhookSecret: "",
+    region: defaultRegionForProvider(provider),
+    notes: "",
+  };
+}
+
 const defaultConfig = {
+  tenantId: null,
   provider: "EXOTEL",
   active: false,
   clickToCallEnabled: false,
@@ -51,6 +140,31 @@ const defaultConfig = {
   region: "IN",
   notes: "",
 };
+
+function ProviderLogo({ provider, selected }) {
+  if (provider.logoType === "twilio") {
+    return (
+      <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl shadow-sm ring-4 ${
+        selected ? provider.logoRing : "ring-gray-100"
+      } ${provider.logoClass}`}>
+        <span className="grid grid-cols-2 gap-1">
+          <span className="h-2 w-2 rounded-full bg-white" />
+          <span className="h-2 w-2 rounded-full bg-white" />
+          <span className="h-2 w-2 rounded-full bg-white" />
+          <span className="h-2 w-2 rounded-full bg-white" />
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={`inline-flex h-12 min-w-12 items-center justify-center rounded-2xl px-2.5 text-sm font-black tracking-tight shadow-sm ring-4 ${
+      selected ? provider.logoRing : "ring-gray-100"
+    } ${provider.logoClass}`}>
+      {provider.logoText}
+    </span>
+  );
+}
 
 function apiErrorMessage(error, fallback) {
   const data = error?.response?.data;
@@ -208,6 +322,11 @@ export default function Telephony() {
   const [savingDisposition, setSavingDisposition] = useState(false);
   const [installingTemplates, setInstallingTemplates] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [webhookInstructionsOpen, setWebhookInstructionsOpen] = useState(false);
+  const [testCallOpen, setTestCallOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
+  const [automationInstallResult, setAutomationInstallResult] = useState(null);
   const [webhookEvents, setWebhookEvents] = useState([]);
   const [webhookPageInfo, setWebhookPageInfo] = useState({ totalElements: 0 });
   const [webhookLoading, setWebhookLoading] = useState(false);
@@ -221,8 +340,12 @@ export default function Telephony() {
     () => providerOptions.find((provider) => provider.value === config.provider) || providerOptions[0],
     [config.provider]
   );
-  const noAnswerWebhookUrl = config.inboundWebhookUrl ? `${config.inboundWebhookUrl}?Status=NO_ANSWER` : "";
-  const completedWebhookUrl = config.inboundWebhookUrl ? `${config.inboundWebhookUrl}?Status=COMPLETED` : "";
+  const selectedWebhookUrl = providerWebhookUrl(config.inboundWebhookUrl, config.provider);
+  const selectedVoiceUrl = providerVoiceUrl(config.inboundWebhookUrl, config.provider);
+  const needsSeparateVoiceUrl = config.provider === "TWILIO" || config.provider === "PLIVO";
+  const activeProviderLocked = Boolean(config.active);
+  const noAnswerWebhookUrl = selectedWebhookUrl ? `${selectedWebhookUrl}?Status=NO_ANSWER` : "";
+  const completedWebhookUrl = selectedWebhookUrl ? `${selectedWebhookUrl}?Status=COMPLETED` : "";
   const webhookStatus = useMemo(
     () => webhookHealth(webhookEvents, webhookPageInfo.totalElements),
     [webhookEvents, webhookPageInfo.totalElements]
@@ -233,6 +356,7 @@ export default function Telephony() {
       const response = await api.get("/api/telephony/config");
       const data = response.data || {};
       setConfig({
+        tenantId: data.tenantId || null,
         provider: data.provider || "EXOTEL",
         active: Boolean(data.active),
         clickToCallEnabled: Boolean(data.clickToCallEnabled),
@@ -282,6 +406,35 @@ export default function Telephony() {
     }
   };
 
+  const changeCallPageSize = (size) => {
+    const nextSize = Number(size);
+    setPageInfo((current) => ({ ...current, page: 0, size: nextSize }));
+    setLoading(true);
+    setError("");
+    api.get("/api/telephony/calls", {
+      params: {
+        status,
+        disposition,
+        userId: agentUserId || undefined,
+        page: 0,
+        size: nextSize,
+        ...dateRangeParams(dateRange),
+      },
+    }).then((response) => {
+      setCalls(response.data?.items || []);
+      setPageInfo({
+        page: response.data?.page ?? 0,
+        size: response.data?.size ?? nextSize,
+        totalElements: response.data?.totalElements ?? 0,
+        totalPages: response.data?.totalPages ?? 0,
+      });
+    }).catch((err) => {
+      setError(apiErrorMessage(err, "Failed to load call logs."));
+    }).finally(() => {
+      setLoading(false);
+    });
+  };
+
   const loadTelephonySummary = async () => {
     try {
       const [healthResponse, reportResponse] = await Promise.all([
@@ -318,7 +471,7 @@ export default function Telephony() {
     try {
       const response = await api.get("/api/webhook-events", {
         params: {
-          provider: "TELEPHONY_EXOTEL",
+          provider: `TELEPHONY_${config.provider || "EXOTEL"}`,
           page: 0,
           size: 8,
         },
@@ -344,7 +497,7 @@ export default function Telephony() {
     if (diagnosticsOpen) {
       loadWebhookDiagnostics();
     }
-  }, [diagnosticsOpen]);
+  }, [diagnosticsOpen, config.provider]);
 
   useEffect(() => {
     loadCalls(0);
@@ -352,7 +505,23 @@ export default function Telephony() {
   }, [status, disposition, agentUserId, dateRange.fromDate, dateRange.toDate]);
 
   const updateConfig = (field, value) => {
-    setConfig((current) => ({ ...current, [field]: value }));
+    setConfig((current) => {
+      if (field === "provider") {
+        if (current.active && value !== current.provider) {
+          setInfo("Deactivate the current provider before switching to another provider.");
+          return current;
+        }
+        setHasToken(false);
+        setHasWebhookSecret(false);
+        return {
+          ...current,
+          ...emptyProviderFields(value),
+          tenantId: current.tenantId,
+          inboundWebhookUrl: current.inboundWebhookUrl,
+        };
+      }
+      return { ...current, [field]: value };
+    });
   };
 
   const saveConfig = async (event) => {
@@ -398,6 +567,7 @@ export default function Telephony() {
       }
       setCallForm((current) => ({ ...current, notes: "" }));
       await loadCalls(0);
+      setTestCallOpen(false);
     } catch (err) {
       setError(apiErrorMessage(err, "Failed to start call."));
     } finally {
@@ -530,12 +700,19 @@ export default function Telephony() {
     setInstallingTemplates(true);
     setError("");
     setInfo("");
+    setAutomationInstallResult(null);
     try {
       const response = await api.post("/api/telephony/automation-templates/call-outcomes");
       const createdCount = response.data?.createdCount ?? 0;
-      setInfo(createdCount > 0
-        ? `${createdCount} call automation template${createdCount === 1 ? "" : "s"} installed. You can edit them anytime in Automation Rules.`
-        : response.data?.message || "Call automation templates were already installed.");
+      const message = createdCount > 0
+        ? `${createdCount} starter rule${createdCount === 1 ? "" : "s"} created.`
+        : response.data?.message || "Starter rules already exist.";
+      setInfo(`${message} Open Automation Rules to review, activate, pause, or edit them.`);
+      setAutomationInstallResult({
+        createdCount,
+        message,
+      });
+      setAutomationOpen(true);
     } catch (err) {
       setError(apiErrorMessage(err, "Failed to install call automation templates."));
     } finally {
@@ -580,96 +757,7 @@ export default function Telephony() {
           </div>
         )}
 
-        <section className="grid gap-4 lg:grid-cols-[1.2fr_2fr]">
-          <div className={`rounded-2xl border p-5 shadow-sm ${healthTone(health?.status)}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-wide">Telephony health</p>
-                <h2 className="mt-2 text-xl font-black">{String(health?.status || "Loading").replaceAll("_", " ")}</h2>
-              </div>
-              <Headphones size={22} />
-            </div>
-            <p className="mt-3 text-sm font-semibold leading-6">{health?.recommendation || "Checking provider callbacks and recording status..."}</p>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold">
-              <div className="rounded-lg bg-white/70 p-3">
-                <p className="text-gray-500">Webhook events</p>
-                <p className="mt-1 text-lg text-gray-950">{health?.totalWebhookEvents ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-white/70 p-3">
-                <p className="text-gray-500">Failed callbacks</p>
-                <p className="mt-1 text-lg text-gray-950">{health?.failedWebhookEvents ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-white/70 p-3">
-                <p className="text-gray-500">Recordings</p>
-                <p className="mt-1 text-lg text-gray-950">{health?.recordingAvailableCount ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-white/70 p-3">
-                <p className="text-gray-500">Missing rec.</p>
-                <p className="mt-1 text-lg text-gray-950">{health?.recordingMissingTerminalCount ?? 0}</p>
-              </div>
-            </div>
-            {health?.lastWebhookFailure && (
-              <p className="mt-3 rounded-lg bg-white/70 p-3 text-xs font-semibold leading-5 text-red-700">
-                Last failure: {health.lastWebhookFailure}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Call report</p>
-                <h2 className="mt-1 text-xl font-black text-gray-950">Current filter performance</h2>
-              </div>
-              <p className="text-xs font-semibold text-gray-500">Uses selected agent and date range</p>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                ["Total calls", report?.totalCalls ?? 0],
-                ["Answered", report?.answeredCalls ?? 0],
-                ["Missed / busy", report?.missedCalls ?? 0],
-                ["Failed", report?.failedCalls ?? 0],
-                ["Inbound", report?.inboundCalls ?? 0],
-                ["Outbound", report?.outboundCalls ?? 0],
-                ["Transcripts", report?.transcriptsGenerated ?? 0],
-                ["Follow-up tasks", report?.followUpTasksCreated ?? 0],
-                ["Call minutes", report?.callMinutesUsedThisMonth ?? 0],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                  <p className="text-xs font-bold text-gray-500">{label}</p>
-                  <p className="mt-1 text-2xl font-black text-gray-950">{value}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-blue-800">
-                <p className="text-xs font-bold">Avg. duration</p>
-                <p className="mt-1 text-lg font-black">{Math.round(report?.averageDurationSeconds || 0)}s</p>
-              </div>
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-emerald-800">
-                <p className="text-xs font-bold">Recording available</p>
-                <p className="mt-1 text-lg font-black">{report?.recordingAvailable ?? 0}</p>
-              </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-amber-800">
-                <p className="text-xs font-bold">Recording missing</p>
-                <p className="mt-1 text-lg font-black">{report?.recordingMissing ?? 0}</p>
-              </div>
-              <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-violet-800 sm:col-span-3">
-                <p className="text-xs font-bold">Tracked call minutes</p>
-                <p className="mt-1 text-lg font-black">
-                  {report?.callMinutesLimit
-                    ? `${report.callMinutesUsedThisMonth || 0} / ${report.callMinutesLimit} minutes used`
-                    : `${report?.callMinutesUsedThisMonth || 0} minutes used`}
-                </p>
-                <p className="mt-1 text-xs font-semibold">
-                  Reporting only for third-party telephony. Exotel, Twilio, or Plivo charges are billed separately by the provider.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="space-y-5">
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
@@ -679,26 +767,78 @@ export default function Telephony() {
                 </div>
                 <p className="mt-1 text-sm text-gray-500">{activeProvider.hint}</p>
               </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${
-                config.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
-              }`}>
-                {config.active ? "Active" : "Not active"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTestCallOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-black text-teal-700 hover:bg-teal-100"
+                >
+                  <Phone size={14} />
+                  Test call
+                </button>
+                <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${
+                  config.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
+                }`}>
+                  {config.active ? "Active" : "Not active"}
+                </span>
+              </div>
             </div>
 
             <form onSubmit={saveConfig} className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Provider
-                <select
-                  value={config.provider}
-                  onChange={(event) => updateConfig("provider", event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  {providerOptions.map((provider) => (
-                    <option key={provider.value} value={provider.value}>{provider.label}</option>
-                  ))}
-                </select>
-              </label>
+              <div className="md:col-span-2">
+                <div className="grid gap-3 md:grid-cols-3">
+                  {providerOptions.map((provider) => {
+                    const selected = config.provider === provider.value;
+                    const disabled = activeProviderLocked && !selected;
+                    return (
+                      <button
+                        key={provider.value}
+                        type="button"
+                        onClick={() => updateConfig("provider", provider.value)}
+                        disabled={disabled}
+                        className={`rounded-2xl border p-4 text-left transition ${
+                          selected
+                            ? "border-teal-300 bg-teal-50 shadow-sm"
+                            : disabled
+                              ? "cursor-not-allowed border-gray-100 bg-gray-50 opacity-60"
+                              : "border-gray-200 bg-white hover:border-teal-200 hover:bg-teal-50/50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <ProviderLogo provider={provider} selected={selected} />
+                          {selected && (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${
+                              config.active ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                            }`}>
+                              {config.active ? "Active" : "Selected"}
+                            </span>
+                          )}
+                          {disabled && (
+                            <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black uppercase text-gray-500">
+                              Locked
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-4 flex items-center gap-2">
+                          <p className="text-base font-black text-gray-950">{provider.label}</p>
+                          <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase text-gray-500 ring-1 ring-gray-100">
+                            {provider.value}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-500">{provider.hint}</p>
+                        {disabled && (
+                          <p className="mt-3 rounded-lg bg-white px-2 py-2 text-xs font-bold text-gray-600">
+                            Deactivate {activeProvider.label} before switching.
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+                  Only one telephony provider can be active at a time. Switching to another inactive provider starts with blank credentials so Exotel, Twilio, and Plivo data do not mix.
+                </p>
+              </div>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
                 Region
@@ -711,7 +851,7 @@ export default function Telephony() {
               </label>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Account SID / App ID
+                {activeProvider.accountLabel || "Account SID / App ID"}
                 <input
                   value={config.accountSid}
                   onChange={(event) => updateConfig("accountSid", event.target.value)}
@@ -721,7 +861,7 @@ export default function Telephony() {
               </label>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
-                API Key
+                {activeProvider.apiKeyLabel || "API Key"}
                 <input
                   value={config.apiKey}
                   onChange={(event) => updateConfig("apiKey", event.target.value)}
@@ -735,103 +875,159 @@ export default function Telephony() {
                 <input
                   value={config.apiBaseUrl}
                   onChange={(event) => updateConfig("apiBaseUrl", event.target.value)}
-                  placeholder="https://api.exotel.com"
+                  placeholder={activeProvider.basePlaceholder || "https://api.exotel.com"}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
                 <span className="block text-xs font-normal text-gray-500">
-                  Leave blank to use https://api.exotel.com. If Exotel gives a region-specific URL, paste it here.
+                  {activeProvider.baseHelp || "Leave blank to use the provider default API URL."}
                 </span>
               </label>
 
               <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 md:col-span-2">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-sm font-extrabold text-blue-950">Inbound call webhook for Exotel</p>
+                    <p className="text-sm font-extrabold text-blue-950">{activeProvider.webhookTitle || "Inbound call webhook"}</p>
                     <p className="mt-1 text-sm text-blue-800">
-                      Add these URLs inside the customer's Exotel incoming call Landing Flow. This is required for incoming and missed calls to appear in CRM.
+                      {activeProvider.webhookHelp || "Add these URLs in your provider callback settings. This is required for incoming and missed calls to appear in CRM."}
+                    </p>
+                    <p className="mt-2 text-xs font-bold text-blue-700">
+                      {needsSeparateVoiceUrl
+                        ? `Setup the Voice URL and Status Callback URL in ${activeProvider.label} so inbound calls, missed calls, recordings, and completed calls update automatically in CRM.`
+                        : `Setup this webhook in ${activeProvider.label} so inbound, missed, answered, and completed calls update automatically in CRM.`}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => copyWebhookUrl(config.inboundWebhookUrl, "Base inbound webhook URL copied.")}
-                    disabled={!config.inboundWebhookUrl}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Clipboard size={15} />
-                    {copiedWebhook ? "Copied" : "Copy base URL"}
-                  </button>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-blue-100 bg-white p-3">
-                  <p className="text-xs font-extrabold uppercase tracking-wide text-blue-700">Exotel setup steps</p>
-                  <ol className="mt-2 space-y-1 text-sm font-semibold text-gray-700">
-                    <li>1. Open Exotel incoming number and its Landing Flow.</li>
-                    <li>2. Add an HTTP Call, Passthru, or Webhook step.</li>
-                    <li>3. Use GET or POST and paste the correct URL based on the branch.</li>
-                    <li>4. Save and publish the Exotel flow.</li>
-                  </ol>
-                </div>
-
-                <div className="mt-3 rounded-lg border border-blue-100 bg-white px-3 py-2">
-                  <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-gray-500">Base webhook URL</p>
-                  <code className="block break-all text-xs font-bold text-gray-800">
-                    {config.inboundWebhookUrl || "Save telephony settings to generate webhook URL"}
-                  </code>
-                </div>
-
-                <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-xl border border-red-100 bg-red-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-extrabold text-red-800">Missed / No Answer branch</p>
-                        <p className="mt-1 text-xs font-semibold text-red-700">Use this when Exotel says no user answered, agent busy, or call not connected.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyWebhookUrl(noAnswerWebhookUrl, "No-answer webhook URL copied.")}
-                        disabled={!noAnswerWebhookUrl}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-red-700 disabled:opacity-60"
-                      >
-                        <Clipboard size={13} />
-                        Copy
-                      </button>
-                    </div>
-                    <code className="mt-2 block break-all rounded-lg bg-white px-2 py-2 text-xs font-bold text-gray-800">
-                      {noAnswerWebhookUrl || "Webhook URL will appear after settings load"}
-                    </code>
-                  </div>
-
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-extrabold text-emerald-800">Answered / Completed branch</p>
-                        <p className="mt-1 text-xs font-semibold text-emerald-700">Use this when the call is answered or completed successfully.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyWebhookUrl(completedWebhookUrl, "Completed-call webhook URL copied.")}
-                        disabled={!completedWebhookUrl}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-emerald-700 disabled:opacity-60"
-                      >
-                        <Clipboard size={13} />
-                        Copy
-                      </button>
-                    </div>
-                    <code className="mt-2 block break-all rounded-lg bg-white px-2 py-2 text-xs font-bold text-gray-800">
-                      {completedWebhookUrl || "Webhook URL will appear after settings load"}
-                    </code>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWebhookInstructionsOpen((current) => !current)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50"
+                    >
+                      {webhookInstructionsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                      {webhookInstructionsOpen ? "Hide setup" : "Setup instructions"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyWebhookUrl(needsSeparateVoiceUrl ? selectedVoiceUrl : selectedWebhookUrl, needsSeparateVoiceUrl ? "Voice URL copied." : "Base inbound webhook URL copied.")}
+                      disabled={!(needsSeparateVoiceUrl ? selectedVoiceUrl : selectedWebhookUrl)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-extrabold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Clipboard size={15} />
+                      {copiedWebhook ? "Copied" : needsSeparateVoiceUrl ? "Copy Voice URL" : "Copy URL"}
+                    </button>
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3 text-xs font-semibold text-blue-900">
-                  <p className="font-extrabold">After setup</p>
-                  <p className="mt-1">Incoming calls appear in Call Logs, unknown numbers become phone leads, existing contacts are linked automatically, and missed/no-answer calls create follow-up task and notification.</p>
-                  <p className="mt-2 text-blue-700">Outbound click-to-call callbacks are sent automatically by CRM. These URLs are only for incoming calls on the Exotel number.</p>
-                </div>
+                {webhookInstructionsOpen && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-blue-100 bg-white p-3">
+                      <p className="text-xs font-extrabold uppercase tracking-wide text-blue-700">{activeProvider.label} setup steps</p>
+                      <ol className="mt-2 space-y-1 text-sm font-semibold text-gray-700">
+                        <li>1. Open the provider phone number or voice application.</li>
+                        {needsSeparateVoiceUrl ? (
+                          <>
+                            <li>2. In “A call comes in”, choose Webhook, method POST, and paste the Voice URL.</li>
+                            <li>3. In status callback / recording callback, use POST and paste the Status Callback URL.</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>2. Add a webhook, status callback, or HTTP callback step.</li>
+                            <li>3. Use GET or POST and paste the correct URL based on the branch.</li>
+                          </>
+                        )}
+                        <li>4. Save and publish the provider call flow.</li>
+                      </ol>
+                    </div>
+
+                    {needsSeparateVoiceUrl && (
+                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-gray-500">Voice URL for “A call comes in”</p>
+                            <p className="text-xs font-semibold text-gray-500">Returns TwiML XML. Do not use the status callback URL here.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyWebhookUrl(selectedVoiceUrl, "Voice URL copied.")}
+                            disabled={!selectedVoiceUrl}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-blue-700 disabled:opacity-60"
+                          >
+                            <Clipboard size={13} />
+                            Copy
+                          </button>
+                        </div>
+                        <code className="mt-2 block break-all rounded-lg bg-slate-50 px-2 py-2 text-xs font-bold text-gray-800">
+                          {selectedVoiceUrl || "Save telephony settings to generate voice URL"}
+                        </code>
+                      </div>
+                    )}
+
+                    <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                      <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-gray-500">
+                        {needsSeparateVoiceUrl ? "Status callback URL" : "Base webhook URL"}
+                      </p>
+                      {needsSeparateVoiceUrl && (
+                        <p className="mb-2 text-xs font-semibold text-gray-500">Use this for call status, completed call, and recording callbacks. It returns CRM status JSON, not TwiML.</p>
+                      )}
+                      <code className="block break-all text-xs font-bold text-gray-800">
+                        {selectedWebhookUrl || "Save telephony settings to generate webhook URL"}
+                      </code>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-extrabold text-red-800">Missed / No Answer branch</p>
+                            <p className="mt-1 text-xs font-semibold text-red-700">Use this when {activeProvider.label} says no user answered, agent busy, or call not connected.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyWebhookUrl(noAnswerWebhookUrl, "No-answer webhook URL copied.")}
+                            disabled={!noAnswerWebhookUrl}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-red-700 disabled:opacity-60"
+                          >
+                            <Clipboard size={13} />
+                            Copy
+                          </button>
+                        </div>
+                        <code className="mt-2 block break-all rounded-lg bg-white px-2 py-2 text-xs font-bold text-gray-800">
+                          {noAnswerWebhookUrl || "Webhook URL will appear after settings load"}
+                        </code>
+                      </div>
+
+                      <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-extrabold text-emerald-800">Answered / Completed branch</p>
+                            <p className="mt-1 text-xs font-semibold text-emerald-700">Use this when the call is answered or completed successfully.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyWebhookUrl(completedWebhookUrl, "Completed-call webhook URL copied.")}
+                            disabled={!completedWebhookUrl}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-extrabold text-emerald-700 disabled:opacity-60"
+                          >
+                            <Clipboard size={13} />
+                            Copy
+                          </button>
+                        </div>
+                        <code className="mt-2 block break-all rounded-lg bg-white px-2 py-2 text-xs font-bold text-gray-800">
+                          {completedWebhookUrl || "Webhook URL will appear after settings load"}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-blue-100 bg-white p-3 text-xs font-semibold text-blue-900">
+                      <p className="font-extrabold">After setup</p>
+                      <p className="mt-1">Incoming calls appear in Call Logs, unknown numbers become phone leads, existing contacts are linked automatically, and missed/no-answer calls create follow-up task and notification.</p>
+                      <p className="mt-2 text-blue-700">Outbound click-to-call callbacks are sent automatically by CRM. These URLs are mainly for incoming calls on the provider number.</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
-                API Token
+                {activeProvider.tokenLabel || "API Token"}
                 <input
                   type="password"
                   value={config.apiToken}
@@ -853,7 +1049,7 @@ export default function Telephony() {
               </label>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Caller ID
+                {activeProvider.callerLabel || "Caller ID"}
                 <input
                   value={config.callerId}
                   onChange={(event) => updateConfig("callerId", event.target.value)}
@@ -863,7 +1059,7 @@ export default function Telephony() {
               </label>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Inbound Number
+                {activeProvider.inboundLabel || "Inbound Number"}
                 <input
                   value={config.inboundNumber}
                   onChange={(event) => updateConfig("inboundNumber", event.target.value)}
@@ -872,25 +1068,57 @@ export default function Telephony() {
                 />
               </label>
 
-              <label className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-semibold text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={config.active}
-                  onChange={(event) => updateConfig("active", event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Provider active
-              </label>
+              <div className={`rounded-xl border p-4 ${
+                config.active ? "border-emerald-100 bg-emerald-50" : "border-gray-200 bg-gray-50"
+              }`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-gray-950">Provider status</p>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">
+                      {config.active
+                        ? `${activeProvider.label} is active. Deactivate it before switching provider.`
+                        : "Inactive. You can switch provider or save this provider as active."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateConfig("active", !config.active)}
+                    className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black ${
+                      config.active
+                        ? "bg-red-100 text-red-700 hover:bg-red-200"
+                        : "bg-emerald-600 text-white hover:bg-emerald-700"
+                    }`}
+                  >
+                    {config.active ? "Deactivate" : "Make active"}
+                  </button>
+                </div>
+              </div>
 
-              <label className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm font-semibold text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={config.clickToCallEnabled}
-                  onChange={(event) => updateConfig("clickToCallEnabled", event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Enable click-to-call
-              </label>
+              <div className={`rounded-xl border p-4 ${
+                config.clickToCallEnabled ? "border-blue-100 bg-blue-50" : "border-gray-200 bg-gray-50"
+              }`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-gray-950">Click-to-call</p>
+                    <p className="mt-1 text-xs font-semibold text-gray-500">
+                      {config.clickToCallEnabled
+                        ? "Agents can start calls from Contact, Chat, Opportunity, and Telephony."
+                        : "Keep off while credentials are incomplete."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateConfig("clickToCallEnabled", !config.clickToCallEnabled)}
+                    className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black ${
+                      config.clickToCallEnabled
+                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                        : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {config.clickToCallEnabled ? "Enabled" : "Enable"}
+                  </button>
+                </div>
+              </div>
 
               <label className="space-y-1 text-sm font-semibold text-gray-700 md:col-span-2">
                 Internal notes
@@ -916,104 +1144,174 @@ export default function Telephony() {
             </form>
           </section>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="mb-5">
+        </div>
+
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setReportOpen((current) => !current)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <div>
               <div className="flex items-center gap-2 text-sm font-extrabold text-gray-950">
-                <PhoneCall size={18} />
-                Test Click-to-Call
+                <Headphones size={18} />
+                Health & Call Report
               </div>
               <p className="mt-1 text-sm text-gray-500">
-                Use contact ID or a direct customer number. Leave agent number blank to use the logged-in user's mapping.
+                View webhook health, call performance, recordings, transcripts, and tracked minutes only when needed.
               </p>
             </div>
+            <span className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-black ${healthTone(health?.status)}`}>
+              {String(health?.status || "Loading").replaceAll("_", " ")}
+              {reportOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </span>
+          </button>
 
-            <form onSubmit={startCall} className="space-y-4">
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Contact ID
-                <input
-                  value={callForm.contactId}
-                  onChange={(event) => setCallForm((current) => ({ ...current, contactId: event.target.value }))}
-                  inputMode="numeric"
-                  placeholder="Optional"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Customer number
-                <input
-                  value={callForm.customerNumber}
-                  onChange={(event) => setCallForm((current) => ({ ...current, customerNumber: event.target.value }))}
-                  placeholder="+91..."
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Agent number
-                <input
-                  value={callForm.agentNumber}
-                  onChange={(event) => setCallForm((current) => ({ ...current, agentNumber: event.target.value }))}
-                  placeholder="Optional if your number is mapped"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
-                Notes
-                <textarea
-                  value={callForm.notes}
-                  onChange={(event) => setCallForm((current) => ({ ...current, notes: event.target.value }))}
-                  rows={3}
-                  placeholder="Purpose of call"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={calling}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-extrabold text-white hover:bg-gray-800 disabled:opacity-60"
-              >
-                <Phone size={16} />
-                {calling ? "Starting..." : "Start tracked call"}
-              </button>
-            </form>
-          </section>
-        </div>
+          {reportOpen && (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_2fr]">
+              <div className={`rounded-2xl border p-5 ${healthTone(health?.status)}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-wide">Telephony health</p>
+                    <h2 className="mt-2 text-xl font-black">{String(health?.status || "Loading").replaceAll("_", " ")}</h2>
+                  </div>
+                  <Headphones size={22} />
+                </div>
+                <p className="mt-3 text-sm font-semibold leading-6">{health?.recommendation || "Checking provider callbacks and recording status..."}</p>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold">
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <p className="text-gray-500">Webhook events</p>
+                    <p className="mt-1 text-lg text-gray-950">{health?.totalWebhookEvents ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <p className="text-gray-500">Failed callbacks</p>
+                    <p className="mt-1 text-lg text-gray-950">{health?.failedWebhookEvents ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <p className="text-gray-500">Recordings</p>
+                    <p className="mt-1 text-lg text-gray-950">{health?.recordingAvailableCount ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <p className="text-gray-500">Missing rec.</p>
+                    <p className="mt-1 text-lg text-gray-950">{health?.recordingMissingTerminalCount ?? 0}</p>
+                  </div>
+                </div>
+                {health?.lastWebhookFailure && (
+                  <p className="mt-3 rounded-lg bg-white/70 p-3 text-xs font-semibold leading-5 text-red-700">
+                    Last failure: {health.lastWebhookFailure}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Call report</p>
+                    <h2 className="mt-1 text-xl font-black text-gray-950">Current filter performance</h2>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500">Uses selected agent and date range</p>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    ["Total calls", report?.totalCalls ?? 0],
+                    ["Answered", report?.answeredCalls ?? 0],
+                    ["Missed / busy", report?.missedCalls ?? 0],
+                    ["Failed", report?.failedCalls ?? 0],
+                    ["Inbound", report?.inboundCalls ?? 0],
+                    ["Outbound", report?.outboundCalls ?? 0],
+                    ["Transcripts", report?.transcriptsGenerated ?? 0],
+                    ["Follow-up tasks", report?.followUpTasksCreated ?? 0],
+                    ["Call minutes", report?.callMinutesUsedThisMonth ?? 0],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-gray-100 bg-white p-3">
+                      <p className="text-xs font-bold text-gray-500">{label}</p>
+                      <p className="mt-1 text-2xl font-black text-gray-950">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-violet-800">
+                  <p className="text-xs font-bold">Tracked call minutes</p>
+                  <p className="mt-1 text-lg font-black">
+                    {report?.callMinutesLimit
+                      ? `${report.callMinutesUsedThisMonth || 0} / ${report.callMinutesLimit} minutes used`
+                      : `${report?.callMinutesUsedThisMonth || 0} minutes used`}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold">
+                    Reporting only. Exotel, Twilio, or Plivo charges are billed separately by the provider.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm font-extrabold text-gray-950">
                 <ListChecks size={18} />
-                Ready-Made Call Automations
+                Optional Call Automation Starters
               </div>
               <p className="mt-1 max-w-3xl text-sm text-gray-500">
-                Install starter workflows for missed calls, interested calls, and call-back-later outcomes. These are normal Automation Rules, so you can edit, pause, or delete them later.
+                This creates editable Automation Rules for common call outcomes. Nothing runs until the rules are created and active.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={installCallAutomationTemplates}
-              disabled={installingTemplates}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-extrabold text-white hover:bg-gray-800 disabled:opacity-60"
-            >
-              <ListChecks size={16} />
-              {installingTemplates ? "Installing..." : "Install templates"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAutomationOpen((current) => !current)}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-extrabold text-gray-700 hover:bg-gray-50"
+              >
+                {automationOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                {automationOpen ? "Hide details" : "View starters"}
+              </button>
+              <button
+                type="button"
+                onClick={installCallAutomationTemplates}
+                disabled={installingTemplates}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-extrabold text-white hover:bg-gray-800 disabled:opacity-60"
+              >
+                <ListChecks size={16} />
+                {installingTemplates ? "Creating rules..." : "Create starter rules"}
+              </button>
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-              <p className="text-sm font-extrabold text-red-800">Missed / no-answer call</p>
-              <p className="mt-1 text-sm text-red-700">Creates a callback task due in 2 hours when call status becomes No Answer.</p>
+          {automationInstallResult && (
+            <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="font-black">{automationInstallResult.message}</p>
+                  <p className="mt-1 font-semibold">
+                    Go to Automation Rules to check the new call rules. From there you can activate, pause, edit actions, or delete rules.
+                  </p>
+                </div>
+                <Link
+                  to="/dashboard/automation-rules"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-black text-white hover:bg-emerald-800"
+                >
+                  Open Automation Rules
+                </Link>
+              </div>
             </div>
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="text-sm font-extrabold text-emerald-800">Interested call</p>
-              <p className="mt-1 text-sm text-emerald-700">Creates a sales follow-up task due in 4 hours when outcome is Interested.</p>
+          )}
+
+          {automationOpen && (
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                <p className="text-sm font-extrabold text-red-800">Missed / no-answer call</p>
+                <p className="mt-1 text-sm text-red-700">Creates a callback task due in 2 hours when call status becomes No Answer.</p>
+              </div>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                <p className="text-sm font-extrabold text-emerald-800">Interested call</p>
+                <p className="mt-1 text-sm text-emerald-700">Creates a sales follow-up task due in 4 hours when outcome is Interested.</p>
+              </div>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-sm font-extrabold text-blue-800">Call back later</p>
+                <p className="mt-1 text-sm text-blue-700">Notifies the assigned agent when a call is marked Call Back Later.</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-              <p className="text-sm font-extrabold text-blue-800">Call back later</p>
-              <p className="mt-1 text-sm text-blue-700">Notifies the assigned agent when a call is marked Call Back Later.</p>
-            </div>
-          </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -1034,7 +1332,7 @@ export default function Telephony() {
             </button>
           </div>
 
-          <form onSubmit={saveAgentMapping} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_120px_auto] lg:items-end">
+          <form onSubmit={saveAgentMapping} className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3 lg:grid-cols-[minmax(0,1fr)_220px_110px_auto] lg:items-end">
             <label className="space-y-1 text-sm font-semibold text-gray-700">
               User / Agent
               <select
@@ -1085,9 +1383,15 @@ export default function Telephony() {
             </button>
           </form>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 overflow-hidden rounded-xl border border-gray-200">
+            <div className="hidden grid-cols-[minmax(0,1fr)_160px_90px_90px] gap-3 bg-gray-50 px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-gray-500 md:grid">
+              <span>Agent</span>
+              <span>Calling number</span>
+              <span>Status</span>
+              <span>Action</span>
+            </div>
             {agentMappings.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 p-5 text-sm text-gray-500">
+              <div className="p-5 text-sm text-gray-500">
                 No agent numbers mapped yet.
               </div>
             ) : (
@@ -1100,20 +1404,19 @@ export default function Telephony() {
                     phoneNumber: mapping.phoneNumber || "",
                     active: mapping.active !== false,
                   })}
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left hover:border-teal-200 hover:bg-teal-50"
+                  className="grid w-full gap-2 border-t border-gray-100 px-4 py-3 text-left text-sm hover:bg-teal-50 md:grid-cols-[minmax(0,1fr)_160px_90px_90px] md:items-center"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-gray-950">{mapping.userEmail || `User #${mapping.userId}`}</p>
-                      <p className="mt-1 text-xs font-semibold uppercase text-gray-500">{mapping.userRole || "USER"}</p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-extrabold ${
-                      mapping.active === false ? "bg-gray-200 text-gray-600" : "bg-emerald-50 text-emerald-700"
-                    }`}>
-                      {mapping.active === false ? "Inactive" : "Active"}
-                    </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-extrabold text-gray-950">{mapping.userEmail || `User #${mapping.userId}`}</p>
+                    <p className="text-xs font-semibold uppercase text-gray-500">{mapping.userRole || "USER"}</p>
                   </div>
-                  <p className="mt-3 text-sm font-bold text-gray-800">{mapping.phoneNumber}</p>
+                  <p className="font-bold text-gray-800">{mapping.phoneNumber || "Not mapped"}</p>
+                  <span className={`w-fit rounded-full px-2 py-1 text-[10px] font-extrabold ${
+                    mapping.active === false ? "bg-gray-200 text-gray-600" : "bg-emerald-50 text-emerald-700"
+                  }`}>
+                    {mapping.active === false ? "Inactive" : "Active"}
+                  </span>
+                  <span className="text-xs font-extrabold text-teal-700">Edit</span>
                 </button>
               ))
             )}
@@ -1164,6 +1467,18 @@ export default function Telephony() {
                     <option key={user.id} value={user.id}>
                       {user.email || user.name || `User #${user.id}`}
                     </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-gray-700">
+                Per page
+                <select
+                  value={pageInfo.size}
+                  onChange={(event) => changeCallPageSize(event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:w-32"
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>{size}</option>
                   ))}
                 </select>
               </label>
@@ -1307,7 +1622,8 @@ export default function Telephony() {
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-gray-500">
-              Page {pageInfo.totalPages ? pageInfo.page + 1 : 0} of {pageInfo.totalPages || 0}
+              Showing {pageInfo.totalElements === 0 ? 0 : pageInfo.page * pageInfo.size + 1}
+              -{Math.min((pageInfo.page + 1) * pageInfo.size, pageInfo.totalElements)} of {pageInfo.totalElements} calls
             </p>
             <div className="flex gap-2">
               <button
@@ -1333,7 +1649,7 @@ export default function Telephony() {
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-lg font-extrabold text-gray-950">Exotel Webhook Diagnostics</h2>
+              <h2 className="text-lg font-extrabold text-gray-950">{activeProvider.label} Webhook Diagnostics</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Use this when incoming calls are visible in Exotel but not syncing correctly in CRM.
               </p>
@@ -1394,7 +1710,7 @@ export default function Telephony() {
               <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                 <p className="font-extrabold text-gray-950">Test checklist</p>
                 <div className="mt-2 grid gap-2 md:grid-cols-3">
-                  <span className="rounded-lg bg-white px-3 py-2 font-semibold">1. Call the Exotel inbound number.</span>
+                  <span className="rounded-lg bg-white px-3 py-2 font-semibold">1. Call the {activeProvider.label} inbound number.</span>
                   <span className="rounded-lg bg-white px-3 py-2 font-semibold">2. Refresh diagnostics after 5-10 seconds.</span>
                   <span className="rounded-lg bg-white px-3 py-2 font-semibold">3. Confirm status becomes Processed.</span>
                 </div>
@@ -1404,7 +1720,7 @@ export default function Telephony() {
                 <div className="rounded-xl border border-dashed border-gray-200 p-6 text-sm text-gray-500">Loading webhook callbacks...</div>
               ) : webhookEvents.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-                  No Exotel webhook callbacks received yet.
+                  No {activeProvider.label} webhook callbacks received yet.
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1444,6 +1760,96 @@ export default function Telephony() {
           )}
         </section>
       </div>
+
+      {testCallOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/40 px-4 py-4 sm:items-center">
+          <form
+            onSubmit={startCall}
+            className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-xl"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-extrabold text-gray-950">
+                  <PhoneCall size={18} />
+                  Test Click-to-Call
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  Twilio first rings the agent, then bridges the customer. Leave agent number blank to use the logged-in user's mapped number.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTestCallOpen(false)}
+                className="rounded-lg border border-gray-200 bg-white p-2 text-gray-500 hover:bg-gray-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold text-gray-700">
+                Contact ID
+                <input
+                  value={callForm.contactId}
+                  onChange={(event) => setCallForm((current) => ({ ...current, contactId: event.target.value }))}
+                  inputMode="numeric"
+                  placeholder="Optional"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-gray-700">
+                Customer number to connect after agent answers
+                <input
+                  value={callForm.customerNumber}
+                  onChange={(event) => setCallForm((current) => ({ ...current, customerNumber: event.target.value }))}
+                  placeholder="+91 customer number"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-gray-700">
+                Agent number that rings first
+                <input
+                  value={callForm.agentNumber}
+                  onChange={(event) => setCallForm((current) => ({ ...current, agentNumber: event.target.value }))}
+                  placeholder="Optional if mapped, e.g. +919867310179"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <span className="block text-xs font-normal leading-5 text-gray-500">
+                  Do not enter the customer number here. This should be your agent phone.
+                </span>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-gray-700 sm:col-span-2">
+                Notes
+                <textarea
+                  value={callForm.notes}
+                  onChange={(event) => setCallForm((current) => ({ ...current, notes: event.target.value }))}
+                  rows={3}
+                  placeholder="Purpose of test call"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setTestCallOpen(false)}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={calling}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-extrabold text-white hover:bg-gray-800 disabled:opacity-60"
+              >
+                <Phone size={16} />
+                {calling ? "Starting..." : "Start tracked call"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {leadForm.callLogId && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/40 px-4 py-4 sm:items-center">

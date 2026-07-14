@@ -104,7 +104,13 @@ const loadRazorpayScript = () =>
 export default function Billing() {
   const [summary, setSummary] = useState(null);
   const [ledger, setLedger] = useState([]);
+  const [ledgerPage, setLedgerPage] = useState(0);
+  const [ledgerPageSize, setLedgerPageSize] = useState(10);
   const [aiUsage, setAiUsage] = useState(null);
+  const [aiUsagePage, setAiUsagePage] = useState(0);
+  const [aiUsagePageSize, setAiUsagePageSize] = useState(10);
+  const [aiUsageDateFrom, setAiUsageDateFrom] = useState("");
+  const [aiUsageDateTo, setAiUsageDateTo] = useState("");
   const [packages, setPackages] = useState([]);
   const [storagePackages, setStoragePackages] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -126,12 +132,39 @@ export default function Billing() {
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [billingProfileError, setBillingProfileError] = useState("");
+  const [billingProfileSuccess, setBillingProfileSuccess] = useState("");
 
   const pricingRules = useMemo(() => summary?.pricingRules || [], [summary]);
   const plans = useMemo(() => summary?.plans || [], [summary]);
   const usage = summary?.usage || {};
   const subscription = summary?.subscription || {};
   const paidPayments = useMemo(() => payments.filter((payment) => payment.status === "PAID"), [payments]);
+  const ledgerTotalPages = Math.max(1, Math.ceil(ledger.length / ledgerPageSize));
+  const safeLedgerPage = Math.min(ledgerPage, ledgerTotalPages - 1);
+  const ledgerPageRows = useMemo(
+    () => ledger.slice(safeLedgerPage * ledgerPageSize, safeLedgerPage * ledgerPageSize + ledgerPageSize),
+    [ledger, safeLedgerPage, ledgerPageSize]
+  );
+  const filteredAiActions = useMemo(() => {
+    const actions = Array.isArray(aiUsage?.recentActions) ? aiUsage.recentActions : [];
+    const from = aiUsageDateFrom ? new Date(`${aiUsageDateFrom}T00:00:00`) : null;
+    const to = aiUsageDateTo ? new Date(`${aiUsageDateTo}T23:59:59`) : null;
+    return actions.filter((entry) => {
+      if (!entry?.createdAt) return !from && !to;
+      const createdAt = new Date(entry.createdAt);
+      if (Number.isNaN(createdAt.getTime())) return !from && !to;
+      if (from && createdAt < from) return false;
+      if (to && createdAt > to) return false;
+      return true;
+    });
+  }, [aiUsage?.recentActions, aiUsageDateFrom, aiUsageDateTo]);
+  const aiUsageTotalPages = Math.max(1, Math.ceil(filteredAiActions.length / aiUsagePageSize));
+  const safeAiUsagePage = Math.min(aiUsagePage, aiUsageTotalPages - 1);
+  const aiUsagePageRows = useMemo(
+    () => filteredAiActions.slice(safeAiUsagePage * aiUsagePageSize, safeAiUsagePage * aiUsagePageSize + aiUsagePageSize),
+    [filteredAiActions, safeAiUsagePage, aiUsagePageSize]
+  );
   const warnings = useMemo(() => usageWarnings(summary, usage, subscription), [summary, usage, subscription]);
   const currentPlan = useMemo(
     () => plans.find((plan) => plan.planKey === summary?.planKey) || null,
@@ -143,6 +176,7 @@ export default function Billing() {
     if (!quiet) setLoading(true);
     setRefreshing(quiet);
     setError("");
+    setBillingProfileError("");
     try {
       const [summaryResponse, ledgerResponse, aiUsageResponse, packageResponse, paymentsResponse, billingProfileResponse] = await Promise.all([
         api.get("/api/billing/summary"),
@@ -155,7 +189,9 @@ export default function Billing() {
       const storagePackageResponse = await api.get("/api/billing/storage-packages");
       setSummary(summaryResponse.data);
       setLedger(Array.isArray(ledgerResponse.data) ? ledgerResponse.data : []);
+      setLedgerPage(0);
       setAiUsage(aiUsageResponse.data || null);
+      setAiUsagePage(0);
       setPackages(Array.isArray(packageResponse.data) ? packageResponse.data : []);
       setStoragePackages(Array.isArray(storagePackageResponse.data) ? storagePackageResponse.data : []);
       setPayments(Array.isArray(paymentsResponse.data) ? paymentsResponse.data : []);
@@ -180,15 +216,19 @@ export default function Billing() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    setAiUsagePage(0);
+  }, [aiUsageDateFrom, aiUsageDateTo, aiUsagePageSize]);
+
   const saveBillingProfile = async () => {
-    setError("");
-    setSuccess("");
+    setBillingProfileError("");
+    setBillingProfileSuccess("");
     try {
       const response = await api.post("/api/tenant/billing-profile", billingProfileForm);
       setBillingProfile(response.data);
-      setSuccess("Billing profile saved for future invoices.");
+      setBillingProfileSuccess("Billing profile saved for future invoices.");
     } catch (profileError) {
-      setError(errorMessage(profileError, "Could not save billing profile."));
+      setBillingProfileError(errorMessage(profileError, "Could not save billing profile."));
     }
   };
 
@@ -390,93 +430,6 @@ export default function Billing() {
         <MetricCard icon={CreditCard} label="Current Plan" value={summary?.planKey || "STARTER"} helper={`${summary?.subscriptionStatus || "TRIAL"} until ${formatDate(subscription.currentPeriodEnd || summary?.currentPeriodEnd)}`} />
         <MetricCard icon={History} label="Payment Records" value={payments.length} helper="Latest 100 shown" />
       </div>
-
-      <section className="mt-5 rounded-lg border border-teal-100 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-teal-50 p-2 text-teal-700">
-              <Sparkles size={20} />
-            </div>
-            <div>
-              <h2 className="text-base font-extrabold text-slate-950">AI Usage</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Track AI Summary, AI Reply, and AI Recommendation usage for this tenant.
-              </p>
-            </div>
-          </div>
-          <div className={`rounded-lg border px-3 py-2 text-xs font-bold ${
-            currentPlanHasAi ? "border-teal-200 bg-teal-50 text-teal-800" : "border-amber-200 bg-amber-50 text-amber-800"
-          }`}>
-            {currentPlanHasAi ? "AI is included in your current plan" : "AI starts from Growth plan"}
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard icon={Sparkles} label="AI Actions This Month" value={formatCredits(aiUsage?.actionsThisMonth)} helper="Successful AI requests only" />
-          <MetricCard icon={WalletCards} label="AI Credits Used" value={formatCredits(aiUsage?.creditsUsedThisMonth)} helper={`${aiUsage?.pointsUsedThisMonth || 0} points this month`} />
-          <MetricCard icon={ShieldCheck} label="AI Rate" value="0.25" helper="credits per successful AI action" />
-        </div>
-        {!currentPlanHasAi && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-            Upgrade to Growth or higher to unlock AI Summary, AI Reply, and AI Recommendation tools.
-          </div>
-        )}
-        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full text-sm" style={{ minWidth: "680px" }}>
-            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Agent</th>
-                <th className="px-4 py-3">Actions This Month</th>
-                <th className="px-4 py-3">Credits Used</th>
-                <th className="px-4 py-3">Last AI Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(aiUsage?.usageByUser || []).length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No agent AI usage this month.</td>
-                </tr>
-              )}
-              {(aiUsage?.usageByUser || []).map((entry) => (
-                <tr key={entry.userId || entry.userEmail} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-bold text-slate-800">{entry.userEmail || `User ${entry.userId}`}</td>
-                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.actionsThisMonth)}</td>
-                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(entry.creditsUsedThisMonth)}</td>
-                  <td className="px-4 py-3 text-slate-700">{entry.lastActionAt ? new Date(entry.lastActionAt).toLocaleString() : "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full text-sm" style={{ minWidth: "720px" }}>
-            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">AI Action</th>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Credits</th>
-                <th className="px-4 py-3">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(aiUsage?.recentActions || []).length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No AI actions yet.</td>
-                </tr>
-              )}
-              {(aiUsage?.recentActions || []).map((entry) => (
-                <tr key={entry.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 text-slate-700">{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}</td>
-                  <td className="px-4 py-3 font-bold text-slate-800">{aiPurposeLabel(entry.referenceId)}</td>
-                  <td className="px-4 py-3 text-slate-700">{entry.userId || "-"}</td>
-                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(Math.abs(Number(entry.creditsChange || 0)))}</td>
-                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.balanceAfterCredits)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <section className="mt-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -711,6 +664,16 @@ export default function Billing() {
           </div>
           {billingProfile?.billingGstin && <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-extrabold text-teal-700">GSTIN saved</span>}
         </div>
+        {(billingProfileError || billingProfileSuccess) && (
+          <div className={`mb-4 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm font-semibold ${
+            billingProfileError
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}>
+            {billingProfileError ? <AlertTriangle size={17} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={17} className="mt-0.5 shrink-0" />}
+            <span>{billingProfileError || billingProfileSuccess}</span>
+          </div>
+        )}
         <div className="grid gap-3 md:grid-cols-3">
           <ProfileInput label="Company Name" value={billingProfileForm.billingCompanyName} onChange={(value) => setBillingProfileForm((f) => ({ ...f, billingCompanyName: value }))} />
           <ProfileInput label="GSTIN" value={billingProfileForm.billingGstin} onChange={(value) => setBillingProfileForm((f) => ({ ...f, billingGstin: value.toUpperCase() }))} />
@@ -724,6 +687,165 @@ export default function Billing() {
         <button type="button" onClick={saveBillingProfile} className="mt-4 rounded-lg bg-teal-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-teal-800">
           Save Billing Profile
         </button>
+      </section>
+
+      <section className="mt-5 rounded-lg border border-teal-100 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-teal-50 p-2 text-teal-700">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <h2 className="text-base font-extrabold text-slate-950">AI Usage</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Track AI Summary, AI Reply, and AI Recommendation usage for this tenant.
+              </p>
+            </div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+            currentPlanHasAi ? "border-teal-200 bg-teal-50 text-teal-800" : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}>
+            {currentPlanHasAi ? "AI is included in your current plan" : "AI starts from Growth plan"}
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricCard icon={Sparkles} label="AI Actions This Month" value={formatCredits(aiUsage?.actionsThisMonth)} helper="Successful AI requests only" />
+          <MetricCard icon={WalletCards} label="AI Credits Used" value={formatCredits(aiUsage?.creditsUsedThisMonth)} helper={`${aiUsage?.pointsUsedThisMonth || 0} points this month`} />
+          <MetricCard icon={ShieldCheck} label="AI Rate" value="0.25" helper="credits per successful AI action" />
+        </div>
+        {!currentPlanHasAi && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            Upgrade to Growth or higher to unlock AI Summary, AI Reply, and AI Recommendation tools.
+          </div>
+        )}
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-sm" style={{ minWidth: "680px" }}>
+            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Agent</th>
+                <th className="px-4 py-3">Actions This Month</th>
+                <th className="px-4 py-3">Credits Used</th>
+                <th className="px-4 py-3">Last AI Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(aiUsage?.usageByUser || []).length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-slate-400">No agent AI usage this month.</td>
+                </tr>
+              )}
+              {(aiUsage?.usageByUser || []).map((entry) => (
+                <tr key={entry.userId || entry.userEmail} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-bold text-slate-800">{entry.userEmail || `User ${entry.userId}`}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.actionsThisMonth)}</td>
+                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(entry.creditsUsedThisMonth)}</td>
+                  <td className="px-4 py-3 text-slate-700">{entry.lastActionAt ? new Date(entry.lastActionAt).toLocaleString() : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-950">AI Action History</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Filter usage by date and review charges page by page.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 lg:w-[560px]">
+            <label className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              From
+              <input
+                type="date"
+                value={aiUsageDateFrom}
+                onChange={(event) => setAiUsageDateFrom(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-700 outline-none focus:border-teal-400"
+              />
+            </label>
+            <label className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              To
+              <input
+                type="date"
+                value={aiUsageDateTo}
+                onChange={(event) => setAiUsageDateTo(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-700 outline-none focus:border-teal-400"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setAiUsageDateFrom("");
+                setAiUsageDateTo("");
+              }}
+              className="mt-5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-600 hover:bg-slate-100 sm:mt-6"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-sm" style={{ minWidth: "720px" }}>
+            <thead className="bg-slate-50 text-left text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">AI Action</th>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Credits</th>
+                <th className="px-4 py-3">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aiUsagePageRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">No AI actions found for this date range.</td>
+                </tr>
+              )}
+              {aiUsagePageRows.map((entry) => (
+                <tr key={entry.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 text-slate-700">{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}</td>
+                  <td className="px-4 py-3 font-bold text-slate-800">{aiPurposeLabel(entry.referenceId)}</td>
+                  <td className="px-4 py-3 text-slate-700">{entry.userId || "-"}</td>
+                  <td className="px-4 py-3 font-extrabold text-red-600">{formatCredits(Math.abs(Number(entry.creditsChange || 0)))}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatCredits(entry.balanceAfterCredits)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-semibold text-slate-500">
+            Showing {filteredAiActions.length === 0 ? 0 : safeAiUsagePage * aiUsagePageSize + 1}
+            -{Math.min((safeAiUsagePage + 1) * aiUsagePageSize, filteredAiActions.length)} of {filteredAiActions.length} AI actions
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={aiUsagePageSize}
+              onChange={(event) => setAiUsagePageSize(Number(event.target.value))}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
+            >
+              {[10, 25, 50, 100].map((size) => (
+                <option key={size} value={size}>{size} / page</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={safeAiUsagePage <= 0}
+              onClick={() => setAiUsagePage((page) => Math.max(0, page - 1))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="px-2 text-sm font-bold text-slate-500">
+              Page {filteredAiActions.length === 0 ? 0 : safeAiUsagePage + 1} of {filteredAiActions.length === 0 ? 0 : aiUsageTotalPages}
+            </span>
+            <button
+              type="button"
+              disabled={safeAiUsagePage + 1 >= aiUsageTotalPages || filteredAiActions.length === 0}
+              onClick={() => setAiUsagePage((page) => Math.min(aiUsageTotalPages - 1, page + 1))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[420px_1fr]">
@@ -792,7 +914,7 @@ export default function Billing() {
             empty="No usage yet"
             minWidth="720px"
             headers={["Date", "Reason", "Change", "Balance", "Reference"]}
-            rows={ledger.map((entry) => [
+            rows={ledgerPageRows.map((entry) => [
               entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-",
               entry.reason,
               <span key="change" className={`font-extrabold ${Number(entry.creditsChange) < 0 ? "text-red-600" : "text-emerald-700"}`}>
@@ -802,9 +924,48 @@ export default function Billing() {
               entry.referenceId || "-",
             ])}
           />
+          <div className="-mt-3 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm font-semibold text-slate-500">
+              Showing {ledger.length === 0 ? 0 : safeLedgerPage * ledgerPageSize + 1}
+              -{Math.min((safeLedgerPage + 1) * ledgerPageSize, ledger.length)} of {ledger.length} ledger entries
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={ledgerPageSize}
+                onChange={(event) => {
+                  setLedgerPageSize(Number(event.target.value));
+                  setLedgerPage(0);
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
+              >
+                {[10, 25, 50, 100].map((size) => (
+                  <option key={size} value={size}>{size} / page</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={safeLedgerPage <= 0}
+                onClick={() => setLedgerPage((page) => Math.max(0, page - 1))}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-2 text-sm font-bold text-slate-500">
+                Page {ledger.length === 0 ? 0 : safeLedgerPage + 1} of {ledger.length === 0 ? 0 : ledgerTotalPages}
+              </span>
+              <button
+                type="button"
+                disabled={safeLedgerPage + 1 >= ledgerTotalPages || ledger.length === 0}
+                onClick={() => setLedgerPage((page) => Math.min(ledgerTotalPages - 1, page + 1))}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       </section>
-      {selectedReceipt && <ReceiptModal payment={selectedReceipt} onClose={() => setSelectedReceipt(null)} />}
+      {selectedReceipt && <ReceiptModal payment={selectedReceipt} billingProfile={billingProfile} onClose={() => setSelectedReceipt(null)} />}
     </div>
   );
 }
@@ -879,20 +1040,99 @@ function UsageWarnings({ warnings }) {
   );
 }
 
-function ReceiptModal({ payment, onClose }) {
+function ReceiptModal({ payment, billingProfile, onClose }) {
+  const hasBillingProfile = Boolean(
+    billingProfile?.billingCompanyName
+      || billingProfile?.billingGstin
+      || billingProfile?.billingAddress
+      || billingProfile?.billingCity
+      || billingProfile?.billingState
+      || billingProfile?.billingPincode
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-xl">
+    <div className="receipt-modal fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <style>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          .receipt-print-area,
+          .receipt-print-area * {
+            visibility: visible !important;
+          }
+          .receipt-modal {
+            position: static !important;
+            inset: auto !important;
+            display: block !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+          .receipt-print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            overflow: visible !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          .receipt-no-print {
+            display: none !important;
+          }
+          .receipt-print-content {
+            padding: 0 !important;
+          }
+          .receipt-print-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+        }
+      `}</style>
+      <div className="receipt-print-area max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
           <div>
             <p className="text-xs font-extrabold uppercase tracking-wide text-teal-700">Receipt</p>
             <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{payment.invoiceNumber || `CRM-${payment.id}`}</h2>
             <p className="mt-1 text-sm text-slate-500">{payment.updatedAt ? new Date(payment.updatedAt).toLocaleString() : "-"}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-extrabold text-slate-600 hover:bg-slate-50">Close</button>
+          <button type="button" onClick={onClose} className="receipt-no-print rounded-lg border border-slate-200 px-3 py-2 text-sm font-extrabold text-slate-600 hover:bg-slate-50">Close</button>
         </div>
-        <div className="p-5">
-          <div className="rounded-lg border border-slate-200 p-4">
+        <div className="receipt-print-content p-5">
+          <div className="mb-4 grid gap-4 md:grid-cols-2">
+            <div className="receipt-print-card rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Billed To</p>
+              {hasBillingProfile ? (
+                <div className="mt-2 space-y-1 text-sm font-semibold leading-6 text-slate-800">
+                  <p className="text-base font-extrabold text-slate-950">{billingProfile.billingCompanyName || "Billing profile"}</p>
+                  {billingProfile.billingGstin && <p>GSTIN: {billingProfile.billingGstin}</p>}
+                  {billingProfile.billingAddress && <p>{billingProfile.billingAddress}</p>}
+                  <p>
+                    {[billingProfile.billingCity, billingProfile.billingState, billingProfile.billingPincode]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-amber-700">
+                  Billing profile not saved. Add company/GST details before printing invoice PDF.
+                </p>
+              )}
+            </div>
+            <div className="receipt-print-card rounded-lg border border-teal-100 bg-teal-50 p-4">
+              <p className="text-xs font-extrabold uppercase tracking-wide text-teal-700">Invoice Note</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-teal-900">
+                The details in “Billed To” come from Invoice Billing Profile and will appear when using Print / Save PDF.
+              </p>
+            </div>
+          </div>
+          <div className="receipt-print-card rounded-lg border border-slate-200 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <ReceiptRow label="Item" value={receiptItemName(payment)} />
               <ReceiptRow label="Invoice number" value={payment.invoiceNumber || "-"} />
@@ -904,7 +1144,7 @@ function ReceiptModal({ payment, onClose }) {
               <ReceiptRow label="Razorpay payment" value={payment.razorpayPaymentId || "-"} />
             </div>
           </div>
-          <div className="mt-4 rounded-lg border border-slate-200 p-4">
+          <div className="receipt-print-card mt-4 rounded-lg border border-slate-200 p-4">
             <ReceiptAmount label="Original amount" value={formatCurrency(payment.originalAmountPaise || payment.amountPaise)} />
             <ReceiptAmount label={payment.promoCode ? `Discount (${payment.promoCode})` : "Discount"} value={payment.discountAmountPaise ? `-${formatCurrency(payment.discountAmountPaise)}` : "-"} />
             <ReceiptAmount label="Taxable value" value={formatCurrency(payment.taxableAmountPaise || 0)} />
@@ -914,7 +1154,7 @@ function ReceiptModal({ payment, onClose }) {
             </div>
           </div>
           {payment.errorMessage && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{payment.errorMessage}</div>}
-          <button type="button" onClick={() => window.print()} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-teal-800">
+          <button type="button" onClick={() => window.print()} className="receipt-no-print mt-5 inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-teal-800">
             <FileText size={16} /> Print / Save PDF
           </button>
         </div>
