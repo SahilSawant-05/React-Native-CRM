@@ -112,7 +112,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
               });
               await Notifications.scheduleNotificationAsync({
                 content: {
-                  title: title || "Vistaar",
+                  title: title || "Vistaar Flow",
                   body: body || "",
                   data: remoteMessage?.data ?? {},
                 },
