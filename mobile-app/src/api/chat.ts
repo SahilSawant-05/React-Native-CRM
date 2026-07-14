@@ -132,8 +132,11 @@ export async function fetchInbox(params: {
 }
 
 export async function fetchMessages(contactId: string | number, page = 0): Promise<MessagesPage> {
+  // Same request the web app makes (no sort param — the backend's default
+  // ordering is what the web relies on; passing an explicit sort can change
+  // which 30 messages page 0 contains).
   const res = await api.get(`/api/messages/contact/${contactId}/page`, {
-    params: { page, size: 30, sort: "createdAt,desc" },
+    params: { page, size: 30 },
   });
   return normalizePage<Message>(res.data, "items", (raw, idx) => `msg-${contactId}-${raw.createdAt ?? raw.timestamp ?? idx}`);
 }
