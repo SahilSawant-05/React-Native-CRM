@@ -1354,6 +1354,10 @@ export default function ChatConversationScreen({ route }: Props) {
   // a jump, and only auto-follow the bottom when the user is already there.
   const [showNewMessagePill, setShowNewMessagePill] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  // TEMP on-screen diagnostics (remove once live updates are confirmed):
+  // shows the latest poll result / socket event right in the chat header so
+  // the pipeline can be debugged from a screenshot, without Metro access.
+  const [debugLine, setDebugLine] = useState("waiting for first poll…");
   const flatListRef = useRef<FlatList>(null);
   // Inverted list: offset 0 == visually at the bottom (the newest message).
   const atBottomRef = useRef(true);
@@ -1443,12 +1447,13 @@ export default function ChatConversationScreen({ route }: Props) {
     try {
       const data = await fetchMessages(inbox.contactId, 0);
       const content = data.content ?? [];
-      if (__DEV__) {
+      {
         const newest = content[0];
-        console.log(
-          `[chat] poll ok: ${content.length} msgs, newest id=${newest?.id ?? newest?.messageId} ` +
-          `at=${newest?.createdAt ?? newest?.timestamp} parsed=${messageTime(newest)}`
-        );
+        const line =
+          `poll ${new Date().toLocaleTimeString()} ok: ${content.length} msgs, ` +
+          `newest=${newest?.id ?? newest?.messageId} t=${messageTime(newest)}`;
+        setDebugLine(line);
+        if (__DEV__) console.log(`[chat] ${line}`);
       }
       if (isActivelyTouching()) {
         // Don't merge mid-gesture — hold the latest fetch and apply it as
@@ -1463,7 +1468,9 @@ export default function ChatConversationScreen({ route }: Props) {
       setMessages((prev) => mergeMessages(prev, content));
     } catch (err: any) {
       // Ignore poll errors — the next tick will retry.
-      if (__DEV__) console.log(`[chat] poll FAILED: ${err?.message ?? err}`);
+      const line = `poll ${new Date().toLocaleTimeString()} FAILED: ${err?.message ?? err}`;
+      setDebugLine(line);
+      if (__DEV__) console.log(`[chat] ${line}`);
     } finally {
       isRefreshInFlightRef.current = false;
     }
@@ -1490,6 +1497,7 @@ export default function ChatConversationScreen({ route }: Props) {
       return;
     }
     if (__DEV__) console.log("[chat] socket message accepted, merging into thread");
+    setDebugLine(`socket ${new Date().toLocaleTimeString()}: msg id=${payload?.id ?? payload?.messageId} merged`);
     const incoming = [payload as Message];
     if (isActivelyTouching()) {
       // Same mid-gesture buffering as the poll: apply when the finger lifts,
@@ -1843,6 +1851,11 @@ export default function ChatConversationScreen({ route }: Props) {
       >
         {!!error && <ErrorBanner message={error} />}
 
+        {/* TEMP debug strip — remove once live updates are confirmed */}
+        <View style={styles.debugStrip}>
+          <Text style={styles.debugStripText} numberOfLines={2}>{debugLine}</Text>
+        </View>
+
         <View style={{ flex: 1 }}>
           <FlatList
             ref={flatListRef}
@@ -2105,6 +2118,12 @@ export default function ChatConversationScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fbfbfb", overflow: "hidden" },
+  debugStrip: {
+    backgroundColor: "rgba(254,243,199,0.95)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  debugStripText: { fontSize: 10, color: "#92400e", fontWeight: "600" },
   messageList: { paddingHorizontal: 14, paddingVertical: 10, gap: 3, paddingBottom: 8, width: "100%" },
   dateSep: {
     alignSelf: "center",
