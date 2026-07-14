@@ -92,8 +92,10 @@ function formatDate(dateStr?: string) {
 function parseMessageDate(raw: string): number {
   let t = new Date(raw).getTime();
   if (!Number.isNaN(t)) return t;
-  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish
-  t = new Date(raw.replace(" ", "T")).getTime();
+  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish, and "+0530" → "+05:30"
+  // (Hermes only accepts the colon form of zone offsets).
+  const isoish = raw.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  t = new Date(isoish).getTime();
   if (!Number.isNaN(t)) return t;
   // Epoch seconds/millis sent as a numeric string
   const n = Number(raw);
@@ -127,6 +129,17 @@ function messageSignature(m: Message): string {
 function realId(m: Message): string | null {
   const id = m.id ?? m.messageId;
   return id != null && !String(id).startsWith("temp-") ? String(id) : null;
+}
+
+// Numeric DB id — monotonically increasing, so it's a reliable order key
+// even when createdAt can't be parsed (Hermes' Date is strict; browsers are
+// lenient, which is why the web can sort by date but mobile can't always).
+function numericId(m: Message): number {
+  for (const candidate of [m.id, m.messageId]) {
+    const n = Number(candidate);
+    if (candidate != null && Number.isFinite(n)) return n;
+  }
+  return NaN;
 }
 
 // Key used ONLY to detect "did the newest message in the thread change".
@@ -216,6 +229,12 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
     .sort(([keyA, a], [keyB, b]) => {
       const dt = messageTime(b) - messageTime(a);
       if (dt !== 0) return dt;
+      // Same/unparseable timestamps: fall back to the numeric DB id, which
+      // increases monotonically — keeps newest-first ordering correct even
+      // when createdAt can't be parsed at all.
+      const ia = numericId(a);
+      const ib = numericId(b);
+      if (Number.isFinite(ia) && Number.isFinite(ib) && ia !== ib) return ib - ia;
       return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
     })
     .map(([, m]) => m);
