@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import api from "../../api/client";
 import { Contact, Task, User } from "../../types";
 
@@ -250,6 +249,176 @@ function ContactPickerModal({ visible, onClose, onSelect }: { visible:boolean; o
   );
 }
 
+/* ─── Calendar + time sheet (pure JS — no native module, no rebuild) ──
+   Looks and behaves like the web's datetime-local dialog: month grid to
+   pick the date, then hour/minute/AM-PM to pick the time. */
+const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function CalendarSheet({ visible, initial, onCancel, onConfirm }: {
+  visible: boolean;
+  initial: Date | null;
+  onCancel: () => void;
+  onConfirm: (d: Date) => void;
+}) {
+  const base = initial ?? new Date();
+  const [viewYear, setViewYear]   = useState(base.getFullYear());
+  const [viewMonth, setViewMonth] = useState(base.getMonth());
+  const [selDay, setSelDay]       = useState<{y:number;m:number;d:number}|null>(
+    initial ? { y: initial.getFullYear(), m: initial.getMonth(), d: initial.getDate() } : null
+  );
+  const initH = initial ? initial.getHours() : 10;
+  const [hour12, setHour12] = useState(((initH % 12) || 12));
+  const [minute, setMinute] = useState(initial ? initial.getMinutes() : 0);
+  const [ampm, setAmpm]     = useState<"AM"|"PM">(initH >= 12 ? "PM" : "AM");
+
+  useEffect(() => {
+    if (!visible) return;
+    const b = initial ?? new Date();
+    setViewYear(b.getFullYear()); setViewMonth(b.getMonth());
+    setSelDay(initial ? { y: initial.getFullYear(), m: initial.getMonth(), d: initial.getDate() } : null);
+    const h = initial ? initial.getHours() : 10;
+    setHour12((h % 12) || 12); setMinute(initial ? initial.getMinutes() : 0); setAmpm(h >= 12 ? "PM" : "AM");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const shiftMonth = (delta: number) => {
+    const d = new Date(viewYear, viewMonth + delta, 1);
+    setViewYear(d.getFullYear()); setViewMonth(d.getMonth());
+  };
+
+  // Build the day grid: leading blanks + days of the viewed month.
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstDow }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const today = new Date();
+  const isToday = (d: number) =>
+    d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+  const isSelected = (d: number) =>
+    !!selDay && selDay.d === d && selDay.m === viewMonth && selDay.y === viewYear;
+
+  const minuteOptions = [0, 15, 30, 45].includes(minute) ? [0, 15, 30, 45] : [minute, 0, 15, 30, 45];
+
+  const confirm = () => {
+    const day = selDay ?? { y: today.getFullYear(), m: today.getMonth(), d: today.getDate() };
+    let h = hour12 % 12;
+    if (ampm === "PM") h += 12;
+    onConfirm(new Date(day.y, day.m, day.d, h, minute, 0, 0));
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={cal.overlay}>
+        <View style={cal.sheet}>
+          {/* Month header */}
+          <View style={cal.monthRow}>
+            <TouchableOpacity onPress={()=>shiftMonth(-1)} style={cal.navBtn} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+              <Ionicons name="chevron-back" size={19} color="#0f766e"/>
+            </TouchableOpacity>
+            <Text style={cal.monthTitle}>{MONTH_NAMES[viewMonth]} {viewYear}</Text>
+            <TouchableOpacity onPress={()=>shiftMonth(1)} style={cal.navBtn} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+              <Ionicons name="chevron-forward" size={19} color="#0f766e"/>
+            </TouchableOpacity>
+          </View>
+
+          {/* Weekday header */}
+          <View style={cal.weekRow}>
+            {WEEKDAYS.map(w => <Text key={w} style={cal.weekday}>{w}</Text>)}
+          </View>
+
+          {/* Day grid */}
+          <View style={cal.grid}>
+            {cells.map((d, i) => (
+              <View key={i} style={cal.cell}>
+                {d !== null && (
+                  <TouchableOpacity
+                    style={[cal.dayBtn, isSelected(d) && cal.dayBtnSelected, !isSelected(d) && isToday(d) && cal.dayBtnToday]}
+                    onPress={()=>setSelDay({ y: viewYear, m: viewMonth, d })}
+                  >
+                    <Text style={[cal.dayText, isSelected(d) && cal.dayTextSelected, !isSelected(d) && isToday(d) && cal.dayTextToday]}>{d}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* Time */}
+          <Text style={cal.timeLabel}>TIME</Text>
+          <View style={cal.timeRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:6}}>
+              {[12,1,2,3,4,5,6,7,8,9,10,11].map(h => (
+                <TouchableOpacity key={h} onPress={()=>setHour12(h)} style={[cal.timeChip, hour12===h && cal.timeChipActive]}>
+                  <Text style={[cal.timeChipText, hour12===h && cal.timeChipTextActive]}>{h}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+          <View style={cal.timeRow}>
+            <View style={{flexDirection:"row",gap:6,flex:1}}>
+              {minuteOptions.map(m => (
+                <TouchableOpacity key={m} onPress={()=>setMinute(m)} style={[cal.timeChip, minute===m && cal.timeChipActive]}>
+                  <Text style={[cal.timeChipText, minute===m && cal.timeChipTextActive]}>:{String(m).padStart(2,"0")}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{flexDirection:"row",gap:6}}>
+              {(["AM","PM"] as const).map(p => (
+                <TouchableOpacity key={p} onPress={()=>setAmpm(p)} style={[cal.timeChip, ampm===p && cal.timeChipActive]}>
+                  <Text style={[cal.timeChipText, ampm===p && cal.timeChipTextActive]}>{p}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={cal.actions}>
+            <TouchableOpacity onPress={onCancel} style={cal.cancelBtn}>
+              <Text style={cal.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={confirm} style={cal.okBtn}>
+              <Text style={cal.okText}>Set date & time</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const cal = StyleSheet.create({
+  overlay: { flex:1, backgroundColor:"rgba(0,0,0,0.45)", justifyContent:"center", padding:22 },
+  sheet: { backgroundColor:"#fff", borderRadius:18, padding:16 },
+  monthRow: { flexDirection:"row", alignItems:"center", justifyContent:"space-between", marginBottom:10 },
+  navBtn: { width:34, height:34, borderRadius:17, backgroundColor:"rgba(15,118,110,0.08)", alignItems:"center", justifyContent:"center" },
+  monthTitle: { fontSize:15, fontWeight:"700", color:"#111827", fontFamily:HFONT },
+  weekRow: { flexDirection:"row", marginBottom:4 },
+  weekday: { flex:1, textAlign:"center", fontSize:11, fontWeight:"700", color:"#9ca3af" },
+  grid: { flexDirection:"row", flexWrap:"wrap" },
+  cell: { width:`${100/7}%`, aspectRatio:1.15, alignItems:"center", justifyContent:"center" },
+  dayBtn: { width:34, height:34, borderRadius:17, alignItems:"center", justifyContent:"center" },
+  dayBtnSelected: { backgroundColor:"#0f766e" },
+  dayBtnToday: { borderWidth:1.5, borderColor:"#0f766e" },
+  dayText: { fontSize:13.5, color:"#111827", fontWeight:"500" },
+  dayTextSelected: { color:"#fff", fontWeight:"700" },
+  dayTextToday: { color:"#0f766e", fontWeight:"700" },
+  timeLabel: { fontSize:11, fontWeight:"700", color:"#9ca3af", letterSpacing:0.8, marginTop:10, marginBottom:6 },
+  timeRow: { flexDirection:"row", alignItems:"center", gap:8, marginBottom:8 },
+  timeChip: { paddingHorizontal:12, paddingVertical:7, borderRadius:9, backgroundColor:"rgba(118,118,128,0.08)" },
+  timeChipActive: { backgroundColor:"#0f766e" },
+  timeChipText: { fontSize:13, fontWeight:"600", color:"#6b7280" },
+  timeChipTextActive: { color:"#fff" },
+  actions: { flexDirection:"row", gap:10, marginTop:8 },
+  cancelBtn: { flex:1, borderRadius:11, paddingVertical:12, alignItems:"center", backgroundColor:"rgba(118,118,128,0.08)" },
+  cancelText: { fontSize:14, fontWeight:"600", color:"#374151" },
+  okBtn: { flex:1.4, borderRadius:11, paddingVertical:12, alignItems:"center", backgroundColor:"#0f766e" },
+  okText: { fontSize:14, fontWeight:"600", color:"#fff" },
+});
+
 /* ─── Task Form ── */
 function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, users, loading }: {
   visible:boolean; onClose:()=>void; onSave:(d:FormState&{cardKey:string})=>void;
@@ -269,34 +438,16 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
   const set = <K extends keyof FormState>(k:K, v:FormState[K]) => setForm(f=>({...f,[k]:v}));
   const toggleTag = (t:string) => set("tags", form.tags.includes(t)?form.tags.filter(x=>x!==t):[...form.tags,t]);
 
-  // ── Due date & time — native calendar + clock, like the web's
-  // datetime-local input: tap the field, a calendar dialog opens, pick the
-  // date, then the clock opens to pick the time. ──
+  // ── Due date & time — JS calendar sheet (see CalendarSheet above), same
+  // flow as the web's datetime-local input but with zero native modules.
   // form.date is "YYYY-MM-DDTHH:mm" (same shape dueAt.slice(0,16) produces).
-  const [pickerMode, setPickerMode] = useState<"date" | "time" | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const dueValue = form.date ? new Date(form.date) : null;
-  const pickerBase = dueValue && !Number.isNaN(dueValue.getTime()) ? dueValue : new Date();
+  const dueInitial = dueValue && !Number.isNaN(dueValue.getTime()) ? dueValue : null;
 
   const toLocalStamp = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` +
     `T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-
-  const onPickerChange = (event: any, selected?: Date) => {
-    if (event?.type === "dismissed" || !selected) { setPickerMode(null); return; }
-    if (pickerMode === "date") {
-      // Keep the previously chosen time (default 10:00), then ask for time.
-      const next = new Date(selected);
-      next.setHours(pickerBase.getHours() || 10, pickerBase.getMinutes() || 0, 0, 0);
-      if (!form.date) next.setHours(10, 0, 0, 0);
-      set("date", toLocalStamp(next));
-      setPickerMode("time");
-    } else {
-      const next = new Date(pickerBase);
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      set("date", toLocalStamp(next));
-      setPickerMode(null);
-    }
-  };
 
   const clearDue = () => set("date", "");
 
@@ -358,10 +509,10 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
               </TouchableOpacity>
             )}
           </View>
-          {/* Web-style datetime field: tap → calendar dialog → clock dialog */}
+          {/* Web-style datetime field: tap → calendar dialog with time picker */}
           <TouchableOpacity
             style={[s.input,{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}]}
-            onPress={()=>setPickerMode("date")}
+            onPress={()=>setCalendarOpen(true)}
             activeOpacity={0.7}
           >
             <Text style={{fontSize:14,color:form.date?"#111827":"#94a3b8"}}>
@@ -371,15 +522,12 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
             </Text>
             <Ionicons name="calendar-outline" size={18} color="#0f766e"/>
           </TouchableOpacity>
-          {pickerMode !== null && (
-            <DateTimePicker
-              value={pickerBase}
-              mode={pickerMode}
-              is24Hour={false}
-              display="default"
-              onChange={onPickerChange}
-            />
-          )}
+          <CalendarSheet
+            visible={calendarOpen}
+            initial={dueInitial}
+            onCancel={()=>setCalendarOpen(false)}
+            onConfirm={(d)=>{ set("date", toLocalStamp(d)); setCalendarOpen(false); }}
+          />
 
           <Text style={[s.fieldLabel,{marginTop:12}]}>TAGS</Text>
           <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
