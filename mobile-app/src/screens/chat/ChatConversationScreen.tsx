@@ -257,6 +257,38 @@ function StatusTick({ status }: { status?: string }) {
   return <Ionicons name="checkmark" size={15} color="#8696a0" style={styles.statusIcon} />;
 }
 
+// WebView is native-only — require it lazily so Expo web doesn't crash.
+// Used to play voice notes / audio via an HTML5 <audio> element (no extra
+// native audio module needed).
+let ChatWebView: any = null;
+if (Platform.OS !== "web") {
+  try {
+    ChatWebView = require("react-native-webview").WebView;
+  } catch {
+    ChatWebView = null;
+  }
+}
+
+function AudioPlayer({ uri }: { uri: string }) {
+  if (!ChatWebView) return null;
+  const doc = `<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>html,body{margin:0;padding:0;background:transparent;}audio{width:100%;height:44px;}</style>
+</head><body><audio controls preload="metadata" src="${uri}"></audio></body></html>`;
+  return (
+    <View style={styles.audioPlayerWrap}>
+      <ChatWebView
+        originWhitelist={["*"]}
+        source={{ html: doc }}
+        style={{ backgroundColor: "transparent", height: 52 }}
+        scrollEnabled={false}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+      />
+    </View>
+  );
+}
+
 function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
   const mt = (message.mediaType ?? "").toUpperCase();
   const messageId = message.messageId ?? message.id;
@@ -301,6 +333,10 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
     return (
       <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
     );
+  }
+
+  if (mt === "AUDIO" && url && ChatWebView) {
+    return <AudioPlayer uri={url} />;
   }
 
   if (url) {
@@ -382,7 +418,9 @@ const MessageBubble = React.memo(
             onPress={failed && onRetry ? () => onRetry(message) : undefined}
             style={[styles.bubble, isOut ? styles.bubbleOut : styles.bubbleIn, failed && styles.bubbleFailed]}
           >
-            {message.mediaUrl && <MediaBubble message={message} isOut={isOut} />}
+            {/* Render for mediaType too: inbound WhatsApp media has NO
+                mediaUrl (only mediaId) — MediaBubble fetches the bytes. */}
+            {(message.mediaUrl || message.mediaType) && <MediaBubble message={message} isOut={isOut} />}
             {!!text && (
               <Text style={[styles.bubbleText, isOut && styles.bubbleTextOut]}>{text}</Text>
             )}
@@ -2306,6 +2344,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   mediaFileName: { fontSize: 13, color: "#1e293b", flex: 1, flexShrink: 1 },
+  audioPlayerWrap: {
+    width: 230,
+    maxWidth: "100%",
+    height: 52,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "rgba(118,118,128,0.06)",
+  },
   mediaPending: {
     backgroundColor: "rgba(118,118,128,0.07)",
     borderRadius: 10,
