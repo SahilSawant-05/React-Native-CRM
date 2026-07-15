@@ -22,6 +22,7 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 import { smartCall } from "../../api/telephony";
+import AiAssistPanel from "../../components/ai/AiAssistPanel";
 
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
@@ -200,24 +201,64 @@ try {
         {timeline.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Recent Activity</Text>
-            {timeline.slice(0, 10).map((item, i) => (
-              <View key={`tl-${i}-${item.id ?? item.createdAt ?? i}`} style={styles.timelineItem}>
-                <View style={styles.timelineDot} />
-                <View style={styles.timelineContent}>
-                  <Text style={styles.timelineType}>{item.type || "Activity"}</Text>
-                  {!!item.description && (
-                    <Text style={styles.timelineDesc}>{item.description}</Text>
-                  )}
-                  {!!item.createdAt && (
-                    <Text style={styles.timelineDate}>
-                      {new Date(item.createdAt).toLocaleString()}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            ))}
+            {[...timeline]
+              .sort((a, b) => new Date(b.occurredAt || b.createdAt || 0).getTime() - new Date(a.occurredAt || a.createdAt || 0).getTime())
+              .slice(0, 10)
+              .map((item, i) => {
+                // Web parity (Contacts.jsx recent activity): the timeline API
+                // uses itemType/title/description/textBody/occurredAt — the
+                // old render read `type`/`createdAt` and showed bare
+                // "Activity" rows with no detail.
+                const itemType = String(item.itemType || item.type || "ACTIVITY");
+                const typeLabel = itemType.replace(/_/g, " ");
+                const headline = item.title || item.description || item.textBody || item.eventType || typeLabel;
+                const detail = item.title ? (item.description || item.textBody) : (item.description && item.textBody ? item.textBody : null);
+                const when = item.occurredAt || item.createdAt;
+                const isCall = itemType === "CALL";
+                const callMeta = isCall
+                  ? [item.direction, item.status, item.disposition, item.durationSeconds ? `${item.durationSeconds}s` : null]
+                      .filter(Boolean)
+                      .map((v) => String(v).replace(/_/g, " ").toLowerCase())
+                      .join(" • ")
+                  : "";
+                return (
+                  <View key={`tl-${i}-${item.messageId ?? item.emailId ?? item.taskId ?? item.noteId ?? item.callLogId ?? item.appointmentId ?? when ?? i}`} style={styles.timelineItem}>
+                    <View style={styles.timelineDot} />
+                    <View style={styles.timelineContent}>
+                      <Text style={styles.timelineType}>{typeLabel}</Text>
+                      <Text style={styles.timelineHeadline} numberOfLines={2}>{headline}</Text>
+                      {!!detail && (
+                        <Text style={styles.timelineDesc} numberOfLines={3}>{detail}</Text>
+                      )}
+                      {!!callMeta && <Text style={styles.timelineDesc}>{callMeta}</Text>}
+                      {!!when && (
+                        <Text style={styles.timelineDate}>
+                          {new Date(when).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
           </View>
         )}
+
+        {/* AI Assistant — summary + suggested reply for this contact */}
+        <View style={styles.card}>
+          <AiAssistPanel
+            contactId={contact.id ?? contact._id ?? null}
+            title="AI Assistant"
+            contextPrompt={
+              `Contact: ${contact.name || ""}${contact.phone ? ` (${contact.phone})` : ""}.\n` +
+              `Status: ${contact.status || "N/A"}.\n` +
+              `Summarise this contact's CRM history and recommend the next best action.`
+            }
+            replyPrompt={
+              `Contact: ${contact.name || ""}.\n` +
+              `Write a short, warm follow-up message for this contact to move the conversation forward.`
+            }
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -346,6 +387,13 @@ const styles = StyleSheet.create({
   },
   timelineContent: { flex: 1, gap: 2 },
   timelineType: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#0f766e",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  timelineHeadline: {
     fontSize: 13,
     fontWeight: "600",
     color: "#111827",
