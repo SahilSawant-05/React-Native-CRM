@@ -71,13 +71,13 @@ const safeId = (v: number | string | undefined): string => v != null ? String(v)
 const toDueAt = (date: string): string | null => !date ? null : date.includes("T") ? new Date(date).toISOString() : `${date}T09:00:00+05:30`;
 
 const displayDate = (v?: string): string => {
-  if (!v) return "No date";
+  if (!v || typeof v !== "string") return "No date";
   const d = new Date(v);
   return isNaN(d.getTime()) ? v : d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 };
 
 const dueMeta = (date?: string): { label: string; color: string } => {
-  if (!date) return { label: "No Date", color: "#94a3b8" };
+  if (!date || typeof date !== "string") return { label: "No Date", color: "#94a3b8" };
   const due = new Date(`${date.split("T")[0]}T23:59:59`);
   if (isNaN(due.getTime())) return { label: date, color: "#94a3b8" };
   const today = new Date(); today.setHours(0,0,0,0);
@@ -99,7 +99,26 @@ const normalizeTaskList = (raw: unknown): Task[] => {
   return [];
 };
 
-const taskToCard = (t: Task & Record<string, unknown>): TaskCard => ({
+// dueAt may not be a plain ISO string: Java LocalDateTime can serialize as
+// a number array [y,m,d,h,min] and some endpoints send epoch numbers —
+// calling .slice/.split on those crashes the whole board render.
+const normalizeDueAt = (raw: unknown): string | undefined => {
+  if (raw == null) return undefined;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const [y, m, d, h = 0, min = 0] = raw.map(Number);
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  }
+  if (typeof raw === "number") {
+    const d = new Date(raw < 1e12 ? raw * 1000 : raw);
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  return undefined;
+};
+
+const taskToCard = (t: Task & Record<string, unknown>): TaskCard => {
+  const dueAt = normalizeDueAt(t.dueAt);
+  return {
   ...t,
   key: safeId(t.id ?? t._id), id: t.id ?? t._id,
   // Tasks from cross-contact endpoints (my-tasks/today/overdue/team) MUST
@@ -114,9 +133,10 @@ const taskToCard = (t: Task & Record<string, unknown>): TaskCard => ({
   title: t.title || "Untitled", description: t.description,
   priority: (t.priority ?? "medium").toLowerCase(),
   tags: Array.isArray(t.tags) ? t.tags as string[] : [],
-  date: t.dueAt ? t.dueAt.slice(0, 16) : "", dueAt: t.dueAt,
+  date: dueAt ? dueAt.slice(0, 16) : "", dueAt,
   status: normalizeStatus(t.status),
-});
+  };
+};
 
 const toColumns = (tasks: Task[]): KanbanColumn[] => {
   const map = new Map<StatusKey, TaskCard[]>();
@@ -243,8 +263,8 @@ function ContactPickerModal({ visible, onClose, onSelect }: { visible:boolean; o
                 const cid = safeId(c.id??c._id);
                 return (
                   <TouchableOpacity key={cid} style={s.contactRow} onPress={()=>{onSelect(c);onClose();}}>
-                    <View style={s.avatar}><Text style={s.avatarText}>{c.name.split(" ").slice(0,2).map((w:string)=>w[0]?.toUpperCase()).join("")}</Text></View>
-                    <View style={{flex:1}}><Text style={s.contactName}>{c.name}</Text><Text style={s.contactSub}>{c.email??c.phone??`ID: ${cid}`}</Text></View>
+                    <View style={s.avatar}><Text style={s.avatarText}>{String(c.name||"?").split(" ").slice(0,2).map((w:string)=>w[0]?.toUpperCase()??"").join("")||"?"}</Text></View>
+                    <View style={{flex:1}}><Text style={s.contactName}>{c.name||"Unnamed contact"}</Text><Text style={s.contactSub}>{c.email??c.phone??`ID: ${cid}`}</Text></View>
                   </TouchableOpacity>
                 );
               })}
