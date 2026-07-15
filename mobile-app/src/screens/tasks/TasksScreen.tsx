@@ -102,8 +102,13 @@ const normalizeTaskList = (raw: unknown): Task[] => {
 const taskToCard = (t: Task & Record<string, unknown>): TaskCard => ({
   ...t,
   key: safeId(t.id ?? t._id), id: t.id ?? t._id,
-  contactId: t.contactId as any, contactName: t.contactName as any,
-  contactPhone: t.contactPhone as any,
+  // Tasks from cross-contact endpoints (my-tasks/today/overdue/team) MUST
+  // carry their own contactId — updates go to /api/contacts/{cid}/tasks/{id},
+  // and using the wrong contact 404s. Try every field variant the backend
+  // might use before giving up.
+  contactId: (t.contactId ?? (t as any).contact_id ?? (t as any).contactID ?? (t as any).contact?.id) as any,
+  contactName: (t.contactName ?? (t as any).contact?.name) as any,
+  contactPhone: (t.contactPhone ?? (t as any).contact?.phone) as any,
   assignedUserEmail: (t.assignedUserEmail as any) ?? (t.assignedTo as any),
   createdByUserEmail: t.createdByUserEmail as any,
   title: t.title || "Untitled", description: t.description,
@@ -707,6 +712,7 @@ export default function TaskKanbanScreen() {
 
   const handleMoveCard = async (card:TaskCard, toCol:StatusKey) => {
     if (card.status===toCol) return;
+    if (!card.contactId && activeFilter) { showToast("This task's contact is unknown — open it from its contact to move","error"); return; }
     const cid=card.contactId??contactId; const tid=card.id??card._id;
     if (!cid||tid==null) { showToast("Cannot move: missing id","error"); return; }
     try {
@@ -781,6 +787,13 @@ export default function TaskKanbanScreen() {
   const saveCard = async (data: FormState & { cardKey:string }) => {
     const status=data.colId; const effectiveCid=editCard?.contactId??contactId;
     if (!effectiveCid){showToast("Select a contact before saving","error");return;}
+    // In a filter view the board mixes tasks from many contacts. If this
+    // task didn't come with its own contactId, falling back to the selected
+    // contact would PUT to the wrong contact and 404 — refuse instead.
+    if (editCard && !editCard.contactId && activeFilter){
+      showToast("This task's contact is unknown — open it from its contact to edit","error");
+      return;
+    }
     const payload={title:data.title,description:data.description,assignedUserId:data.assignedUserId?Number(data.assignedUserId):null,dueAt:toDueAt(data.date)};
     setTaskSaving(true);
     try {
@@ -803,6 +816,7 @@ export default function TaskKanbanScreen() {
   };
 
   const handleDelete = async (card:TaskCard) => {
+    if (!card.contactId && activeFilter){showToast("This task's contact is unknown — open it from its contact to delete","error");return;}
     const cid=card.contactId??contactId; const tid=card.id??card._id;
     if (!cid||tid==null){showToast("Cannot delete: missing id","error");return;}
     try { await taskApi.deleteTask(cid,tid); setColumns(prev=>prev.map(col=>({...col,cards:col.cards.filter(c=>c.key!==card.key)}))); showToast("Task deleted"); }
