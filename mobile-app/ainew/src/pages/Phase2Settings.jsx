@@ -227,24 +227,28 @@ export default function Phase2Settings() {
     const code = params.get("code");
     if (!code) return;
 
-    const finishGmailOAuth = async () => {
+    const finishEmailOAuth = async () => {
       clearMessages();
-      setSaving("gmail-oauth");
+      const oauthProvider = window.localStorage.getItem("emailOAuthProvider") || "gmail";
+      const savingKey = oauthProvider === "outlook" ? "outlook-oauth" : "gmail-oauth";
+      setSaving(savingKey);
       try {
         const redirectUri = window.location.origin + window.location.pathname;
-        const response = await api.post("/api/email/gmail-oauth/callback", { code, redirectUri });
+        const callbackUrl = oauthProvider === "outlook" ? "/api/email/outlook-oauth/callback" : "/api/email/gmail-oauth/callback";
+        const response = await api.post(callbackUrl, { code, redirectUri });
         setEmailConfig(response.data || null);
         setEmailConfigForm((current) => ({ ...current, ...response.data, smtpPassword: "", imapPassword: "" }));
-        setSuccess("Gmail OAuth connected");
+        setSuccess(oauthProvider === "outlook" ? "Microsoft 365 connected" : "Gmail OAuth connected");
+        window.localStorage.removeItem("emailOAuthProvider");
         window.history.replaceState({}, "", window.location.pathname);
       } catch (err) {
-        setError(err?.response?.data?.message || err.message || "Failed to finish Gmail OAuth");
+        setError(err?.response?.data?.message || err.message || "Failed to finish email OAuth");
       } finally {
         setSaving("");
       }
     };
 
-    finishGmailOAuth();
+    finishEmailOAuth();
   }, []);
 
   const clearMessages = () => {
@@ -389,10 +393,53 @@ export default function Phase2Settings() {
       const redirectUri = window.location.origin + "/dashboard/phase2-settings";
       const response = await api.get("/api/email/gmail-oauth/url", { params: { redirectUri } });
       if (response.data?.authorizationUrl) {
+        window.localStorage.setItem("emailOAuthProvider", "gmail");
         window.location.href = response.data.authorizationUrl;
       }
     } catch (err) {
       setError(err?.response?.data?.message || err.message || "Failed to start Gmail OAuth");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const connectOutlookOAuth = async () => {
+    clearMessages();
+    setSaving("outlook-oauth");
+    try {
+      const redirectUri = window.location.origin + "/dashboard/phase2-settings";
+      const response = await api.get("/api/email/outlook-oauth/url", { params: { redirectUri } });
+      if (response.data?.authorizationUrl) {
+        window.localStorage.setItem("emailOAuthProvider", "outlook");
+        window.location.href = response.data.authorizationUrl;
+      }
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Failed to start Microsoft 365 OAuth");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const disconnectOutlookOAuth = async () => {
+    clearMessages();
+    setEmailConnectionTest(null);
+    if (!window.confirm("Disconnect the current Microsoft 365 account from this CRM? You can connect a new Outlook account after this.")) {
+      return;
+    }
+    setSaving("outlook-oauth-disconnect");
+    try {
+      const response = await api.post("/api/email/outlook-oauth/disconnect");
+      setEmailConfig(response.data || null);
+      setEmailConfigForm((current) => ({
+        ...current,
+        ...response.data,
+        provider: response.data?.provider || "SMTP",
+        smtpPassword: "",
+        imapPassword: "",
+      }));
+      setSuccess("Microsoft 365 disconnected. Connect Outlook again or save custom SMTP/IMAP settings.");
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Failed to disconnect Microsoft 365");
     } finally {
       setSaving("");
     }
@@ -520,7 +567,11 @@ export default function Phase2Settings() {
         ...testEmailForm,
         variables: { contactName: "Demo Lead" },
       });
-      setSuccess(response.data?.status === "SENT" ? "Test email sent" : "Test email logged as failed");
+      if (response.data?.status === "SENT") {
+        setSuccess("Test email sent");
+      } else {
+        setError(response.data?.errorMessage || "Test email failed. Check SMTP host, port, TLS, username, password, and sender address.");
+      }
     } catch (err) {
       setError(err?.response?.data?.message || err.message || "Failed to send test email");
     } finally {
@@ -1768,6 +1819,53 @@ export default function Phase2Settings() {
                     )}
                   </div>
 
+                  <div className={`mb-5 rounded-lg border p-4 ${
+                    emailConfig?.outlookOAuthConnected ? "border-emerald-100 bg-emerald-50" : "border-sky-100 bg-sky-50"
+                  }`}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className={`text-sm font-bold ${emailConfig?.outlookOAuthConnected ? "text-emerald-950" : "text-sky-950"}`}>
+                            Recommended: Microsoft 365 / Outlook
+                          </h4>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                            emailConfig?.outlookOAuthConnected ? "bg-emerald-600 text-white" : "bg-sky-100 text-sky-700"
+                          }`}>
+                            {emailConfig?.outlookOAuthConnected ? "Connected" : "Not connected"}
+                          </span>
+                        </div>
+                        <p className={`mt-1 text-xs ${emailConfig?.outlookOAuthConnected ? "text-emerald-700" : "text-sky-700"}`}>
+                          {emailConfig?.outlookOAuthConnected
+                            ? `Connected as ${emailConfig.outlookOauthEmail || emailConfig.fromEmail}`
+                            : "Connect Outlook with Microsoft Graph. This works when SMTP AUTH is blocked by Microsoft security defaults."}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <SecondaryButton
+                          onClick={connectOutlookOAuth}
+                          disabled={saving === "outlook-oauth" || saving === "outlook-oauth-disconnect"}
+                        >
+                          {saving === "outlook-oauth" ? "Starting..." : emailConfig?.outlookOAuthConnected ? "Switch Microsoft Account" : "Connect Microsoft 365"}
+                        </SecondaryButton>
+                        {emailConfig?.outlookOAuthConnected && (
+                          <button
+                            type="button"
+                            onClick={disconnectOutlookOAuth}
+                            disabled={saving === "outlook-oauth-disconnect" || saving === "outlook-oauth"}
+                            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {saving === "outlook-oauth-disconnect" ? "Disconnecting..." : "Disconnect Microsoft 365"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {emailConfig?.outlookOAuthConnected && (
+                      <p className="mt-3 rounded-md border border-emerald-100 bg-white/70 px-3 py-2 text-xs text-emerald-800">
+                        Sending and inbox sync will use Microsoft Graph, so SMTP AUTH does not need to be enabled for this mailbox.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
@@ -1791,6 +1889,7 @@ export default function Phase2Settings() {
                       >
                         <option value="SMTP">SMTP</option>
                         <option value="GMAIL_OAUTH">Gmail OAuth</option>
+                        <option value="OUTLOOK_OAUTH">Microsoft 365 OAuth</option>
                       </SelectInput>
                     </div>
                     <div>

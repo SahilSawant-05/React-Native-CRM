@@ -67,7 +67,7 @@ export default function CallTranscriptButton({
           </button>
         )}
       </div>
-      <p className="mt-1 text-[11px] leading-4 text-gray-500">
+      <p className="mt-1 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold leading-4 text-amber-800">
         Uses CRM AI credits. Your selected AI provider may also charge separately based on transcript model and recording duration.
       </p>
       {(transcriptProvider || transcriptModel) && (

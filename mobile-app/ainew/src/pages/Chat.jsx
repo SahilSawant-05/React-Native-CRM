@@ -5,11 +5,13 @@ import {
   ArrowLeft,
   Briefcase,
   Clock3,
+  Download,
   FileText,
   FormInput,
   Image as ImageIcon,
   Link2,
   ListChecks,
+  Loader2,
   PanelRightClose,
   PanelRightOpen,
   Phone,
@@ -215,39 +217,81 @@ function isDesktopChatViewport() {
 }
 
 function MediaBubble({ message }) {
+  const [objectUrl, setObjectUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const messageId = message.messageId || message.id;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadInboundMedia() {
+      if (!message.mediaType || message.mediaUrl || !message.mediaId || !messageId) {
+        return;
+      }
+      setLoading(true);
+      setError("");
+      try {
+        const response = await api.get(`/api/messages/${messageId}/media`, { responseType: "blob" });
+        if (!alive) return;
+        setObjectUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return URL.createObjectURL(response.data);
+        });
+      } catch (err) {
+        if (!alive) return;
+        setError(apiErrorMessage(err, "Could not load WhatsApp media."));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    loadInboundMedia();
+    return () => {
+      alive = false;
+    };
+  }, [message.mediaId, message.mediaType, message.mediaUrl, messageId]);
+
+  useEffect(() => () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }, [objectUrl]);
+
   if (!message.mediaType) return null;
 
   const label = message.mediaFileName || message.mediaType;
+  const mediaUrl = message.mediaUrl || objectUrl;
+  const mediaType = String(message.mediaType || "").toUpperCase();
 
-  if (message.mediaType === "IMAGE" && message.mediaUrl) {
+  if ((mediaType === "IMAGE" || mediaType === "STICKER") && mediaUrl) {
     return (
-      <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-gray-200">
-        <img src={message.mediaUrl} alt={label} className="max-h-72 w-full object-cover" />
+      <a href={mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <img src={mediaUrl} alt={label} className="max-h-72 w-full object-cover" />
       </a>
     );
   }
 
-  if (message.mediaType === "VIDEO" && message.mediaUrl) {
+  if (mediaType === "VIDEO" && mediaUrl) {
     return (
       <video controls className="max-h-72 w-full rounded-xl border border-gray-200 bg-black">
-        <source src={message.mediaUrl} />
+        <source src={mediaUrl} />
       </video>
     );
   }
 
-  if (message.mediaType === "AUDIO" && message.mediaUrl) {
-    return <audio controls className="w-full"><source src={message.mediaUrl} /></audio>;
+  if (mediaType === "AUDIO" && mediaUrl) {
+    return <audio controls className="w-full"><source src={mediaUrl} /></audio>;
   }
 
-  if (message.mediaUrl) {
+  if (mediaUrl) {
     return (
       <a
-        href={message.mediaUrl}
+        href={mediaUrl}
         target="_blank"
         rel="noreferrer"
+        download={message.mediaFileName || undefined}
         className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-teal-700"
       >
-        <Link2 size={16} />
+        {mediaType === "DOCUMENT" ? <Download size={16} /> : <Link2 size={16} />}
         <span>{label}</span>
       </a>
     );
@@ -255,9 +299,16 @@ function MediaBubble({ message }) {
 
   return (
     <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-      {message.mediaType} received
-      {message.mediaFileName ? ` • ${message.mediaFileName}` : ""}
-      {message.mediaMimeType ? ` • ${message.mediaMimeType}` : ""}
+      <div className="flex items-center gap-2 font-semibold">
+        {loading && <Loader2 size={14} className="animate-spin text-teal-600" />}
+        {!loading && <FileText size={14} className="text-gray-500" />}
+        <span>{loading ? "Loading WhatsApp media..." : `${mediaType} received`}</span>
+      </div>
+      <div className="mt-1 break-words">
+        {message.mediaFileName ? `${message.mediaFileName}` : ""}
+        {message.mediaMimeType ? `${message.mediaFileName ? " • " : ""}${message.mediaMimeType}` : ""}
+      </div>
+      {error && <div className="mt-2 rounded-lg bg-red-50 px-2 py-1 font-semibold text-red-600">{error}</div>}
     </div>
   );
 }

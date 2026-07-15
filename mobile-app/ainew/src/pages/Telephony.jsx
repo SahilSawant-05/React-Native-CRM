@@ -17,7 +17,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import api from "../api/axios";
-import DateRangeFilter, { dateRangeParams, presetDateRange } from "../components/common/DateRangeFilter";
+import { dateRangeParams, presetDateRange } from "../components/common/DateRangeFilter";
 import CallRecordingPlayer from "../components/common/CallRecordingPlayer";
 import AiCallActionPanel from "../components/ai/AiCallActionPanel";
 import AiCallSummaryButton from "../components/ai/AiCallSummaryButton";
@@ -178,12 +178,79 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
-function statusClass(status) {
-  const normalized = String(status || "").toUpperCase();
-  if (["COMPLETED", "ANSWERED"].includes(normalized)) return "bg-emerald-50 text-emerald-700 border-emerald-100";
-  if (["FAILED", "MISSED", "BUSY", "NO_ANSWER"].includes(normalized)) return "bg-red-50 text-red-700 border-red-100";
-  if (["QUEUED", "RINGING", "REQUESTED"].includes(normalized)) return "bg-amber-50 text-amber-700 border-amber-100";
-  return "bg-gray-50 text-gray-700 border-gray-100";
+function statusMeta(status) {
+  const normalized = String(status || "REQUESTED").toUpperCase();
+  if (["COMPLETED", "ANSWERED"].includes(normalized)) {
+    return { label: "Completed", tone: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: "OK" };
+  }
+  if (normalized === "RINGING") {
+    return { label: "Ringing", tone: "border-amber-200 bg-amber-50 text-amber-700", icon: "R" };
+  }
+  if (["NO_ANSWER", "MISSED", "BUSY"].includes(normalized)) {
+    return { label: normalized === "NO_ANSWER" ? "No Answer" : normalized.replace("_", " "), tone: "border-red-200 bg-red-50 text-red-700", icon: "X" };
+  }
+  if (normalized === "VOICEMAIL") {
+    return { label: "Voicemail", tone: "border-blue-200 bg-blue-50 text-blue-700", icon: "VM" };
+  }
+  return { label: normalized.replace("_", " "), tone: "border-slate-200 bg-slate-50 text-slate-700", icon: "-" };
+}
+
+function callStats(calls, report, totalElements) {
+  const visible = Array.isArray(calls) ? calls : [];
+  const total = Number(report?.totalCalls ?? totalElements ?? visible.length ?? 0);
+  const visibleCount = (predicate) => visible.filter(predicate).length;
+  const completed = Number(report?.answeredCalls ?? visibleCount((call) => ["COMPLETED", "ANSWERED"].includes(String(call.status || "").toUpperCase())));
+  const noAnswer = Number(report?.missedCalls ?? visibleCount((call) => ["NO_ANSWER", "MISSED", "BUSY"].includes(String(call.status || "").toUpperCase())));
+  const ringing = visibleCount((call) => ["REQUESTED", "QUEUED", "RINGING"].includes(String(call.status || "").toUpperCase()));
+  const voicemail = visibleCount((call) => String(call.status || "").toUpperCase() === "VOICEMAIL" || String(call.disposition || "").toUpperCase() === "VOICEMAIL");
+  const pending = visibleCount((call) => !call.recordingUrl && !["NO_ANSWER", "MISSED", "BUSY", "FAILED"].includes(String(call.status || "").toUpperCase()));
+  const percent = (value) => total > 0 ? `${Math.round((Number(value || 0) / total) * 1000) / 10}%` : "0%";
+  return { total, completed, noAnswer, ringing, voicemail, pending, percent };
+}
+
+function CallStatCard({ tone, icon, label, value, percent, helper, action }) {
+  const tones = {
+    emerald: "border-emerald-100 bg-emerald-50/40 text-emerald-700",
+    amber: "border-amber-100 bg-amber-50/40 text-amber-700",
+    red: "border-red-100 bg-red-50/40 text-red-700",
+    blue: "border-blue-100 bg-blue-50/40 text-blue-700",
+    slate: "border-slate-200 bg-white text-slate-700",
+  };
+  const iconTones = {
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    red: "bg-red-100 text-red-700",
+    blue: "bg-blue-100 text-blue-700",
+    slate: "bg-slate-100 text-slate-700",
+  };
+  return (
+    <article className={`rounded-2xl border p-4 shadow-sm ${tones[tone] || tones.slate}`}>
+      <div className="flex items-center gap-4">
+        <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl font-black ${iconTones[tone] || iconTones.slate}`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black">{label}</p>
+          <div className="mt-1 flex flex-wrap items-end gap-3">
+            <span className="text-3xl font-black leading-none">{value}</span>
+            {percent && <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-black">{percent}</span>}
+          </div>
+          {helper && <p className="mt-2 text-xs font-semibold leading-5 opacity-80">{helper}</p>}
+          {action && <div className="mt-2">{action}</div>}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function pageNumbers(page, totalPages) {
+  const total = Math.max(0, Number(totalPages || 0));
+  const current = Number(page || 0);
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index);
+  const pages = new Set([0, total - 1, current, current - 1, current + 1]);
+  if (current < 3) [0, 1, 2, 3].forEach((item) => pages.add(item));
+  if (current > total - 4) [total - 4, total - 3, total - 2, total - 1].forEach((item) => pages.add(item));
+  return Array.from(pages).filter((item) => item >= 0 && item < total).sort((a, b) => a - b);
 }
 
 function dispositionLabel(value) {
@@ -304,6 +371,7 @@ export default function Telephony() {
   const [status, setStatus] = useState("ALL");
   const [disposition, setDisposition] = useState("ALL");
   const [agentUserId, setAgentUserId] = useState("");
+  const [callDatePreset, setCallDatePreset] = useState("30D");
   const [dateRange, setDateRange] = useState(() => presetDateRange("30D"));
   const [callForm, setCallForm] = useState({ contactId: "", customerNumber: "", agentNumber: "", notes: "" });
   const [leadForm, setLeadForm] = useState({ callLogId: null, name: "", email: "", city: "", tags: "Phone Call" });
@@ -350,6 +418,7 @@ export default function Telephony() {
     () => webhookHealth(webhookEvents, webhookPageInfo.totalElements),
     [webhookEvents, webhookPageInfo.totalElements]
   );
+  const callLogStats = useMemo(() => callStats(calls, report, pageInfo.totalElements), [calls, report, pageInfo.totalElements]);
 
   const loadConfig = async () => {
     try {
@@ -1423,31 +1492,106 @@ export default function Telephony() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h2 className="text-lg font-extrabold text-gray-950">Call Logs</h2>
-              <p className="text-sm text-gray-500">Showing {pageInfo.totalElements} tracked calls.</p>
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-5">
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+                  <PhoneCall size={24} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-slate-950">Call Logs</h2>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">Showing {pageInfo.totalElements} tracked calls.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 xl:items-end">
+                <div className="flex flex-wrap gap-2">
+                  {["7D", "30D", "90D", "ALL"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setCallDatePreset(preset);
+                        setDateRange(presetDateRange(preset));
+                      }}
+                      className={`rounded-lg border px-4 py-2 text-sm font-black ${
+                        callDatePreset === preset
+                          ? "border-violet-300 bg-violet-50 text-violet-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {preset === "ALL" ? "All" : preset}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <label className="block text-xs font-black uppercase tracking-wide text-slate-500">
+                    From
+                    <input
+                      type="date"
+                      value={dateRange.fromDate || ""}
+                      onChange={(event) => {
+                        setCallDatePreset("CUSTOM");
+                        setDateRange((current) => ({ ...current, fromDate: event.target.value }));
+                      }}
+                      className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-800 outline-none focus:border-violet-400"
+                    />
+                  </label>
+                  <label className="block text-xs font-black uppercase tracking-wide text-slate-500">
+                    To
+                    <input
+                      type="date"
+                      value={dateRange.toDate || ""}
+                      onChange={(event) => {
+                        setCallDatePreset("CUSTOM");
+                        setDateRange((current) => ({ ...current, toDate: event.target.value }));
+                      }}
+                      className="mt-1 block min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-800 outline-none focus:border-violet-400"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end md:justify-end">
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <CallStatCard tone="emerald" icon="OK" label="Completed" value={callLogStats.completed} percent={callLogStats.percent(callLogStats.completed)} />
+              <CallStatCard tone="amber" icon="R" label="Ringing" value={callLogStats.ringing} percent={callLogStats.percent(callLogStats.ringing)} />
+              <CallStatCard tone="red" icon="X" label="No Answer" value={callLogStats.noAnswer} percent={callLogStats.percent(callLogStats.noAnswer)} />
+              <CallStatCard tone="blue" icon="VM" label="Voicemail" value={callLogStats.voicemail} percent={callLogStats.percent(callLogStats.voicemail)} />
+              <CallStatCard
+                tone={callLogStats.pending ? "red" : "slate"}
+                icon="!"
+                label={`${callLogStats.pending} recordings pending`}
+                value=""
+                helper={callLogStats.pending ? "Recordings are being processed." : "No pending recordings in this view."}
+                action={callLogStats.pending ? (
+                  <button type="button" onClick={() => setStatus("RINGING")} className="text-xs font-black text-violet-700 hover:text-violet-800">
+                    View pending
+                  </button>
+                ) : null}
+              />
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-[170px_190px_minmax(180px,1fr)_120px]">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Status
                 <select
                   value={status}
                   onChange={(event) => setStatus(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:w-44"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400"
                 >
                   {statusOptions.map((option) => (
                     <option key={option} value={option}>{option.replace("_", " ")}</option>
                   ))}
                 </select>
               </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Outcome
                 <select
                   value={disposition}
                   onChange={(event) => setDisposition(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:w-48"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400"
                 >
                   <option value="ALL">All outcomes</option>
                   {dispositionOptions.map((option) => (
@@ -1455,12 +1599,12 @@ export default function Telephony() {
                   ))}
                 </select>
               </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Agent
                 <select
                   value={agentUserId}
                   onChange={(event) => setAgentUserId(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:w-56"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400"
                 >
                   <option value="">All agents</option>
                   {users.map((user) => (
@@ -1470,34 +1614,34 @@ export default function Telephony() {
                   ))}
                 </select>
               </label>
-              <label className="space-y-1 text-sm font-semibold text-gray-700">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Per page
                 <select
                   value={pageInfo.size}
                   onChange={(event) => changeCallPageSize(event.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm md:w-32"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400"
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>{size}</option>
                   ))}
                 </select>
               </label>
-              <DateRangeFilter value={dateRange} onChange={setDateRange} compact />
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-200">
-            <div className="hidden grid-cols-[120px_100px_minmax(0,1fr)_minmax(0,1fr)_90px_120px_120px_110px_130px] gap-3 bg-gray-50 px-4 py-3 text-xs font-extrabold uppercase tracking-wide text-gray-500 lg:grid">
-              <span>Status</span>
-              <span>Provider</span>
-              <span>Customer</span>
-              <span>Agent</span>
-              <span>Duration</span>
-              <span>Recording</span>
-              <span>Outcome</span>
-              <span>Created</span>
-              <span>Action</span>
-            </div>
+          <div className="overflow-x-auto">
+            <div className="min-w-[1420px]">
+              <div className="grid grid-cols-[140px_150px_190px_180px_100px_230px_150px_120px_210px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-4 text-xs font-black uppercase tracking-wide text-slate-500">
+                <span>Status</span>
+                <span>Provider</span>
+                <span>Customer</span>
+                <span>Agent</span>
+                <span>Duration</span>
+                <span>Recording</span>
+                <span>Outcome</span>
+                <span>Created</span>
+                <span>Action</span>
+              </div>
 
             {loading ? (
               <div className="p-6 text-sm text-gray-500">Loading calls...</div>
@@ -1506,49 +1650,60 @@ export default function Telephony() {
                 No call logs yet. Start with a test click-to-call after saving provider settings.
               </div>
             ) : (
-              calls.map((call) => (
-                <div key={call.id} className="grid gap-3 border-t border-gray-100 px-4 py-4 text-sm lg:grid-cols-[120px_100px_minmax(0,1fr)_minmax(0,1fr)_90px_120px_120px_110px_130px]">
+              calls.map((call) => {
+                const meta = statusMeta(call.status);
+                return (
+                <div key={call.id} className="grid min-h-[126px] grid-cols-[140px_150px_190px_180px_100px_230px_150px_120px_210px] gap-4 border-b border-slate-100 px-4 py-5 text-sm last:border-b-0">
                   <div>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-extrabold ${statusClass(call.status)}`}>
-                      {String(call.status || "REQUESTED").replace("_", " ")}
+                    <span className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-black uppercase ${meta.tone}`}>
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 text-[10px]">{meta.icon}</span>
+                      {meta.label}
                     </span>
                     {call.failureReason && <p className="mt-2 text-xs text-red-600">{call.failureReason}</p>}
                   </div>
-                  <div className="font-bold text-gray-800">{call.provider || "—"}</div>
+                  <div>
+                    <div className="flex items-center gap-2 font-black text-slate-900">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-50 text-[11px] font-black text-red-600">
+                        {String(call.provider || "?").slice(0, 1)}
+                      </span>
+                      {call.provider || "-"}
+                    </div>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{call.fromNumber || call.toNumber || "-"}</p>
+                  </div>
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Customer</p>
-                    <p className="truncate font-semibold text-gray-900">{call.customerNumber || call.toNumber || "—"}</p>
+                    <p className="truncate font-black text-slate-950">{call.customerNumber || call.toNumber || "-"}</p>
                     {call.contactId && (
-                      <p className="text-xs font-semibold text-emerald-700">
+                      <p className="mt-1 text-xs font-bold text-emerald-700">
                         {String(call.direction || "").toUpperCase() === "INBOUND" ? "Phone lead linked" : "Contact"} #{call.contactId}
                       </p>
                     )}
                     {!call.contactId && String(call.direction || "").toUpperCase() === "INBOUND" && (
-                      <p className="mt-1 text-xs font-bold text-amber-700">Unknown inbound caller - create or link lead</p>
+                      <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-bold leading-5 text-amber-700">Unknown inbound caller - create or link lead</p>
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Agent</p>
-                    <p className="truncate font-semibold text-gray-900">{call.agentNumber || call.fromNumber || "—"}</p>
-                    {call.userId && <p className="text-xs text-gray-500">User #{call.userId}</p>}
+                    <p className="truncate font-black text-slate-950">{call.agentNumber || call.fromNumber || "-"}</p>
+                    {call.userId && <p className="mt-1 text-xs font-semibold text-slate-500">User #{call.userId}</p>}
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Duration</p>
-                    {call.durationSeconds ? `${call.durationSeconds}s` : "—"}
+                    <p className="font-black text-slate-800">{call.durationSeconds ? `${call.durationSeconds}s` : "-"}</p>
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Recording</p>
                     {call.recordingUrl ? (
                       <CallRecordingPlayer recordingUrl={call.recordingUrl} callId={call.id} compact />
                     ) : (
-                      <span className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-extrabold ${recordingBadge(call).tone}`}>
-                        {recordingBadge(call).label}
-                      </span>
+                      <div className={`rounded-xl border p-3 ${recordingBadge(call).tone}`}>
+                        <p className="text-sm font-black">{recordingBadge(call).label}</p>
+                        <p className="mt-2 text-xs font-semibold leading-5">
+                          {["NO_ANSWER", "MISSED", "BUSY", "FAILED"].includes(String(call.status || "").toUpperCase())
+                            ? "Call was not answered."
+                            : "Please wait while we process the recording."}
+                        </p>
+                      </div>
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Outcome</p>
-                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-extrabold ${
+                    <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${
                       call.disposition ? "border-indigo-100 bg-indigo-50 text-indigo-700" : "border-gray-100 bg-gray-50 text-gray-500"
                     }`}>
                       {dispositionLabel(call.disposition)}
@@ -1561,15 +1716,14 @@ export default function Telephony() {
                       </p>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500">{formatDateTime(call.createdAt)}</div>
+                  <div className="text-xs font-semibold leading-5 text-slate-500">{formatDateTime(call.createdAt)}</div>
                   <div>
-                    <p className="mb-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 lg:hidden">Action</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {!call.contactId && String(call.direction || "").toUpperCase() === "INBOUND" && (
                         <button
                           type="button"
                           onClick={() => openLeadForm(call)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-extrabold text-teal-700 hover:bg-teal-100"
+                          className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-black text-teal-700 hover:bg-teal-100"
                         >
                           <UserPlus size={14} />
                           Create lead
@@ -1578,7 +1732,7 @@ export default function Telephony() {
                       <button
                         type="button"
                         onClick={() => openDispositionForm(call)}
-                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-extrabold text-gray-700 hover:bg-gray-50"
+                        className="inline-flex min-h-8 w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-700 hover:bg-slate-50"
                       >
                         Outcome
                       </button>
@@ -1616,31 +1770,50 @@ export default function Telephony() {
                     />
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
+            </div>
           </div>
 
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-gray-500">
+          <div className="flex flex-col gap-4 border-t border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-sm font-semibold text-slate-500">
               Showing {pageInfo.totalElements === 0 ? 0 : pageInfo.page * pageInfo.size + 1}
               -{Math.min((pageInfo.page + 1) * pageInfo.size, pageInfo.totalElements)} of {pageInfo.totalElements} calls
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={pageInfo.page <= 0 || loading}
                 onClick={() => loadCalls(pageInfo.page - 1)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 disabled:opacity-50"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"
               >
-                Previous
+                &lt;
               </button>
+              {pageNumbers(pageInfo.page, pageInfo.totalPages).map((pageNumber, index, pages) => (
+                <div key={pageNumber} className="flex items-center gap-2">
+                  {index > 0 && pageNumber - pages[index - 1] > 1 && <span className="px-1 text-sm font-black text-slate-400">...</span>}
+                  <button
+                    type="button"
+                    onClick={() => loadCalls(pageNumber)}
+                    disabled={loading}
+                    className={`min-w-10 rounded-lg border px-3 py-2 text-sm font-black ${
+                      pageInfo.page === pageNumber
+                        ? "border-violet-300 bg-violet-50 text-violet-700"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    } disabled:opacity-50`}
+                  >
+                    {pageNumber + 1}
+                  </button>
+                </div>
+              ))}
               <button
                 type="button"
                 disabled={pageInfo.page + 1 >= pageInfo.totalPages || loading}
                 onClick={() => loadCalls(pageInfo.page + 1)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 disabled:opacity-50"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 disabled:opacity-50"
               >
-                Next
+                &gt;
               </button>
             </div>
           </div>

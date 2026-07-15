@@ -31,6 +31,8 @@ export const EMPTY_EMAIL_CONFIG = {
   imapFolder: "INBOX",
   gmailOauthEmail: "",
   gmailOAuthConnected: false,
+  outlookOauthEmail: "",
+  outlookOAuthConnected: false,
   useTls: true,
   active: true,
 };
