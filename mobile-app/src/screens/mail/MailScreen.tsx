@@ -477,19 +477,22 @@ export default function MailScreen({ navigation }: any) {
         )
       );
       if (!isMountedRef.current) return;
-      setCounts((prev) => {
-        const next: FolderCounts = { ...prev };
-        results.forEach((result, idx) => {
-          const key = FOLDERS[idx].key;
-          if (result.status === "fulfilled") {
-            const data = result.value?.data || {};
-            next[key] = data.totalElements ?? 0;
-          }
-        });
-        // Bottom-tab badge mirrors the Unread folder count exactly
-        badges.setMailCount(Number(next.UNREAD) || 0);
-        return next;
+      // Compute the new counts OUTSIDE the setState updater: React can run
+      // updater functions during render, so calling badges.setMailCount from
+      // inside one is a cross-component setState-in-render warning/bug.
+      const updates: Partial<FolderCounts> = {};
+      results.forEach((result, idx) => {
+        const key = FOLDERS[idx].key;
+        if (result.status === "fulfilled") {
+          const data = result.value?.data || {};
+          updates[key] = data.totalElements ?? 0;
+        }
       });
+      setCounts((prev) => ({ ...prev, ...updates }));
+      // Bottom-tab badge mirrors the Unread folder count exactly
+      if (updates.UNREAD !== undefined) {
+        badges.setMailCount(Number(updates.UNREAD) || 0);
+      }
     } catch {
       // Count badges are non-critical; fail silently.
     }
