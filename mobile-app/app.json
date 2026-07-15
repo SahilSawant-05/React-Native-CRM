@@ -23,13 +23,24 @@
     },
     "plugins": [
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#003b85"
+        }
+      ]
     ],
     "web": {},
     "extra": {
       "eas": {
         "projectId": "b76117df-ae59-42ab-a8f1-ad119b9ff181"
       }
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#003b85"
     }
   }
 }
