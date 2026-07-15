@@ -280,7 +280,7 @@ function ContactPickerModal({ visible, onClose, onSelect }: { visible:boolean; o
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-function CalendarSheet({ visible, initial, onCancel, onConfirm }: {
+export function CalendarSheet({ visible, initial, onCancel, onConfirm }: {
   visible: boolean;
   initial: Date | null;
   onCancel: () => void;

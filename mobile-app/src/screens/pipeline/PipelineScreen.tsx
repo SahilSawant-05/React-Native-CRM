@@ -22,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
+import { CalendarSheet } from "../tasks/TasksScreen";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 
@@ -708,6 +709,40 @@ const om = StyleSheet.create({
   priorityText:  { fontSize: 12, fontWeight: "700", color: "#64748b" },
 });
 
+// ─── Appointments (web parity: OpportunityDetail.jsx scheduleAppointment) ────
+const APPOINTMENT_LABELS: Record<string, string> = {
+  SITE_VISIT: "Site Visit",
+  COUNSELING_SESSION: "Counseling Session",
+  DEMO_SESSION: "Demo Session",
+  TEST_RIDE: "Test Ride",
+  FOLLOW_UP_MEETING: "Follow-up Meeting",
+  GENERAL: "General",
+};
+
+interface OppAppointment {
+  id: number;
+  title?: string;
+  appointmentType?: string;
+  status?: string;
+  location?: string;
+  startAt?: string;
+  endAt?: string;
+}
+
+function normalizeEventList(payload: any): OppAppointment[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.content)) return payload.content;
+  return [];
+}
+
+function appointmentStatusColors(status?: string): { bg: string; text: string } {
+  const s = String(status || "SCHEDULED").toUpperCase();
+  if (s === "COMPLETED") return { bg: "#ecfdf5", text: "#047857" };
+  if (s === "CANCELLED" || s === "NO_SHOW") return { bg: "#fef2f2", text: "#b91c1c" };
+  return { bg: "#eff6ff", text: "#1d4ed8" };
+}
+
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
   opp: Opportunity | null;
@@ -716,8 +751,66 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
   onEdit: (opp: Opportunity) => void;
   onDelete: (opp: Opportunity) => void;
 }) {
+  // Appointments state (hooks must run before the null-guard below)
+  const [appointments, setAppointments] = useState<OppAppointment[]>([]);
+  const [apptType, setApptType] = useState("FOLLOW_UP_MEETING");
+  const [apptStart, setApptStart] = useState<Date | null>(null);
+  const [apptEnd, setApptEnd] = useState<Date | null>(null);
+  const [apptLocation, setApptLocation] = useState("");
+  const [apptDescription, setApptDescription] = useState("");
+  const [apptMsg, setApptMsg] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const [calendarFor, setCalendarFor] = useState<"start" | "end" | null>(null);
+
+  const loadAppointments = React.useCallback(async (oppId: number | string) => {
+    try {
+      const res = await api.get(`/api/events/opportunity/${oppId}`);
+      setAppointments(normalizeEventList(res.data));
+    } catch {
+      setAppointments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!opp?.id) return;
+    setAppointments([]);
+    setApptMsg("");
+    setApptStart(null); setApptEnd(null); setApptLocation(""); setApptDescription("");
+    loadAppointments(opp.id);
+  }, [opp?.id, loadAppointments]);
+
   if (!opp) return null;
   const stage = stagesMap[opp.stage];
+
+  async function scheduleAppointment() {
+    if (!opp || scheduling) return;
+    if (!apptStart) { setApptMsg("Pick a start date & time first."); return; }
+    if (apptEnd && apptEnd <= apptStart) { setApptMsg("End time must be after start time."); return; }
+    setScheduling(true);
+    setApptMsg("");
+    try {
+      await api.post("/api/events", {
+        title: `${APPOINTMENT_LABELS[apptType] || "Appointment"} - ${opp.title}`,
+        description: apptDescription.trim() || null,
+        category: "MEETING",
+        appointmentType: apptType,
+        status: "SCHEDULED",
+        location: apptLocation.trim() || null,
+        contactId: opp.contactId,
+        opportunityId: opp.id,
+        startAt: apptStart.toISOString(),
+        endAt: apptEnd ? apptEnd.toISOString() : null,
+        allDay: false,
+      });
+      setApptMsg("Appointment scheduled — it appears here, in the calendar, and on the pipeline card.");
+      setApptStart(null); setApptEnd(null); setApptLocation(""); setApptDescription("");
+      await loadAppointments(opp.id);
+    } catch (err: any) {
+      setApptMsg(err?.response?.data?.message || err?.message || "Appointment scheduling failed");
+    } finally {
+      setScheduling(false);
+    }
+  }
 
   const Row = ({ label, value }: { label: string; value?: string | null }) =>
     value ? (
@@ -763,10 +856,108 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
             <Row label="Last Updated"  value={formatDate(opp.updatedAt)} />
           </View>
 
+          {/* Appointments (web parity) */}
+          <View style={dm.card}>
+            <Text style={dm.sectionTitle}>Appointments</Text>
+
+            {appointments.length === 0 ? (
+              <Text style={dm.apptEmpty}>No appointments yet for this opportunity.</Text>
+            ) : (
+              appointments.map((a) => {
+                const sc = appointmentStatusColors(a.status);
+                return (
+                  <View key={String(a.id)} style={dm.apptRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={dm.apptTitle} numberOfLines={1}>{a.title || APPOINTMENT_LABELS[a.appointmentType || ""] || "Appointment"}</Text>
+                      <Text style={dm.apptMeta}>
+                        {formatDate(a.startAt)}{a.location ? ` • ${a.location}` : ""}
+                      </Text>
+                    </View>
+                    <View style={[dm.apptStatus, { backgroundColor: sc.bg }]}>
+                      <Text style={[dm.apptStatusText, { color: sc.text }]}>{String(a.status || "SCHEDULED").replace("_", " ")}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            <Text style={dm.sectionTitle}>Schedule Appointment</Text>
+
+            <View style={dm.apptTypeRow}>
+              {Object.entries(APPOINTMENT_LABELS).map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[dm.apptChip, apptType === value && dm.apptChipActive]}
+                  onPress={() => setApptType(value)}
+                >
+                  <Text style={[dm.apptChipText, apptType === value && dm.apptChipTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={dm.apptField} onPress={() => setCalendarFor("start")} activeOpacity={0.7}>
+              <Text style={[dm.apptFieldText, !apptStart && dm.apptFieldPlaceholder]}>
+                {apptStart ? apptStart.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Start date & time *"}
+              </Text>
+              <Ionicons name="calendar-outline" size={17} color="#0f766e" />
+            </TouchableOpacity>
+            <TouchableOpacity style={dm.apptField} onPress={() => setCalendarFor("end")} activeOpacity={0.7}>
+              <Text style={[dm.apptFieldText, !apptEnd && dm.apptFieldPlaceholder]}>
+                {apptEnd ? apptEnd.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "End date & time (optional)"}
+              </Text>
+              <Ionicons name="calendar-outline" size={17} color="#0f766e" />
+            </TouchableOpacity>
+
+            <TextInput
+              style={dm.apptInput}
+              value={apptLocation}
+              onChangeText={setApptLocation}
+              placeholder="Location (optional)"
+              placeholderTextColor="#94a3b8"
+            />
+            <TextInput
+              style={[dm.apptInput, { minHeight: 64, textAlignVertical: "top" }]}
+              value={apptDescription}
+              onChangeText={setApptDescription}
+              placeholder="Description (optional)"
+              placeholderTextColor="#94a3b8"
+              multiline
+            />
+
+            {!!apptMsg && <Text style={dm.apptMsg}>{apptMsg}</Text>}
+
+            <TouchableOpacity
+              style={[dm.apptScheduleBtn, scheduling && { opacity: 0.6 }]}
+              onPress={scheduleAppointment}
+              disabled={scheduling}
+              activeOpacity={0.85}
+            >
+              {scheduling ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="calendar" size={15} color="#fff" />
+                  <Text style={dm.apptScheduleText}>Schedule Appointment</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity style={dm.deleteBtn} onPress={() => onDelete(opp)}>
             <Text style={dm.deleteBtnText}>🗑  Delete Opportunity</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        <CalendarSheet
+          visible={calendarFor !== null}
+          initial={calendarFor === "end" ? (apptEnd ?? apptStart) : apptStart}
+          onCancel={() => setCalendarFor(null)}
+          onConfirm={(d) => {
+            if (calendarFor === "start") setApptStart(d);
+            else setApptEnd(d);
+            setCalendarFor(null);
+          }}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -779,6 +970,25 @@ const dm = StyleSheet.create({
   closeText:   { fontSize: 15, color: "#64748b", fontWeight: "600" },
   editText:    { fontSize: 15, color: "#0f766e", fontWeight: "700" },
   body:        { padding: 16, gap: 12, paddingBottom: 40 },
+  sectionTitle:{ fontSize: 12, fontWeight: "700", color: "#64748b", letterSpacing: 0.6, textTransform: "uppercase", marginTop: 4 },
+  apptEmpty:   { fontSize: 12.5, color: "#94a3b8" },
+  apptRow:     { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#f8fafc", borderRadius: 10, padding: 10 },
+  apptTitle:   { fontSize: 13.5, fontWeight: "600", color: "#0f172a" },
+  apptMeta:    { fontSize: 11.5, color: "#64748b", marginTop: 2 },
+  apptStatus:  { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
+  apptStatusText: { fontSize: 10, fontWeight: "700" },
+  apptTypeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  apptChip:    { paddingHorizontal: 11, paddingVertical: 6, borderRadius: 99, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#e2e8f0" },
+  apptChipActive: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
+  apptChipText: { fontSize: 12, fontWeight: "600", color: "#64748b" },
+  apptChipTextActive: { color: "#fff" },
+  apptField:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, backgroundColor: "#fff" },
+  apptFieldText: { fontSize: 13.5, color: "#0f172a" },
+  apptFieldPlaceholder: { color: "#94a3b8" },
+  apptInput:   { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13.5, color: "#0f172a", backgroundColor: "#fff" },
+  apptMsg:     { fontSize: 12.5, color: "#0f766e", fontWeight: "600" },
+  apptScheduleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#0f766e", borderRadius: 11, paddingVertical: 12 },
+  apptScheduleText: { fontSize: 14, fontWeight: "600", color: "#fff" },
   stageBadge:  { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginBottom: 4 },
   stageIcon:   { fontSize: 16 },
   stageLabel:  { fontSize: 13.5, fontWeight: "600", fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
