@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import api from "../../api/client";
 import { Contact, Task, User } from "../../types";
 
@@ -268,37 +269,35 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
   const set = <K extends keyof FormState>(k:K, v:FormState[K]) => setForm(f=>({...f,[k]:v}));
   const toggleTag = (t:string) => set("tags", form.tags.includes(t)?form.tags.filter(x=>x!==t):[...form.tags,t]);
 
-  // ── Due date & time (dependency-free picker) ──
+  // ── Due date & time — native calendar + clock, like the web's
+  // datetime-local input: tap the field, a calendar dialog opens, pick the
+  // date, then the clock opens to pick the time. ──
   // form.date is "YYYY-MM-DDTHH:mm" (same shape dueAt.slice(0,16) produces).
-  const dueDatePart = form.date ? form.date.slice(0, 10) : "";
-  const dueTimePart = form.date && form.date.length >= 16 ? form.date.slice(11, 16) : "";
+  const [pickerMode, setPickerMode] = useState<"date" | "time" | null>(null);
+  const dueValue = form.date ? new Date(form.date) : null;
+  const pickerBase = dueValue && !Number.isNaN(dueValue.getTime()) ? dueValue : new Date();
 
-  const dateOptions = React.useMemo(() => {
-    const opts: { value: string; label: string }[] = [];
-    const now = new Date();
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const label =
-        i === 0 ? "Today" :
-        i === 1 ? "Tomorrow" :
-        d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-      opts.push({ value, label });
+  const toLocalStamp = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` +
+    `T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+  const onPickerChange = (event: any, selected?: Date) => {
+    if (event?.type === "dismissed" || !selected) { setPickerMode(null); return; }
+    if (pickerMode === "date") {
+      // Keep the previously chosen time (default 10:00), then ask for time.
+      const next = new Date(selected);
+      next.setHours(pickerBase.getHours() || 10, pickerBase.getMinutes() || 0, 0, 0);
+      if (!form.date) next.setHours(10, 0, 0, 0);
+      set("date", toLocalStamp(next));
+      setPickerMode("time");
+    } else {
+      const next = new Date(pickerBase);
+      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      set("date", toLocalStamp(next));
+      setPickerMode(null);
     }
-    // Keep an already-set date visible even if it's outside the next 14 days
-    if (dueDatePart && !opts.some((o) => o.value === dueDatePart)) {
-      opts.unshift({
-        value: dueDatePart,
-        label: new Date(`${dueDatePart}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-      });
-    }
-    return opts;
-  }, [dueDatePart]);
+  };
 
-  const TIME_SLOTS = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
-
-  const pickDueDate = (d: string) => set("date", `${d}T${dueTimePart || "10:00"}`);
-  const pickDueTime = (t: string) => set("date", `${dueDatePart || dateOptions[0].value}T${t}`);
   const clearDue = () => set("date", "");
 
   const submit = () => {
@@ -359,35 +358,28 @@ function TaskFormModal({ visible, onClose, onSave, initial, colId, columns, user
               </TouchableOpacity>
             )}
           </View>
-          {!!form.date && (
-            <View style={{flexDirection:"row",alignItems:"center",gap:6,marginBottom:8}}>
-              <Ionicons name="calendar-outline" size={14} color="#0f766e"/>
-              <Text style={{fontSize:13,fontWeight:"600",color:"#0f766e"}}>
-                {new Date(form.date).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}
-              </Text>
-            </View>
+          {/* Web-style datetime field: tap → calendar dialog → clock dialog */}
+          <TouchableOpacity
+            style={[s.input,{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}]}
+            onPress={()=>setPickerMode("date")}
+            activeOpacity={0.7}
+          >
+            <Text style={{fontSize:14,color:form.date?"#111827":"#94a3b8"}}>
+              {form.date
+                ? new Date(form.date).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})
+                : "Select date & time"}
+            </Text>
+            <Ionicons name="calendar-outline" size={18} color="#0f766e"/>
+          </TouchableOpacity>
+          {pickerMode !== null && (
+            <DateTimePicker
+              value={pickerBase}
+              mode={pickerMode}
+              is24Hour={false}
+              display="default"
+              onChange={onPickerChange}
+            />
           )}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>
-            {dateOptions.map(o => {
-              const active = dueDatePart === o.value;
-              return (
-                <TouchableOpacity key={o.value} onPress={()=>pickDueDate(o.value)} style={[s.chip,{backgroundColor:active?"#0f766e":"rgba(118,118,128,0.08)"}]}>
-                  <Text style={{fontSize:13,fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14,color:active?"#fff":"#6b7280"}}>{o.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,marginTop:8}}>
-            {TIME_SLOTS.map(t => {
-              const active = dueTimePart === t;
-              const label = new Date(`2000-01-01T${t}`).toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"});
-              return (
-                <TouchableOpacity key={t} onPress={()=>pickDueTime(t)} style={[s.chip,{backgroundColor:active?"#0f766e":"rgba(118,118,128,0.08)"}]}>
-                  <Text style={{fontSize:13,fontWeight:"600",fontFamily:HFONT,letterSpacing:LS14,color:active?"#fff":"#6b7280"}}>{label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
 
           <Text style={[s.fieldLabel,{marginTop:12}]}>TAGS</Text>
           <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}>
