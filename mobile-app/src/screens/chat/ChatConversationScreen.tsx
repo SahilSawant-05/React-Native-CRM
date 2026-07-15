@@ -269,21 +269,59 @@ if (Platform.OS !== "web") {
   }
 }
 
-function AudioPlayer({ uri }: { uri: string }) {
+function AudioPlayer({ uri, mimeType }: { uri: string; mimeType?: string }) {
+  const [playError, setPlayError] = useState(false);
   if (!ChatWebView) return null;
+
+  // WhatsApp voice notes are audio/ogg (opus). The media endpoint's blob is
+  // often typed application/octet-stream, which makes <audio> refuse the
+  // data: URI — rewrite the mime so the decoder recognises it.
+  const mime = (mimeType || "audio/ogg").split(";")[0].trim();
+  const playUri = uri.startsWith("data:")
+    ? uri.replace(/^data:[^;,]*/, `data:${mime}`)
+    : uri;
+
   const doc = `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>html,body{margin:0;padding:0;background:transparent;}audio{width:100%;height:44px;}</style>
-</head><body><audio controls preload="metadata" src="${uri}"></audio></body></html>`;
+</head><body>
+<audio id="a" controls preload="metadata">
+  <source src="${playUri}" type="${mime}">
+</audio>
+<script>
+  var a = document.getElementById('a');
+  function fail(){ if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage('audio-error'); }
+  a.addEventListener('error', fail, true);
+  a.querySelector('source').addEventListener('error', fail);
+</script>
+</body></html>`;
+
+  if (playError) {
+    return (
+      <View style={styles.mediaPending}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Ionicons name="musical-notes" size={15} color="#54656f" />
+          <Text style={styles.mediaPendingTitle}>Voice note received</Text>
+        </View>
+        <Text style={styles.mediaPendingMeta}>This audio format can't be played here.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.audioPlayerWrap}>
       <ChatWebView
         originWhitelist={["*"]}
-        source={{ html: doc }}
+        source={{ html: doc, baseUrl: "" }}
         style={{ backgroundColor: "transparent", height: 52 }}
         scrollEnabled={false}
+        javaScriptEnabled
+        domStorageEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
+        onMessage={(e: any) => {
+          if (e?.nativeEvent?.data === "audio-error") setPlayError(true);
+        }}
       />
     </View>
   );
@@ -336,7 +374,7 @@ function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
   }
 
   if (mt === "AUDIO" && url && ChatWebView) {
-    return <AudioPlayer uri={url} />;
+    return <AudioPlayer uri={url} mimeType={message.mediaMimeType} />;
   }
 
   if (url) {
