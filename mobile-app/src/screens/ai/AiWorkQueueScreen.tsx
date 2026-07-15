@@ -253,6 +253,15 @@ export default function AiWorkQueueScreen() {
   const [message, setMessage] = useState("");
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [taskCreating, setTaskCreating] = useState<string | number>("");
+  // Dropdown state per "<tab>:<groupKey>". Groups start collapsed so the
+  // screen shows a compact summary; the first group with items on each tab
+  // auto-opens once so the view isn't just headers.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const autoOpenedTabsRef = React.useRef<Record<string, boolean>>({});
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   const grouped = useMemo(() => {
     const byGroup = new Map<string, QueueItem[]>(GROUPS.map((g) => [g.key, []]));
@@ -271,6 +280,16 @@ export default function AiWorkQueueScreen() {
     }
     return INBOX_GROUPS.map((g) => ({ ...g, items: byGroup.get(g.key) || [] }));
   }, [leadInbox]);
+
+  // Auto-open the first non-empty group per tab (once) after data arrives.
+  useEffect(() => {
+    const groups = activeTab === "queue" ? grouped : inboxGrouped;
+    if (autoOpenedTabsRef.current[activeTab]) return;
+    const firstPending = groups.find((g) => g.items.length > 0);
+    if (!firstPending) return;
+    autoOpenedTabsRef.current[activeTab] = true;
+    setOpenGroups((prev) => ({ ...prev, [`${activeTab}:${firstPending.key}`]: true }));
+  }, [activeTab, grouped, inboxGrouped]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -408,30 +427,44 @@ export default function AiWorkQueueScreen() {
             </Text>
           </View>
         ) : (
-          activeGroups.map((group) => (
-            <View key={group.key} style={{ gap: 8 }}>
-              <View style={[styles.groupHeader, { backgroundColor: group.bg }]}>
-                <Ionicons name={group.icon} size={16} color={group.color} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.groupLabel, { color: group.color }]}>{group.label}</Text>
-                  <Text style={styles.groupHelper} numberOfLines={1}>{group.helper}</Text>
-                </View>
-                <Text style={[styles.groupCount, { color: group.color }]}>{group.items.length}</Text>
+          activeGroups.map((group) => {
+            // Dropdown group: tap the header to expand/collapse so the queue
+            // stays compact — only the group summaries take space by default.
+            const open = !!openGroups[`${activeTab}:${group.key}`];
+            return (
+              <View key={group.key} style={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.groupHeader, { backgroundColor: group.bg }]}
+                  onPress={() => toggleGroup(`${activeTab}:${group.key}`)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name={group.icon} size={16} color={group.color} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.groupLabel, { color: group.color }]}>{group.label}</Text>
+                    <Text style={styles.groupHelper} numberOfLines={1}>{group.helper}</Text>
+                  </View>
+                  <Text style={[styles.groupCount, { color: group.color }]}>{group.items.length}</Text>
+                  <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={group.color} />
+                </TouchableOpacity>
+                {open && group.items.length === 0 && (
+                  <Text style={styles.groupEmptyText}>Nothing here right now.</Text>
+                )}
+                {open &&
+                  group.items.map((item) => (
+                    <QueueCard
+                      key={String(item.id)}
+                      item={item}
+                      isInbox={activeTab === "inbox"}
+                      selected={selectedId === item.id}
+                      onSelect={(i) => setSelectedId(selectedId === i.id ? null : i.id)}
+                      onOpen={openRecord}
+                      onCreateTask={createTask}
+                      taskCreating={taskCreating}
+                    />
+                  ))}
               </View>
-              {group.items.map((item) => (
-                <QueueCard
-                  key={String(item.id)}
-                  item={item}
-                  isInbox={activeTab === "inbox"}
-                  selected={selectedId === item.id}
-                  onSelect={(i) => setSelectedId(selectedId === i.id ? null : i.id)}
-                  onOpen={openRecord}
-                  onCreateTask={createTask}
-                  taskCreating={taskCreating}
-                />
-              ))}
-            </View>
-          ))
+            );
+          })
         )}
 
         <View style={{ height: 24 }} />
@@ -521,6 +554,7 @@ const styles = StyleSheet.create({
   },
   groupHelper: { fontSize: 11.5, color: "#6b7280", marginTop: 1 },
   groupCount: { fontSize: 13, fontWeight: "700" },
+  groupEmptyText: { fontSize: 12.5, color: "#9ca3af", textAlign: "center", paddingVertical: 6 },
 
   card: {
     backgroundColor: "#fff",

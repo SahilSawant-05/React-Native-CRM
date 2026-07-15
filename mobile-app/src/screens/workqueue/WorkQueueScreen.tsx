@@ -85,44 +85,63 @@ function WorkItemCard({ item }: { item: WorkItem }) {
   );
 }
 
-function SectionCard({ section }: { section: WorkSection }) {
+// Collapsible dropdown section: only the compact header (icon, label,
+// count, chevron) is visible until tapped, so the queue fits on one
+// screen instead of every section dumping its items at once.
+function SectionCard({
+  section, open, onToggle,
+}: {
+  section: WorkSection;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const colors = SECTION_COLORS[section.key] || { bg: "#f8fafc", text: "#475569", border: "#e2e8f0" };
   const icon = SECTION_ICONS[section.key] || "list-outline";
+  const isEmpty = !section.items?.length;
 
   return (
     <View style={sectionStyles.card}>
-      <View style={sectionStyles.header}>
+      <TouchableOpacity style={sectionStyles.header} onPress={onToggle} activeOpacity={0.7}>
         <View style={[sectionStyles.iconBox, { backgroundColor: colors.bg }]}>
           <Ionicons name={icon} size={20} color={colors.text} />
         </View>
         <View style={sectionStyles.titleArea}>
           <Text style={sectionStyles.title}>{section.label}</Text>
           {!!section.description && (
-            <Text style={sectionStyles.desc} numberOfLines={2}>{section.description}</Text>
+            <Text style={sectionStyles.desc} numberOfLines={open ? 2 : 1}>{section.description}</Text>
           )}
         </View>
-        <View style={sectionStyles.countBadge}>
-          <Text style={sectionStyles.countText}>{section.count}</Text>
+        <View
+          style={[
+            sectionStyles.countBadge,
+            section.count > 0 && { backgroundColor: colors.bg },
+          ]}
+        >
+          <Text style={[sectionStyles.countText, section.count > 0 && { color: colors.text }]}>
+            {section.count}
+          </Text>
         </View>
-      </View>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={17} color="#9ca3af" />
+      </TouchableOpacity>
 
-      {section.items?.length > 0 ? (
-        <View style={sectionStyles.items}>
-          {section.items.map((item, i) => (
-            <WorkItemCard key={`${section.key}-item-${String(item.id ?? i)}`} item={item} />
-          ))}
-          {section.count > section.items.length && (
-            <Text style={sectionStyles.moreText}>
-              Showing {section.items.length} of {section.count}
-            </Text>
-          )}
-        </View>
-      ) : (
-        <View style={sectionStyles.empty}>
-          <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-          <Text style={sectionStyles.emptyText}>Nothing pending here</Text>
-        </View>
-      )}
+      {open &&
+        (isEmpty ? (
+          <View style={sectionStyles.empty}>
+            <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+            <Text style={sectionStyles.emptyText}>Nothing pending here</Text>
+          </View>
+        ) : (
+          <View style={sectionStyles.items}>
+            {section.items.map((item, i) => (
+              <WorkItemCard key={`${section.key}-item-${String(item.id ?? i)}`} item={item} />
+            ))}
+            {section.count > section.items.length && (
+              <Text style={sectionStyles.moreText}>
+                Showing {section.items.length} of {section.count}
+              </Text>
+            )}
+          </View>
+        ))}
     </View>
   );
 }
@@ -132,6 +151,15 @@ export default function WorkQueueScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  // Dropdown state per section key. Sections start collapsed so the whole
+  // queue fits on one screen; the first section with pending items opens
+  // automatically on first load so the screen isn't just headers.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const autoOpenedRef = React.useRef(false);
+
+  function toggleSection(key: string) {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -139,6 +167,11 @@ export default function WorkQueueScreen() {
     try {
       const data = await fetchWorkQueue();
       setQueue(data);
+      if (!autoOpenedRef.current) {
+        autoOpenedRef.current = true;
+        const firstPending = data?.sections?.find((s: WorkSection) => (s.items?.length ?? 0) > 0);
+        if (firstPending) setOpenSections({ [firstPending.key]: true });
+      }
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Failed to load work queue");
     } finally {
@@ -179,7 +212,12 @@ export default function WorkQueueScreen() {
         {!!error && <ErrorBanner message={error} onRetry={() => load()} />}
 
         {queue?.sections?.map((section, idx) => (
-          <SectionCard key={`section-${section.key ?? idx}`} section={section} />
+          <SectionCard
+            key={`section-${section.key ?? idx}`}
+            section={section}
+            open={!!openSections[section.key]}
+            onToggle={() => toggleSection(section.key)}
+          />
         ))}
 
         {!error && !queue?.sections?.length && (
