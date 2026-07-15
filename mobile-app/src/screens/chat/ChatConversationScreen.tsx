@@ -7,6 +7,7 @@ import {
   Image,
   ImageBackground,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -258,24 +259,89 @@ function StatusTick({ status }: { status?: string }) {
 
 function MediaBubble({ message, isOut }: { message: Message; isOut: boolean }) {
   const mt = (message.mediaType ?? "").toUpperCase();
-  const url = message.mediaUrl;
-  if (!url) return null;
+  const messageId = message.messageId ?? message.id;
 
-  if (mt === "IMAGE" || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) {
+  // Inbound WhatsApp media has a mediaId but no public mediaUrl — fetch the
+  // bytes from the CRM (GET /api/messages/{id}/media) and render as a data
+  // URI, mirroring the web's MediaBubble blob loader (ainew Chat.jsx).
+  const [dataUri, setDataUri] = useState("");
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    async function loadInboundMedia() {
+      if (!message.mediaType || message.mediaUrl || !message.mediaId || messageId == null) return;
+      if (String(messageId).startsWith("temp-")) return;
+      setMediaLoading(true);
+      setMediaError("");
+      try {
+        const res = await api.get(`/api/messages/${messageId}/media`, { responseType: "blob" });
+        const uri: string = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(String(fr.result));
+          fr.onerror = () => reject(new Error("read failed"));
+          fr.readAsDataURL(res.data);
+        });
+        if (alive) setDataUri(uri);
+      } catch (err: any) {
+        if (alive) setMediaError(err?.response?.data?.message || "Could not load WhatsApp media.");
+      } finally {
+        if (alive) setMediaLoading(false);
+      }
+    }
+    loadInboundMedia();
+    return () => { alive = false; };
+  }, [message.mediaId, message.mediaType, message.mediaUrl, messageId]);
+
+  if (!message.mediaType && !message.mediaUrl) return null;
+  const url = message.mediaUrl || dataUri;
+
+  if ((mt === "IMAGE" || mt === "STICKER" || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) && url) {
     return (
       <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
     );
   }
-  const iconName = mt === "VIDEO" ? "videocam" : mt === "AUDIO" ? "musical-notes" : "document-text";
-  return (
-    <View style={styles.mediaFile}>
-      <Ionicons name={iconName as any} size={22} color={isOut ? "#3b4a54" : "#54656f"} />
-      <Text
-        style={[styles.mediaFileName, isOut && { color: "#3b4a54" }]}
-        numberOfLines={1}
+
+  if (url) {
+    const iconName = mt === "VIDEO" ? "videocam" : mt === "AUDIO" ? "musical-notes" : "document-text";
+    return (
+      <TouchableOpacity
+        style={styles.mediaFile}
+        disabled={!message.mediaUrl}
+        onPress={() => message.mediaUrl && Linking.openURL(message.mediaUrl)}
+        activeOpacity={0.7}
       >
-        {message.mediaFileName || "Attachment"}
-      </Text>
+        <Ionicons name={iconName as any} size={22} color={isOut ? "#3b4a54" : "#54656f"} />
+        <Text
+          style={[styles.mediaFileName, isOut && { color: "#3b4a54" }]}
+          numberOfLines={1}
+        >
+          {message.mediaFileName || "Attachment"}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  // No URL yet: media placeholder with loading / error state (web parity).
+  return (
+    <View style={styles.mediaPending}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {mediaLoading ? (
+          <ActivityIndicator size="small" color="#0f766e" />
+        ) : (
+          <Ionicons name="document-text-outline" size={15} color="#54656f" />
+        )}
+        <Text style={styles.mediaPendingTitle}>
+          {mediaLoading ? "Loading WhatsApp media…" : `${mt || "Media"} received`}
+        </Text>
+      </View>
+      {(message.mediaFileName || message.mediaMimeType) && (
+        <Text style={styles.mediaPendingMeta} numberOfLines={1}>
+          {[message.mediaFileName, message.mediaMimeType].filter(Boolean).join(" • ")}
+        </Text>
+      )}
+      {!!mediaError && <Text style={styles.mediaPendingError}>{mediaError}</Text>}
     </View>
   );
 }
@@ -2240,6 +2306,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   mediaFileName: { fontSize: 13, color: "#1e293b", flex: 1, flexShrink: 1 },
+  mediaPending: {
+    backgroundColor: "rgba(118,118,128,0.07)",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(60,60,67,0.18)",
+    borderStyle: "dashed",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+    minWidth: 170,
+  },
+  mediaPendingTitle: { fontSize: 12.5, fontWeight: "600", color: "#3b4a54" },
+  mediaPendingMeta: { fontSize: 11, color: "#667781" },
+  mediaPendingError: {
+    fontSize: 11.5, color: "#dc2626", fontWeight: "600",
+    backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 3, marginTop: 2,
+  },
   emptyChat: {
     flex: 1,
     alignItems: "center",

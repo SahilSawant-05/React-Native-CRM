@@ -28,6 +28,8 @@ export interface Message {
   type?: string;
   mediaType?: string;
   mediaUrl?: string;
+  mediaId?: string | number;      // inbound WhatsApp media (no public URL — fetch via /api/messages/{id}/media)
+  mediaMimeType?: string;
   mediaFileName?: string;
   createdAt?: string;
   timestamp?: string;
