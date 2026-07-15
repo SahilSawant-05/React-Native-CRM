@@ -323,9 +323,20 @@ export default function AiWorkQueueScreen() {
   }, []);
 
   function openRecord(item: QueueItem) {
-    // Mobile has no deep record routes yet — jump to the closest tab
+    // Web parity: navigate(item.targetPath || (opp ? /opportunities/:id
+    // : /contacts)). Mobile has no deep routes, so map the targetPath to
+    // the matching tab — task items go to Tasks (not Contacts), etc.
+    const p = String(item.targetPath || "").toLowerCase();
+    const tabFromPath =
+      !p ? null :
+      p.includes("task") ? "Tasks" :
+      p.includes("opportunit") || p.includes("pipeline") ? "Pipeline" :
+      p.includes("chat") || p.includes("inbox") ? "Chat" :
+      p.includes("mail") || p.includes("email") ? "Mail" :
+      p.includes("calendar") || p.includes("event") ? "Calendar" :
+      p.includes("contact") ? "Contacts" : null;
     const hasOpp = item.opportunityId || item.openOpportunityId;
-    drawer.navigateTo(hasOpp ? "Pipeline" : "Contacts");
+    drawer.navigateTo(tabFromPath ?? (hasOpp ? "Pipeline" : "Contacts"));
   }
 
   async function createTask(item: QueueItem) {
