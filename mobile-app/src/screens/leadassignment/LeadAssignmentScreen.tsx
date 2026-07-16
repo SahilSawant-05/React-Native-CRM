@@ -12,7 +12,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  findNodeHandle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -150,30 +149,37 @@ function RuleFormModal({
   const criteriaValueInputRef = useRef<TextInput>(null);
   const priorityInputRef = useRef<TextInput>(null);
 
+  // Current scroll position, tracked via onScroll so measureInWindow-based
+  // positioning below can convert a window Y into a content offset.
+  const scrollOffsetRef = useRef(0);
+
   // Android's `KeyboardAvoidingView` doesn't reliably resize content inside a
   // `Modal` (windowSoftInputMode isn't applied the same way inside modals),
   // so relying on "height"/"padding" behavior alone still leaves focused
   // fields tucked under the keyboard. To guarantee a field is visible we
-  // measure its position relative to the ScrollView and scroll it into view
-  // manually whenever it gains focus.
+  // measure its window position and scroll it into view whenever it gains
+  // focus. NOTE: measureInWindow is used (not measureLayout with a
+  // findNodeHandle number) — passing a node handle to measureLayout is
+  // unsupported on the new RN architecture and warns "must be called with a
+  // ref to a native component".
   const scrollFieldIntoView = useCallback((fieldRef: React.RefObject<TextInput | null>) => {
     const delay = Platform.OS === "android" ? 250 : 100; // wait for keyboard anim
     setTimeout(() => {
-      const scrollNode = findNodeHandle(scrollRef.current);
-      if (!fieldRef.current || !scrollNode) return;
-      fieldRef.current.measureLayout(
-        scrollNode,
-        (_x: number, y: number) => {
-          // Keep ~90px of breathing room above the field so its label is
-          // visible too, not just the input box itself.
-          scrollRef.current?.scrollTo({ y: Math.max(y - 90, 0), animated: true });
-        },
-        () => {
-          // measurement can fail transiently right after the modal opens —
-          // fall back to scrolling to the end, which is safe for a short form.
+      const field = fieldRef.current;
+      if (!field || typeof (field as any).measureInWindow !== "function") {
+        scrollRef.current?.scrollToEnd({ animated: true });
+        return;
+      }
+      (field as any).measureInWindow((_x: number, y: number) => {
+        if (typeof y !== "number" || Number.isNaN(y)) {
           scrollRef.current?.scrollToEnd({ animated: true });
+          return;
         }
-      );
+        // Bring the field to ~180px from the top of the window: label stays
+        // visible and the input clears the keyboard comfortably.
+        const target = scrollOffsetRef.current + y - 180;
+        scrollRef.current?.scrollTo({ y: Math.max(target, 0), animated: true });
+      });
     }, delay);
   }, []);
 
@@ -268,6 +274,8 @@ function RuleFormModal({
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={fs.body}
+          onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={32}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}>
