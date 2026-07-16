@@ -78,6 +78,9 @@ export default function CrmSettingsScreen() {
   const [settings, setSettings] = useState<CrmSettings | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  // Gmail connection (web parity: Phase2Settings.jsx email card reads
+  // /api/email/config → gmailOAuthConnected + gmailOauthEmail/fromEmail)
+  const [emailConfig, setEmailConfig] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,14 +88,16 @@ export default function CrmSettingsScreen() {
   const fetchAll = useCallback(async () => {
     try {
       setError(null);
-      const [settingsRes, pipelinesRes, fieldsRes] = await Promise.all([
+      const [settingsRes, pipelinesRes, fieldsRes, emailRes] = await Promise.all([
         api.get<CrmSettings>("/api/tenant/crm-settings"),
         api.get<Pipeline[]>("/api/pipelines"),
         api.get<CustomField[]>("/api/crm-config/custom-fields"),
+        api.get("/api/email/config").catch(() => ({ data: null })),
       ]);
       setSettings(settingsRes.data);
       setPipelines(normalizeList(pipelinesRes.data));
       setCustomFields(normalizeList(fieldsRes.data));
+      setEmailConfig((emailRes as any).data);
     } catch (e: any) {
       setError(e?.message || "Failed to load settings");
     } finally {
@@ -126,6 +131,29 @@ export default function CrmSettingsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f766e" />}
         contentContainerStyle={{ paddingBottom: 24 }}
       >
+        <Text style={styles.sectionHeader}>EMAIL / GMAIL</Text>
+        {(() => {
+          const connected = Boolean(emailConfig?.gmailOAuthConnected);
+          const who = emailConfig?.gmailOauthEmail || emailConfig?.fromEmail || "";
+          return (
+            <View style={[styles.card, { backgroundColor: connected ? "#ecfdf5" : "#eff6ff" }]}>
+              <View style={styles.row}>
+                <Text style={[styles.itemName, { color: connected ? "#065f46" : "#1e40af" }]}>Gmail</Text>
+                <View style={[styles.badge, { backgroundColor: connected ? "#059669" : "#dbeafe" }]}>
+                  <Text style={[styles.badgeText, { color: connected ? "#fff" : "#1d4ed8" }]}>
+                    {connected ? "Connected" : "Not connected"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12.5, marginTop: 4, color: connected ? "#047857" : "#1e40af" }}>
+                {connected
+                  ? `Connected as ${who}`
+                  : "Connect Gmail from the web CRM (Settings → Email) to send and receive email."}
+              </Text>
+            </View>
+          );
+        })()}
+
         <Text style={styles.sectionHeader}>GENERAL SETTINGS</Text>
         {settingsEntries.length === 0 && (
           <Text style={styles.emptyText}>No settings available</Text>
