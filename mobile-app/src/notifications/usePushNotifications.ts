@@ -73,6 +73,25 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         // Android 13+ runtime permission FIRST — without it nothing shows
         await requestAndroid13Permission();
 
+        // Android 8+ drops any notification sent to a channel that doesn't
+        // exist. FCM background/quit notifications land on the channel named
+        // by default_notification_channel_id ("default") in the manifest —
+        // create it here so app-closed pushes actually appear.
+        if (Platform.OS === "android") {
+          const Notifications = getLocalNotifications();
+          try {
+            await Notifications?.setNotificationChannelAsync("default", {
+              name: "General",
+              importance: Notifications.AndroidImportance?.HIGH ?? 4,
+              sound: "default",
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: "#0f766e",
+            });
+          } catch {
+            // Best-effort — never crash on channel creation
+          }
+        }
+
         const authStatus = await msg.requestPermission();
         const allowed =
           authStatus === 1 /* AUTHORIZED */ ||

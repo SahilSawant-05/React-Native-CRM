@@ -64,10 +64,22 @@ public void sendPush(Long userId, String title, String body, Map<String, String>
     try {
       FirebaseMessaging.getInstance().send(Message.builder()
           .setToken(t.getToken())
+          // The `notification` block is REQUIRED for the notification to
+          // appear when the app is closed/killed — Android's system tray
+          // renders it automatically. A data-only message would only be
+          // delivered to the running app, so it would silently NOT show
+          // when the app is not open.
           .setNotification(Notification.builder().setTitle(title).setBody(body).build())
           .putAllData(data == null ? Map.of() : data)
           .setAndroidConfig(AndroidConfig.builder()
-              .setPriority(AndroidConfig.Priority.HIGH).build())
+              .setPriority(AndroidConfig.Priority.HIGH)
+              // Must match the channel the app creates at startup, or
+              // Android 8+ drops the notification when the app is closed.
+              .setNotification(AndroidNotification.builder()
+                  .setChannelId("default")
+                  .setSound("default")
+                  .build())
+              .build())
           .build());
     } catch (FirebaseMessagingException e) {
       // UNREGISTERED / INVALID_ARGUMENT → token is dead, delete it
