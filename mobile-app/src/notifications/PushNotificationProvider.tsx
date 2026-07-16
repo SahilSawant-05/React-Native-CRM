@@ -7,17 +7,9 @@ interface Props {
   children: React.ReactNode;
 }
 
-// Register the background handler once at startup.
-// Wrapped in try/catch — fails silently in Expo Go where native modules
-// are not available, but works correctly in a dev-client or production build.
-try {
-  const { default: messaging } = require("@react-native-firebase/messaging");
-  messaging().setBackgroundMessageHandler(async (_remoteMessage: any) => {
-    // FCM displays background/quit notifications automatically — nothing to do
-  });
-} catch {
-  // Firebase native module unavailable (Expo Go / web)
-}
+// NOTE: the FCM background/quit message handler is registered in index.js
+// (the JS entry point) — RNFirebase requires it there for the killed-app
+// case. Keeping it out of this component avoids a duplicate registration.
 
 export default function PushNotificationProvider({ children }: Props) {
   const { user } = useAuth();
