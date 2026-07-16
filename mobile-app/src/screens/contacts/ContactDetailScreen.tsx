@@ -2,11 +2,14 @@ import React, { useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -23,6 +26,187 @@ import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 import { smartCall } from "../../api/telephony";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
+import api from "../../api/client";
+import { CalendarSheet } from "../tasks/TasksScreen";
+
+// ─── Create Task modal (web parity: ainew TaskModal.jsx) ─────────────────────
+function CreateTaskModal({
+  visible, contact, onClose, onCreated,
+}: {
+  visible: boolean;
+  contact: Contact;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState("");
+  const [dueAt, setDueAt] = useState<Date | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!visible) return;
+    setTitle(""); setDescription(""); setAssignedUserId(""); setDueAt(null); setError("");
+    api.get("/api/users")
+      .then((res) => {
+        const rows = Array.isArray(res.data) ? res.data : res.data?.data ?? res.data?.users ?? [];
+        setUsers(rows);
+      })
+      .catch(() => setUsers([]));
+  }, [visible]);
+
+  async function create() {
+    if (saving) return;
+    if (!title.trim()) { setError("Task title is required."); return; }
+    if (!dueAt) { setError("Due date and time is required."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const contactId = contact.id ?? contact._id;
+      await api.post(`/api/contacts/${contactId}/tasks`, {
+        title: title.trim(),
+        description: description.trim(),
+        assignedUserId: assignedUserId ? Number(assignedUserId) : null,
+        dueAt: dueAt.toISOString(),
+      });
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      setError(
+        err?.response?.status === 403
+          ? "You do not have permission to create a task for this contact."
+          : err?.response?.data?.message || err?.message || "Failed to create task."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fb" }}>
+        <View style={tm.header}>
+          <View>
+            <Text style={tm.title}>Create Task</Text>
+            <Text style={tm.subtitle}>{contact.name}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView contentContainerStyle={tm.body} keyboardShouldPersistTaps="handled">
+            {!!error && <View style={tm.errorBox}><Text style={tm.errorText}>{error}</Text></View>}
+
+            <Text style={tm.label}>Task title *</Text>
+            <TextInput
+              style={tm.input}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="e.g. Call to discuss pricing"
+              placeholderTextColor="#9ca3af"
+            />
+
+            <Text style={tm.label}>Description</Text>
+            <TextInput
+              style={[tm.input, { minHeight: 72, textAlignVertical: "top" }]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What needs to be done?"
+              placeholderTextColor="#9ca3af"
+              multiline
+            />
+
+            <Text style={tm.label}>Due date & time *</Text>
+            <TouchableOpacity style={tm.dateField} onPress={() => setCalendarOpen(true)} activeOpacity={0.7}>
+              <Text style={[tm.dateFieldText, !dueAt && { color: "#9ca3af" }]}>
+                {dueAt ? dueAt.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Select date & time"}
+              </Text>
+              <Ionicons name="calendar-outline" size={17} color="#0f766e" />
+            </TouchableOpacity>
+
+            {users.length > 0 && (
+              <>
+                <Text style={tm.label}>Assign to</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7 }}>
+                  {[{ id: "", email: "Unassigned" }, ...users].map((u: any) => {
+                    const active = assignedUserId === String(u.id);
+                    return (
+                      <TouchableOpacity
+                        key={u.id === "" ? "unassigned" : String(u.id)}
+                        style={[tm.chip, active && tm.chipActive]}
+                        onPress={() => setAssignedUserId(String(u.id))}
+                      >
+                        <Text style={[tm.chipText, active && tm.chipTextActive]}>{u.email || u.name || `User #${u.id}`}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+          </ScrollView>
+          <View style={tm.footer}>
+            <TouchableOpacity style={[tm.createBtn, saving && { opacity: 0.6 }]} onPress={create} disabled={saving} activeOpacity={0.85}>
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <Ionicons name="checkmark" size={17} color="#fff" />
+                  <Text style={tm.createBtnText}>Create Task</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+
+        <CalendarSheet
+          visible={calendarOpen}
+          initial={dueAt}
+          onCancel={() => setCalendarOpen(false)}
+          onConfirm={(d) => { setDueAt(d); setCalendarOpen(false); }}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const tm = StyleSheet.create({
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 18, paddingVertical: 14, backgroundColor: "#fff",
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.15)",
+  },
+  title: { fontSize: 16, fontWeight: "600", color: "#111827", fontFamily: mediumFont },
+  subtitle: { fontSize: 12, color: "#9ca3af", marginTop: 1 },
+  body: { padding: 16, gap: 8, paddingBottom: 120 },
+  label: { fontSize: 13, fontWeight: "600", color: "#374151", fontFamily: mediumFont, marginTop: 6 },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, color: "#111827", backgroundColor: "#fff",
+  },
+  dateField: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff",
+  },
+  dateFieldText: { fontSize: 14.5, color: "#111827" },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99, backgroundColor: "rgba(118,118,128,0.08)" },
+  chipActive: { backgroundColor: "#0f766e" },
+  chipText: { fontSize: 12.5, fontWeight: "600", color: "#4b5563" },
+  chipTextActive: { color: "#fff" },
+  errorBox: { backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 12, padding: 12 },
+  errorText: { color: "#dc2626", fontSize: 13 },
+  footer: {
+    padding: 14, backgroundColor: "#fff",
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.15)",
+  },
+  createBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: "#0f766e", borderRadius: 12, minHeight: 48,
+  },
+  createBtnText: { fontSize: 15, fontWeight: "600", color: "#fff", fontFamily: mediumFont },
+});
 
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
@@ -48,6 +232,17 @@ export default function ContactDetailScreen({ route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [callPlacing, setCallPlacing] = useState(false);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskNotice, setTaskNotice] = useState("");
+
+  function handleTaskCreated() {
+    setTaskNotice("Task created for this contact.");
+    setTimeout(() => setTaskNotice(""), 3000);
+    // Refresh the timeline so the new task shows in Recent Activity
+    fetchContactTimeline(contact.id ?? contact._id ?? "")
+      .then((tl) => setTimeline(tl ?? []))
+      .catch(() => {});
+  }
 
   // Toggle-aware calling: CRM click-to-call when telephony is active +
   // click-to-call enabled, otherwise the phone's native dialer.
@@ -177,7 +372,24 @@ try {
               <Text style={[styles.actionLabel, { color: "#1d4ed8" }]}>Mail</Text>
             </TouchableOpacity>
           )}
+          {/* Create Task (web parity: TaskModal from contact) */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setTaskModalOpen(true)}
+          >
+            <View style={[styles.actionCircle, { backgroundColor: "#fef3c7" }]}>
+              <Ionicons name="checkbox" size={22} color="#b45309" />
+            </View>
+            <Text style={[styles.actionLabel, { color: "#b45309" }]}>Task</Text>
+          </TouchableOpacity>
         </View>
+
+        {!!taskNotice && (
+          <View style={styles.taskNotice}>
+            <Ionicons name="checkmark-circle" size={15} color="#047857" />
+            <Text style={styles.taskNoticeText}>{taskNotice}</Text>
+          </View>
+        )}
 
         {/* Info card */}
         <View style={styles.card}>
@@ -260,6 +472,13 @@ try {
           />
         </View>
       </ScrollView>
+
+      <CreateTaskModal
+        visible={taskModalOpen}
+        contact={contact}
+        onClose={() => setTaskModalOpen(false)}
+        onCreated={handleTaskCreated}
+      />
     </SafeAreaView>
   );
 }
@@ -386,6 +605,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   timelineContent: { flex: 1, gap: 2 },
+  taskNotice: {
+    flexDirection: "row", alignItems: "center", gap: 7,
+    backgroundColor: "#ecfdf5", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 9, marginTop: 10,
+  },
+  taskNoticeText: { flex: 1, fontSize: 12.5, color: "#047857", fontWeight: "600" },
   timelineType: {
     fontSize: 10.5,
     fontWeight: "700",
