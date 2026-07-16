@@ -2,15 +2,35 @@ import { useEffect } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
 import api from "../api/client";
 
-async function registerTokenWithBackend(token: string) {
+async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
+  // Send several field-name variants so the token lands regardless of what
+  // the backend's /api/users/push-token endpoint expects for its columns.
+  const payload = {
+    token,
+    fcmToken: token,
+    pushToken: token,
+    platform: Platform.OS,
+    deviceType: Platform.OS?.toUpperCase(),
+    tokenType: "FCM",
+    provider: "FCM",
+  };
   try {
-    await api.post("/api/users/push-token", {
-      token,
-      platform: Platform.OS,
-      tokenType: "FCM",
-    });
-  } catch {
-    // Non-fatal
+    await api.post("/api/users/push-token", payload);
+    if (__DEV__) console.log("[FCM] push-token registered with backend ✔");
+  } catch (err: any) {
+    const status = err?.response?.status;
+    if (__DEV__) {
+      console.warn(
+        `[FCM] push-token registration failed (attempt ${attempt}) — ` +
+        `status=${status ?? "network"} ${err?.response?.data?.message ?? err?.message ?? ""}`
+      );
+    }
+    // Retry transient failures (network / 5xx) a few times with backoff;
+    // a slow-starting session token is the usual reason the first call 401s.
+    if (attempt < 4 && (!status || status >= 500 || status === 401)) {
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+      return registerTokenWithBackend(token, attempt + 1);
+    }
   }
 }
 
