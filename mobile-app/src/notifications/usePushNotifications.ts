@@ -69,12 +69,15 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
   }
 }
 
-async function getMessaging() {
+// Loads the RNFirebase messaging module and returns its modular-API
+// namespace (getMessaging, getToken, onMessage, …) rather than the
+// deprecated messaging() namespaced instance. Returns null when the native
+// module isn't available (Expo Go, web, etc.) so callers can no-op.
+async function getMessagingModule() {
   try {
     const mod = await import("@react-native-firebase/messaging");
-    return mod.default();
+    return mod;
   } catch {
-    // Native module not available (Expo Go, web, etc.)
     return null;
   }
 }
@@ -119,11 +122,14 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
 
     let unsubscribeTokenRefresh: (() => void) | undefined;
     let unsubscribeForeground: (() => void) | undefined;
+    let unsubscribeOpenedApp: (() => void) | undefined;
 
     (async () => {
       try {
-        const msg = await getMessaging();
-        if (!msg) return;
+        const rnfbMessaging = await getMessagingModule();
+        if (!rnfbMessaging) return;
+
+        const messagingInstance = rnfbMessaging.getMessaging();
 
         // Android 13+ runtime permission FIRST — without it nothing shows
         await requestAndroid13Permission();
@@ -147,10 +153,10 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           }
         }
 
-        const authStatus = await msg.requestPermission();
+        const authStatus = await rnfbMessaging.requestPermission(messagingInstance);
         const allowed =
-          authStatus === 1 /* AUTHORIZED */ ||
-          authStatus === 2 /* PROVISIONAL */;
+          authStatus === rnfbMessaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === rnfbMessaging.AuthorizationStatus.PROVISIONAL;
         if (!allowed) return;
 
         // Nudge the user to exempt the app from battery optimization so FCM
@@ -158,7 +164,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         // cause of "no notifications when closed").
         promptBatteryExemptionOnce();
 
-        const token = await msg.getToken();
+        const token = await rnfbMessaging.getToken(messagingInstance);
         if (token) {
           // Visible in `npx expo start` / adb logcat — copy this token into
           // Firebase Console > Messaging > Send test message to verify the
@@ -167,13 +173,13 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           await registerTokenWithBackend(token);
         }
 
-        unsubscribeTokenRefresh = msg.onTokenRefresh((newToken: string) => {
+        unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
           registerTokenWithBackend(newToken);
         });
 
         // Foreground messages: FCM does NOT display these automatically.
         // Show a local notification banner so "app open" pushes are visible.
-        unsubscribeForeground = msg.onMessage(async (remoteMessage: any) => {
+        unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
           onMessageReceived?.(remoteMessage);
           const Notifications = getLocalNotifications();
           const title = remoteMessage?.notification?.title ?? remoteMessage?.data?.title;
@@ -182,7 +188,6 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
             try {
               await Notifications.setNotificationHandler({
                 handleNotification: async () => ({
-                  shouldShowAlert: true,
                   shouldPlaySound: true,
                   shouldSetBadge: false,
                   shouldShowBanner: true,
@@ -203,11 +208,11 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           }
         });
 
-        msg.onNotificationOpenedApp((remoteMessage: any) => {
+        unsubscribeOpenedApp = rnfbMessaging.onNotificationOpenedApp(messagingInstance, (remoteMessage: any) => {
           onNotificationTapped?.(remoteMessage);
         });
 
-        const initialMessage = await msg.getInitialNotification();
+        const initialMessage = await rnfbMessaging.getInitialNotification(messagingInstance);
         if (initialMessage) {
           onNotificationTapped?.(initialMessage);
         }
@@ -219,6 +224,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
     return () => {
       unsubscribeTokenRefresh?.();
       unsubscribeForeground?.();
+      unsubscribeOpenedApp?.();
     };
   }, [enabled]);
 }
