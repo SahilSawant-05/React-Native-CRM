@@ -1,9 +1,44 @@
 # Backend push notifications — implementation spec
 
+> ## ⛔ WHY NOTIFICATIONS DON'T SHOW WHEN THE APP IS CLOSED
+>
+> When the app is **closed/killed**, no app code runs. Android shows a
+> notification **only if the FCM message contains a top-level `notification`
+> block**. A **data-only** message (only `.putData(...)`) shows **nothing**
+> when the app is closed — it is only handed to the running app, which is
+> why it appears when the app is open and never when it's closed.
+>
+> **THE FIX = add `.setNotification(...)` to your FCM send.** Registering the
+> push-token is not enough; the token only says *where* to send. This says
+> *what* to send. Minimal working send:
+>
+> ```java
+> FirebaseMessaging.getInstance().send(Message.builder()
+>     .setToken(userFcmToken)
+>     .setNotification(Notification.builder()      // ← REQUIRED for closed-app
+>         .setTitle("New message")
+>         .setBody(text)
+>         .build())
+>     .putData("screen", "chat")                   // optional (tap routing)
+>     .setAndroidConfig(AndroidConfig.builder()
+>         .setPriority(AndroidConfig.Priority.HIGH)
+>         .setNotification(AndroidNotification.builder()
+>             .setChannelId("default")             // matches the app's channel
+>             .setSound("default")
+>             .build())
+>         .build())
+>     .build());
+> ```
+>
+> **Proof test:** Firebase Console → *Send test message* → paste the device
+> token (logged as `[FCM] Device token:` in Metro) → **close the app** → it
+> appears. The console sends a `notification` block; your backend must too.
+
 The mobile app is fully push-ready. It registers its FCM device token,
 displays notifications in every app state, refreshes tab badges on
 arrival, and handles taps. What remains is **server-side**: the Spring
-Boot backend must send FCM messages when events happen.
+Boot backend must send FCM messages (with a `notification` block) when
+events happen.
 
 Until this is implemented, the app falls back to local notifications
 generated from its 30-second unread polling — but those only work while
