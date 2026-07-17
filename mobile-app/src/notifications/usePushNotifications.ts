@@ -1,6 +1,41 @@
 import { useEffect } from "react";
-import { PermissionsAndroid, Platform } from "react-native";
+import { Alert, Linking, PermissionsAndroid, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../api/client";
+
+// Many Android OEMs (Xiaomi/MIUI, Oppo/Realme/ColorOS, Vivo, Samsung, …)
+// force-stop apps that are swiped away or left idle, which BLOCKS FCM
+// delivery entirely while the app is "closed" — the single most common
+// reason "notifications don't work when the app is closed" even though the
+// server and token are correct. Ask the user once to exempt the app from
+// battery optimization, which keeps FCM delivering in the background.
+async function promptBatteryExemptionOnce() {
+  if (Platform.OS !== "android") return;
+  try {
+    const asked = await AsyncStorage.getItem("battery_exemption_prompted");
+    if (asked) return;
+    await AsyncStorage.setItem("battery_exemption_prompted", "1");
+    Alert.alert(
+      "Keep notifications working",
+      "To receive chat, lead and mail notifications when the app is closed, " +
+        "allow it to run in the background (disable battery optimization / enable Auto-start).",
+      [
+        { text: "Later", style: "cancel" },
+        {
+          text: "Open settings",
+          onPress: () => {
+            // Opens the per-app battery-optimization exemption screen; falls
+            // back to this app's settings page if the intent isn't supported.
+            Linking.sendIntent?.("android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS")
+              .catch(() => Linking.openSettings());
+          },
+        },
+      ]
+    );
+  } catch {
+    // Best-effort — never block push setup on this prompt
+  }
+}
 
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
   // Send several field-name variants so the token lands regardless of what
@@ -117,6 +152,11 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           authStatus === 1 /* AUTHORIZED */ ||
           authStatus === 2 /* PROVISIONAL */;
         if (!allowed) return;
+
+        // Nudge the user to exempt the app from battery optimization so FCM
+        // keeps arriving when the app is closed (OEM app-kill is the usual
+        // cause of "no notifications when closed").
+        promptBatteryExemptionOnce();
 
         const token = await msg.getToken();
         if (token) {
