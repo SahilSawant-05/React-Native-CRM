@@ -53,9 +53,23 @@ const CRITERIA_TYPES = [
   { value: "DEFAULT",         label: "Default fallback" },
 ];
 
-const LEAD_SOURCES = [
-  "WHATSAPP","WEBSITE_FORM","WEBSITE","FACEBOOK","INSTAGRAM",
-  "GOOGLE_ADS","REFERRAL","WALK_IN","PORTAL","CAMPAIGN","OTHER",
+// Full lead-source list, kept identical to the web LEAD_SOURCE_OPTIONS so a
+// LEAD_SOURCE rule created on mobile matches leads the same way web rules do.
+const LEAD_SOURCE_OPTIONS = [
+  { value: "WHATSAPP", label: "WhatsApp" },
+  { value: "EMAIL", label: "Email" },
+  { value: "WEBSITE_FORM", label: "Website Form" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "FACEBOOK", label: "Facebook" },
+  { value: "INSTAGRAM", label: "Instagram" },
+  { value: "GOOGLE_ADS", label: "Google Ads" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "WALK_IN", label: "Walk-in" },
+  { value: "PORTAL", label: "Portal" },
+  { value: "CAMPAIGN", label: "Campaign" },
+  { value: "CSV_IMPORT", label: "CSV / Excel Import" },
+  { value: "MANUAL", label: "Manual" },
+  { value: "OTHER", label: "Other" },
 ];
 
 // These are the actual backend enum values used for industryKey — must match
@@ -139,6 +153,7 @@ function RuleFormModal({
   const [criteriaValue, setCriteriaValue] = useState("");
   const [assignmentStrategy, setAssignmentStrategy] = useState("ASSIGN_USER");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [priority, setPriority] = useState("100");
   const [saving, setSaving] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -193,6 +208,7 @@ function RuleFormModal({
       setCriteriaValue(rule.criteriaValue ?? "");
       setAssignmentStrategy(rule.assignmentStrategy ?? "ASSIGN_USER");
       setAssignedUserId(String(rule.assignedUserId ?? ""));
+      setAssignedUserIds((rule.assignedUserIds ?? []).map((id) => Number(id)));
       setPriority(String(rule.priority ?? 100));
     } else {
       setName("");
@@ -200,6 +216,7 @@ function RuleFormModal({
       setCriteriaValue("");
       setAssignmentStrategy("ASSIGN_USER");
       setAssignedUserId("");
+      setAssignedUserIds([]);
       setPriority("100");
     }
     setError("");
@@ -214,6 +231,10 @@ function RuleFormModal({
       setError("Please select an agent to assign leads to.");
       return;
     }
+    if (assignmentStrategy === "ROUND_ROBIN" && assignedUserIds.length === 0) {
+      setError("Select at least one agent for the round-robin pool.");
+      return;
+    }
     setSaving(true);
     setError("");
     const payload = {
@@ -222,7 +243,7 @@ function RuleFormModal({
       criteriaValue: criteriaType === "DEFAULT" ? null : (criteriaValue || null),
       assignmentStrategy,
       assignedUserId: assignmentStrategy === "ASSIGN_USER" ? Number(assignedUserId) : null,
-      assignedUserIds: [],
+      assignedUserIds: assignmentStrategy === "ROUND_ROBIN" ? assignedUserIds.map(Number) : [],
       active: true,
       priority: Number(priority) || 100,
     };
@@ -251,10 +272,16 @@ function RuleFormModal({
   // plain text input below, same as web.
   const criteriaValueOptions =
     criteriaType === "LEAD_SOURCE"
-      ? LEAD_SOURCES.map((s) => ({ value: s, label: s.replaceAll("_", " ") }))
+      ? LEAD_SOURCE_OPTIONS
       : criteriaType === "INDUSTRY"
       ? INDUSTRIES
       : null;
+
+  function toggleRoundRobinUser(userId: number) {
+    setAssignedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -302,20 +329,49 @@ function RuleFormModal({
           <PickerRow
             label="Assignment Strategy"
             options={[
-              { value: "ASSIGN_USER", label: "Assign to specific agent" },
-              { value: "ROUND_ROBIN", label: "Round robin (not supported on mobile)" },
+              { value: "ASSIGN_USER", label: "Assign to one agent" },
+              { value: "ROUND_ROBIN", label: "Round-robin pool" },
             ]}
             value={assignmentStrategy}
             onChange={setAssignmentStrategy}
           />
 
-          {assignmentStrategy === "ASSIGN_USER" && (
+          {assignmentStrategy === "ASSIGN_USER" ? (
             <PickerRow
               label="Assign To (Agent)"
               options={userOptions.length ? userOptions : [{ value: "", label: "No agents found" }]}
               value={assignedUserId}
               onChange={setAssignedUserId}
             />
+          ) : (
+            <View style={fs.field}>
+              <Text style={fs.label}>Round-robin Agents (leads rotate between them)</Text>
+              <View style={fs.rrBox}>
+                {users.length === 0 ? (
+                  <Text style={fs.rrEmpty}>No agents found</Text>
+                ) : (
+                  users.map((u) => {
+                    const uid = Number(u.id);
+                    const checked = assignedUserIds.includes(uid);
+                    return (
+                      <TouchableOpacity
+                        key={String(u.id)}
+                        style={fs.rrRow}
+                        activeOpacity={0.7}
+                        onPress={() => toggleRoundRobinUser(uid)}
+                      >
+                        <Ionicons
+                          name={checked ? "checkbox" : "square-outline"}
+                          size={20}
+                          color={checked ? "#0f766e" : "#9ca3af"}
+                        />
+                        <Text style={fs.rrText} numberOfLines={1}>{u.name || u.email || `User #${u.id}`}</Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            </View>
           )}
 
           <PickerRow
@@ -431,11 +487,18 @@ export default function LeadAssignmentScreen() {
   }
 
   function agentName(rule: AssignmentRule) {
-    if (rule.assignmentStrategy === "ROUND_ROBIN") return "Round Robin";
+    const nameOf = (id: number | string) => {
+      const u = users.find((x) => String(x.id) === String(id));
+      return u ? (u.name || u.email || String(id)) : String(id);
+    };
+    if (rule.assignmentStrategy === "ROUND_ROBIN") {
+      const ids = rule.assignedUserIds ?? [];
+      if (ids.length === 0) return "Round Robin";
+      return `Round Robin: ${ids.map(nameOf).join(", ")}`;
+    }
     const uid = rule.assignedUserId;
     if (!uid) return "Unassigned";
-    const u = users.find((u) => String(u.id) === String(uid));
-    return u ? (u.name || u.email || String(uid)) : String(uid);
+    return nameOf(uid);
   }
 
   // For display in the list: turn a stored enum value like "REAL_ESTATE" or
@@ -654,6 +717,16 @@ const fs = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
   selectText: { fontSize: 15, color: "#111827", flex: 1 },
+  rrBox: {
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(60,60,67,0.2)", borderRadius: 12,
+    backgroundColor: "rgba(118,118,128,0.06)", paddingVertical: 4,
+  },
+  rrRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 11, paddingHorizontal: 12,
+  },
+  rrText: { fontSize: 14.5, color: "#111827", flex: 1 },
+  rrEmpty: { fontSize: 13, color: "#9ca3af", padding: 14 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerSheet: {
     backgroundColor: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18,
