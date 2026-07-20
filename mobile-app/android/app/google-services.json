@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:333172123421:android:4e3f299ad4ee8bdb7063f4",
+        "mobilesdk_app_id": "1:333172123421:android:396dc85251de455e7063f4",
         "android_client_info": {
-          "package_name": "com.crmagent"
+          "package_name": "com.techoceanhub.vistaarflow"
         }
       },
       "oauth_client": [],

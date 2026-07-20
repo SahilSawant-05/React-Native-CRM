@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Alert, Linking, PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../api/client";
-
+ 
 // Many Android OEMs (Xiaomi/MIUI, Oppo/Realme/ColorOS, Vivo, Samsung, …)
 // force-stop apps that are swiped away or left idle, which BLOCKS FCM
 // delivery entirely while the app is "closed" — the single most common
@@ -36,7 +36,7 @@ async function promptBatteryExemptionOnce() {
     // Best-effort — never block push setup on this prompt
   }
 }
-
+ 
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
   // Send several field-name variants so the token lands regardless of what
   // the backend's /api/users/push-token endpoint expects for its columns.
@@ -68,7 +68,7 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
     }
   }
 }
-
+ 
 // Loads the RNFirebase messaging module and returns its modular-API
 // namespace (getMessaging, getToken, onMessage, …) rather than the
 // deprecated messaging() namespaced instance. Returns null when the native
@@ -81,7 +81,7 @@ async function getMessagingModule() {
     return null;
   }
 }
-
+ 
 // expo-notifications is used ONLY to display local banners for FCM
 // data received while the app is foregrounded (FCM doesn't show those
 // itself). Lazy-required so web / Expo Go never crash.
@@ -93,7 +93,7 @@ function getLocalNotifications() {
     return null;
   }
 }
-
+ 
 async function requestAndroid13Permission(): Promise<boolean> {
   // Firebase's requestPermission() is a no-op for the Android 13+
   // POST_NOTIFICATIONS runtime permission — it must be requested via
@@ -108,32 +108,36 @@ async function requestAndroid13Permission(): Promise<boolean> {
     return true;
   }
 }
-
+ 
 interface Options {
   onNotificationTapped?: (remoteMessage: any) => void;
   /** Called when a message arrives while the app is open (badge refresh etc.) */
   onMessageReceived?: (remoteMessage: any) => void;
   enabled?: boolean;
 }
-
+ 
 export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true }: Options = {}) {
   useEffect(() => {
     if (!enabled) return;
-
+ 
     let unsubscribeTokenRefresh: (() => void) | undefined;
     let unsubscribeForeground: (() => void) | undefined;
     let unsubscribeOpenedApp: (() => void) | undefined;
-
+ 
     (async () => {
       try {
         const rnfbMessaging = await getMessagingModule();
         if (!rnfbMessaging) return;
-
+ 
         const messagingInstance = rnfbMessaging.getMessaging();
-
-        // Android 13+ runtime permission FIRST — without it nothing shows
-        await requestAndroid13Permission();
-
+ 
+        // Android 13+ runtime permission FIRST. FCM can still generate a
+        // device token before this permission is granted, but that token
+        // cannot display notifications, so do not register it with the CRM
+        // until the user explicitly allows notifications.
+        const androidPermissionGranted = await requestAndroid13Permission();
+        if (!androidPermissionGranted) return;
+ 
         // Android 8+ drops any notification sent to a channel that doesn't
         // exist. FCM background/quit notifications land on the channel named
         // by default_notification_channel_id ("default") in the manifest —
@@ -152,18 +156,18 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
             // Best-effort — never crash on channel creation
           }
         }
-
+ 
         const authStatus = await rnfbMessaging.requestPermission(messagingInstance);
         const allowed =
           authStatus === rnfbMessaging.AuthorizationStatus.AUTHORIZED ||
           authStatus === rnfbMessaging.AuthorizationStatus.PROVISIONAL;
         if (!allowed) return;
-
+ 
         // Nudge the user to exempt the app from battery optimization so FCM
         // keeps arriving when the app is closed (OEM app-kill is the usual
         // cause of "no notifications when closed").
         promptBatteryExemptionOnce();
-
+ 
         const token = await rnfbMessaging.getToken(messagingInstance);
         if (token) {
           // Visible in `npx expo start` / adb logcat — copy this token into
@@ -172,11 +176,11 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           console.log("[FCM] Device token:", token);
           await registerTokenWithBackend(token);
         }
-
+ 
         unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
           registerTokenWithBackend(newToken);
         });
-
+ 
         // Foreground messages: FCM does NOT display these automatically.
         // Show a local notification banner so "app open" pushes are visible.
         unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
@@ -207,11 +211,11 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
             }
           }
         });
-
+ 
         unsubscribeOpenedApp = rnfbMessaging.onNotificationOpenedApp(messagingInstance, (remoteMessage: any) => {
           onNotificationTapped?.(remoteMessage);
         });
-
+ 
         const initialMessage = await rnfbMessaging.getInitialNotification(messagingInstance);
         if (initialMessage) {
           onNotificationTapped?.(initialMessage);
@@ -220,7 +224,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         console.warn("[FCM] Push notification setup failed:", err);
       }
     })();
-
+ 
     return () => {
       unsubscribeTokenRefresh?.();
       unsubscribeForeground?.();
@@ -228,3 +232,5 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
     };
   }, [enabled]);
 }
+ 
+ 
