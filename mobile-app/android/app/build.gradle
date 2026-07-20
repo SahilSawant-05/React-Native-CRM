@@ -89,7 +89,7 @@ android {
 
     namespace 'com.crmagent'
     defaultConfig {
-        applicationId 'com.crmagent'
+        applicationId 'com.techoceanhub.vistaarflow'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
