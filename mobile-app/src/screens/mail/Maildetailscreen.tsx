@@ -101,8 +101,9 @@ if (Platform.OS !== "web") {
 
 function EmailWebView({ html }: { html: string }) {
   const [height, setHeight] = useState(200);
+  const iframeRef = useRef<any>(null);
 
-  const doc = `<!DOCTYPE html><html><head>
+  const HEAD = `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   html, body { margin:0; padding:0; }
@@ -116,7 +117,48 @@ function EmailWebView({ html }: { html: string }) {
   * { box-sizing: border-box; }
   a { color: #0f766e; }
   blockquote { border-left: 3px solid #0f766e; margin-left: 0; padding-left: 12px; color: #6b7280; }
-</style></head><body>${html}
+</style></head><body>`;
+
+  // Web (Expo web / react-native-web): use a sandboxed iframe — same
+  // rendering fidelity, measures its own content height on load.
+  //
+  // NOTE: no inline <script> in the web doc. The height script only ever
+  // targeted the native `window.ReactNativeWebView`, so on web it did nothing
+  // except trigger a "Blocked script execution … 'allow-scripts' not set"
+  // console error (the outer frame is sandboxed). We omit `allow-scripts`
+  // entirely and measure the content height ourselves from the parent via
+  // `allow-same-origin`, retrying so images/tables that lay out late don't
+  // leave the frame collapsed to an empty sliver.
+  if (Platform.OS === "web") {
+    const webDoc = `${HEAD}${html}</body></html>`;
+    const measure = () => {
+      try {
+        const d = iframeRef.current?.contentDocument;
+        const h = Math.max(
+          d?.body?.scrollHeight || 0,
+          d?.documentElement?.scrollHeight || 0
+        );
+        if (h && h > 0) setHeight(h + 24);
+      } catch {
+        setHeight(600);
+      }
+    };
+    return React.createElement("iframe", {
+      ref: iframeRef,
+      srcDoc: webDoc,
+      sandbox: "allow-same-origin",
+      style: { border: "none", width: "100%", height, overflow: "hidden" },
+      onLoad: () => {
+        measure();
+        // Re-measure after late layout (web fonts, images, tables).
+        setTimeout(measure, 300);
+        setTimeout(measure, 1200);
+        setTimeout(measure, 2500);
+      },
+    });
+  }
+
+  const doc = `${HEAD}${html}
 <script>
   function post() {
     if (window.ReactNativeWebView) {
@@ -128,24 +170,6 @@ function EmailWebView({ html }: { html: string }) {
   setTimeout(post, 1000);
   setTimeout(post, 2500);
 </script></body></html>`;
-
-  // Web (Expo web / react-native-web): use a sandboxed iframe — same
-  // rendering fidelity, measures its own content height on load.
-  if (Platform.OS === "web") {
-    return React.createElement("iframe", {
-      srcDoc: doc,
-      sandbox: "allow-same-origin",
-      style: { border: "none", width: "100%", height, overflow: "hidden" },
-      onLoad: (e: any) => {
-        try {
-          const h = e.target?.contentDocument?.documentElement?.scrollHeight;
-          if (h && h > 0) setHeight(h + 16);
-        } catch {
-          setHeight(600);
-        }
-      },
-    });
-  }
 
   if (!NativeWebView) {
     // Native module unavailable (e.g. not yet installed) — plain-text fallback
