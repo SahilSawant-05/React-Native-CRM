@@ -118,11 +118,15 @@ export const DrawerCtx = React.createContext<{
   navigateTo: (name: string) => void;
   openChat: (contact: PendingChat) => void;
   pendingChatRef: React.MutableRefObject<PendingChat | null>;
+  isDefault?: boolean;
 }>({
   open: () => {},
   navigateTo: () => {},
   openChat: () => {},
   pendingChatRef: { current: null },
+  // Lets screens shared with AgentDrawer detect which drawer actually wraps
+  // them (the real provider value omits this flag).
+  isDefault: true,
 });
 
 /* Hamburger button for screen headers */

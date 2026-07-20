@@ -34,6 +34,8 @@ import MediaLibraryScreen from "../screens/media/MediaLibraryScreen";
 import ReportsScreen from "../screens/reports/ReportsScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
 import TelephonyScreen from "../screens/telephony/TelephonyScreen";
+import WorkQueueScreen from "../screens/workqueue/WorkQueueScreen";
+import AiWorkQueueScreen from "../screens/ai/AiWorkQueueScreen";
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,8 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "Mail",          label: "Mail",           icon: "mail-outline" },
       { name: "Telephony",     label: "Calls",          icon: "call-outline" },
       { name: "Tasks",         label: "Tasks",          icon: "checkbox-outline" },
+      { name: "Queue",         label: "Work Queue",     icon: "list-outline" },
+      { name: "AiWorkQueue",   label: "AI Work Queue",  icon: "sparkles-outline" },
       { name: "Notifications", label: "Notifications",  icon: "notifications-outline" },
       { name: "Calendar",      label: "Calendar",       icon: "calendar-outline" },
     ],
@@ -102,11 +106,15 @@ export const AgentDrawerCtx = React.createContext<{
   navigateTo: (name: string) => void;
   openChat: (contact: PendingChat) => void;
   pendingChatRef: React.MutableRefObject<PendingChat | null>;
+  isDefault?: boolean;
 }>({
   open: () => {},
   navigateTo: () => {},
   openChat: () => {},
   pendingChatRef: { current: null },
+  // Lets screens shared with AdminDrawer detect which drawer actually wraps
+  // them (the real provider value omits this flag).
+  isDefault: true,
 });
 
 /* Hamburger button for screen headers */
@@ -295,6 +303,8 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Mail:          MailNavigator,
   Telephony:     withHeader(TelephonyScreen,     "Calls"),
   Tasks:         withHeader(TasksScreen,         "My Tasks"),
+  Queue:         withHeader(WorkQueueScreen,     "Work Queue"),
+  AiWorkQueue:   withHeader(AiWorkQueueScreen,   "AI Work Queue"),
   Notifications: withHeader(NotificationsScreen, "Notifications"),
   Calendar:      withHeader(CalendarScreen,      "Calendar"),
   Contacts:      ContactsNavigator,

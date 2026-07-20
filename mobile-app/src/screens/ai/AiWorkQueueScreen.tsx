@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
+import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 
 const androidMedium = Platform.OS === "android" ? "sans-serif-medium" : undefined;
 
@@ -243,7 +244,12 @@ function QueueCard({
 }
 
 export default function AiWorkQueueScreen() {
-  const drawer = useContext(DrawerCtx);
+  // This screen is shared by both AdminDrawer and AgentDrawer. Use whichever
+  // drawer actually wraps this screen so the "Open" button can navigate for
+  // agents too (the real provider omits `isDefault`).
+  const adminDrawer = useContext(DrawerCtx);
+  const agentDrawer = useContext(AgentDrawerCtx);
+  const drawer = agentDrawer.isDefault ? adminDrawer : agentDrawer;
   const [activeTab, setActiveTab] = useState<"queue" | "inbox">("queue");
   const [items, setItems] = useState<QueueItem[]>([]);
   const [leadInbox, setLeadInbox] = useState<QueueItem[]>([]);
