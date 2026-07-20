@@ -36,6 +36,7 @@ function avatarColors(name: string) {
   return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
 }
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useFocusEffect } from "@react-navigation/native";
 import { fetchContacts } from "../../api/contacts";
 import api from "../../api/client";
 import { Contact } from "../../types";
@@ -437,6 +438,22 @@ export default function ContactsScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => { load(0, ""); }, []);
+
+  // Silently refresh when returning to the list (e.g. after editing or
+  // deleting a contact in the detail screen) so the list never shows stale
+  // rows. Skip the very first focus, which the mount effect already handled.
+  const didInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!didInitialFocus.current) {
+        didInitialFocus.current = true;
+        return;
+      }
+      if (!isTypingRef.current) {
+        load(0, searchRef.current || "", true);
+      }
+    }, [load])
+  );
 
   function handleSearch(text: string) {
     setSearch(text);

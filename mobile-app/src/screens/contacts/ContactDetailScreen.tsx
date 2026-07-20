@@ -243,16 +243,24 @@ function EditContactModal({
     setSaving(true);
     setError("");
     try {
+      // Mirror the web EditContact/handleUpdateContact flow exactly: PUT the
+      // FULL contact object (original spread first so id and untouched fields
+      // are preserved) with tags kept as the raw comma string the backend
+      // expects. Sending a partial body makes the PUT endpoint blank fields
+      // or reject the request.
+      const { id, _id, ...rest } = contact as any;
       const payload: any = {
+        ...rest,
         name: name.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        company: company.trim() || null,
-        status: status.trim() || null,
-        tags: tags.trim() ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+        email: email.trim(),
+        phone: phone.trim(),
+        company: company.trim(),
+        status: status.trim() || contact.status,
+        tags: tags.trim(),
       };
-      const updated = await updateContact(contact.id ?? contact._id ?? "", payload);
-      onSaved({ ...contact, ...payload, ...updated });
+      const contactId = contact.id ?? contact._id ?? "";
+      const updated = await updateContact(contactId, payload);
+      onSaved({ ...contact, ...payload, ...(updated || {}) });
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || "Failed to update contact.");
