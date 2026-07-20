@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Alert, Linking, PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../api/client";
+import { displayFcmNotification, ensureNotificationChannel } from "./displayNotification";
  
 // Many Android OEMs (Xiaomi/MIUI, Oppo/Realme/ColorOS, Vivo, Samsung, …)
 // force-stop apps that are swiped away or left idle, which BLOCKS FCM
@@ -143,18 +144,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         // by default_notification_channel_id ("default") in the manifest —
         // create it here so app-closed pushes actually appear.
         if (Platform.OS === "android") {
-          const Notifications = getLocalNotifications();
-          try {
-            await Notifications?.setNotificationChannelAsync("default", {
-              name: "General",
-              importance: Notifications.AndroidImportance?.HIGH ?? 4,
-              sound: "default",
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: "#0f766e",
-            });
-          } catch {
-            // Best-effort — never crash on channel creation
-          }
+          await ensureNotificationChannel();
         }
  
         const authStatus = await rnfbMessaging.requestPermission(messagingInstance);
@@ -185,31 +175,10 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         // Show a local notification banner so "app open" pushes are visible.
         unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
           onMessageReceived?.(remoteMessage);
-          const Notifications = getLocalNotifications();
-          const title = remoteMessage?.notification?.title ?? remoteMessage?.data?.title;
-          const body = remoteMessage?.notification?.body ?? remoteMessage?.data?.body;
-          if (Notifications && (title || body)) {
-            try {
-              await Notifications.setNotificationHandler({
-                handleNotification: async () => ({
-                  shouldPlaySound: true,
-                  shouldSetBadge: false,
-                  shouldShowBanner: true,
-                  shouldShowList: true,
-                }),
-              });
-              await Notifications.scheduleNotificationAsync({
-                content: {
-                  title: title || "Vistaar Flow",
-                  body: body || "",
-                  data: remoteMessage?.data ?? {},
-                },
-                trigger: null, // show immediately
-              });
-            } catch {
-              // Display is best-effort — never crash on it
-            }
-          }
+          // FCM never auto-displays in the foreground — render it ourselves
+          // via Notifee (same path used in the background handler, so the
+          // notification looks identical in every app state).
+          await displayFcmNotification(remoteMessage);
         });
  
         unsubscribeOpenedApp = rnfbMessaging.onNotificationOpenedApp(messagingInstance, (remoteMessage: any) => {
