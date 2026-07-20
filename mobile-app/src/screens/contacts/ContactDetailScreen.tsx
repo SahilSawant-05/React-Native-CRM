@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
 import { RouteProp } from "@react-navigation/native";
-import { fetchContactById, fetchContactTimeline } from "../../api/contacts";
+import { fetchContactById, fetchContactTimeline, updateContact, deleteContact } from "../../api/contacts";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -208,12 +208,106 @@ const tm = StyleSheet.create({
   createBtnText: { fontSize: 15, fontWeight: "600", color: "#fff", fontFamily: mediumFont },
 });
 
+// ─── Edit Contact modal (web parity: PUT /api/contacts/{id}) ─────────────────
+function EditContactModal({
+  visible, contact, onClose, onSaved,
+}: {
+  visible: boolean;
+  contact: Contact;
+  onClose: () => void;
+  onSaved: (updated: Contact) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [company, setCompany] = useState("");
+  const [status, setStatus] = useState("");
+  const [tags, setTags] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!visible) return;
+    setName(contact.name || "");
+    setEmail(contact.email || "");
+    setPhone(contact.phone || "");
+    setCompany((contact as any).company || "");
+    setStatus(contact.status || "");
+    setTags(Array.isArray(contact.tags) ? (contact.tags as any[]).join(", ") : String(contact.tags || ""));
+    setError("");
+  }, [visible, contact]);
+
+  async function save() {
+    if (saving) return;
+    if (!name.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const payload: any = {
+        name: name.trim(),
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        company: company.trim() || null,
+        status: status.trim() || null,
+        tags: tags.trim() ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      };
+      const updated = await updateContact(contact.id ?? contact._id ?? "", payload);
+      onSaved({ ...contact, ...payload, ...updated });
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || "Failed to update contact.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fb" }}>
+        <View style={tm.header}>
+          <Text style={tm.title}>Edit Contact</Text>
+          <TouchableOpacity onPress={onClose} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView contentContainerStyle={tm.body} keyboardShouldPersistTaps="handled">
+            {!!error && <View style={tm.errorBox}><Text style={tm.errorText}>{error}</Text></View>}
+            <Text style={tm.label}>Name *</Text>
+            <TextInput style={tm.input} value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#9ca3af" />
+            <Text style={tm.label}>Phone</Text>
+            <TextInput style={tm.input} value={phone} onChangeText={setPhone} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
+            <Text style={tm.label}>Email</Text>
+            <TextInput style={tm.input} value={email} onChangeText={setEmail} placeholder="name@example.com" placeholderTextColor="#9ca3af" keyboardType="email-address" autoCapitalize="none" />
+            <Text style={tm.label}>Company</Text>
+            <TextInput style={tm.input} value={company} onChangeText={setCompany} placeholder="Company" placeholderTextColor="#9ca3af" />
+            <Text style={tm.label}>Status</Text>
+            <TextInput style={tm.input} value={status} onChangeText={setStatus} placeholder="e.g. NEW, QUALIFIED" placeholderTextColor="#9ca3af" autoCapitalize="characters" />
+            <Text style={tm.label}>Tags (comma-separated)</Text>
+            <TextInput style={tm.input} value={tags} onChangeText={setTags} placeholder="hot, referral" placeholderTextColor="#9ca3af" autoCapitalize="none" />
+          </ScrollView>
+          <View style={tm.footer}>
+            <TouchableOpacity style={[tm.createBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <Ionicons name="checkmark" size={17} color="#fff" />
+                  <Text style={tm.createBtnText}>Save changes</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 type Props = {
   route: RouteProp<{ ContactDetail: { contact: Contact } }, "ContactDetail">;
   navigation?: any;
 };
 
-export default function ContactDetailScreen({ route }: Props) {
+export default function ContactDetailScreen({ route, navigation }: Props) {
   const initial = route.params.contact;
   const [contact, setContact] = useState<Contact>(initial);
   // Works in both admin (DrawerCtx) and agent (AgentDrawerCtx) contexts
@@ -234,6 +328,26 @@ export default function ContactDetailScreen({ route }: Props) {
   const [callPlacing, setCallPlacing] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskNotice, setTaskNotice] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+
+  function confirmDelete() {
+    Alert.alert("Delete Contact", `Delete "${contact.name}"? This cannot be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteContact(contact.id ?? contact._id ?? "");
+            // Go back to the contacts list after delete
+            if (navigation?.goBack) navigation.goBack();
+            else navigateToTab("Contacts");
+          } catch (err: any) {
+            Alert.alert("Delete failed", err?.response?.data?.message || err?.message || "Could not delete contact.");
+          }
+        },
+      },
+    ]);
+  }
 
   function handleTaskCreated() {
     setTaskNotice("Task created for this contact.");
@@ -328,6 +442,18 @@ try {
               ))}
             </View>
           )}
+
+          {/* Edit / Delete (web parity: PUT / DELETE /api/contacts/{id}) */}
+          <View style={styles.heroActions}>
+            <TouchableOpacity style={styles.heroEditBtn} onPress={() => setEditOpen(true)} activeOpacity={0.8}>
+              <Ionicons name="create-outline" size={15} color="#0f766e" />
+              <Text style={styles.heroEditText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.heroDeleteBtn} onPress={confirmDelete} activeOpacity={0.8}>
+              <Ionicons name="trash-outline" size={15} color="#dc2626" />
+              <Text style={styles.heroDeleteText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Action buttons */}
@@ -473,6 +599,13 @@ try {
         </View>
       </ScrollView>
 
+      <EditContactModal
+        visible={editOpen}
+        contact={contact}
+        onClose={() => setEditOpen(false)}
+        onSaved={(updated) => setContact(updated)}
+      />
+
       <CreateTaskModal
         visible={taskModalOpen}
         contact={contact}
@@ -520,6 +653,19 @@ const styles = StyleSheet.create({
     letterSpacing: iosTight,
   },
   tagsRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6 },
+  heroActions: { flexDirection: "row", gap: 10, marginTop: 12 },
+  heroEditBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(15,118,110,0.08)", borderRadius: 99,
+    paddingHorizontal: 16, paddingVertical: 8,
+  },
+  heroEditText: { fontSize: 13, fontWeight: "600", color: "#0f766e", fontFamily: mediumFont },
+  heroDeleteBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(220,38,38,0.06)", borderRadius: 99,
+    paddingHorizontal: 16, paddingVertical: 8,
+  },
+  heroDeleteText: { fontSize: 13, fontWeight: "600", color: "#dc2626", fontFamily: mediumFont },
   tag: {
     backgroundColor: "rgba(15,118,110,0.08)",
     borderRadius: 99,

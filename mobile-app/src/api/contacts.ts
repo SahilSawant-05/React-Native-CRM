@@ -67,6 +67,16 @@ export async function fetchContactById(id: string | number): Promise<Contact> {
   return res.data;
 }
 
+// Web parity (Contacts.jsx): PUT /api/contacts/{id} to edit, DELETE to remove.
+export async function updateContact(id: string | number, payload: Partial<Contact>): Promise<Contact> {
+  const res = await api.put<Contact>(`/api/contacts/${id}`, payload);
+  return res.data;
+}
+
+export async function deleteContact(id: string | number): Promise<void> {
+  await api.delete(`/api/contacts/${id}`);
+}
+
 export async function fetchContactTimeline(id: string | number): Promise<any[]> {
   try {
     const res = await api.get(`/api/contacts/${id}/timeline`);

@@ -25,6 +25,7 @@ import ContactDetailScreen from "../screens/contacts/ContactDetailScreen";
 import OpportunitiesScreen from "../screens/opportunities/OpportunitiesScreen";
 import TasksScreen from "../screens/tasks/TasksScreen";
 import ProfileScreen from "../screens/profile/ProfileScreen";
+import ReportsScreen from "../screens/reports/ReportsScreen";
 
 // New admin screens
 import MailScreen from "../screens/mail/MailScreen";
@@ -74,6 +75,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Workspace",
     items: [
       { name: "Dashboard",     label: "Dashboard",        icon: "grid-outline" },
+      { name: "Reports",       label: "Reports",          icon: "stats-chart-outline" },
       { name: "Queue",         label: "Work Queue",      icon: "list-outline" },
       { name: "AiWorkQueue",   label: "AI Work Queue",   icon: "sparkles-outline" },
       { name: "Chat",          label: "Messages",         icon: "chatbubbles-outline" },
@@ -309,6 +311,7 @@ function withHeader(Comp: React.ComponentType<any>, title: string) {
 
 const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   Dashboard:     withHeader(DashboardScreen,    "Dashboard"),
+  Reports:       withHeader(ReportsScreen,      "Reports"),
   Queue:         withHeader(WorkQueueScreen,    "Work Queue"),
   Chat:          ChatNavigator,
   Mail:          MailNavigator,           // ← was withHeader(MailScreen, "Mail")
