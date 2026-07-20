@@ -1,4 +1,4 @@
-# Backend push notifications — implementation spec
+<!-- # Backend push notifications — implementation spec
 
 > ## ⛔ WHY NOTIFICATIONS DON'T SHOW WHEN THE APP IS CLOSED
 >
@@ -163,4 +163,4 @@ Verify the device pipeline first from Firebase Console → Messaging →
 "New campaign" → Notification → send a test message to the FCM token
 (log it from the app or read it from the push-token table). If that
 notification appears on the phone, the client side is confirmed and any
-remaining issue is in the backend sending.
+remaining issue is in the backend sending. -->

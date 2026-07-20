@@ -2021,10 +2021,7 @@ export default function ChatConversationScreen({ route }: Props) {
         {!!error && <ErrorBanner message={error} />}
 
         {/* TEMP debug strip — remove once live updates are confirmed */}
-        <View style={styles.debugStrip}>
-          <Text style={styles.debugStripText} numberOfLines={3}>{debugLine}</Text>
-          <Text style={styles.debugStripText} numberOfLines={2}>{sockLine}</Text>
-        </View>
+        
 
         <View style={{ flex: 1 }}>
           <FlatList
