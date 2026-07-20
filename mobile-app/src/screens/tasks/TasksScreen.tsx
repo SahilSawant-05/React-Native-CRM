@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
 import { Contact, Task, User } from "../../types";
 
 const HFONT = Platform.OS === "android" ? "sans-serif-medium" : undefined;
@@ -657,10 +658,10 @@ const FILTERS = [
 ] as const;
 type FilterKey = typeof FILTERS[number]["key"];
 
-function FilterPills({ active, loading, onSelect }: { active:FilterKey|null; loading:boolean; onSelect:(f:FilterKey)=>void }) {
+function FilterPills({ active, loading, onSelect, filters=FILTERS as any }: { active:FilterKey|null; loading:boolean; onSelect:(f:FilterKey)=>void; filters?:typeof FILTERS }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterBar} contentContainerStyle={{gap:8,alignItems:"center" as const}}>
-      {FILTERS.map(({key,label,icon,color})=>{
+      {filters.map(({key,label,icon,color})=>{
         const on=active===key;
         return (
           <TouchableOpacity key={key} onPress={()=>onSelect(key)} style={[s.filterPill,{backgroundColor:on?color:"rgba(118,118,128,0.08)"}]}>
@@ -705,8 +706,15 @@ export default function TaskKanbanScreen() {
 
   const showToast = useCallback((msg:string, type:ToastType="success") => setToast({msg,type}), []);
 
+  // Only ADMIN/OWNER can read /api/tasks/team — for AGENT it 403s and the
+  // board would stay empty ("tasks not loading"). Default agents to their own
+  // tasks and hide the Team pill.
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN","OWNER"].includes(String(user?.role||"").toUpperCase());
+  const visibleFilters = (isPrivileged ? FILTERS : FILTERS.filter(f=>f.key!=="team")) as typeof FILTERS;
+
   useEffect(() => { taskApi.getUsers().then(raw=>setUsers(normalizeTaskList(raw) as any)).catch(()=>setUsers([])); }, []);
-  useEffect(() => { fetchFilter("team"); }, []); // eslint-disable-line
+  useEffect(() => { fetchFilter(isPrivileged ? "team" : "my-tasks"); }, []); // eslint-disable-line
 
   const loadContactTasks = useCallback((cid:string, label:string) => {
     setApiLoading(true);
@@ -720,7 +728,16 @@ export default function TaskKanbanScreen() {
     if (activeFilter===filter) { setActiveFilter(null); if (contactId) loadContactTasks(contactId,contactName??""); return; }
     setActiveFilter(filter); setFilterLoading(true);
     try {
-      const raw = filter==="today"?await taskApi.getToday():filter==="overdue"?await taskApi.getOverdue():filter==="team"?await taskApi.getTeamTasks():await taskApi.getMyTasks();
+      let raw:any;
+      try {
+        raw = filter==="today"?await taskApi.getToday():filter==="overdue"?await taskApi.getOverdue():filter==="team"?await taskApi.getTeamTasks():await taskApi.getMyTasks();
+      } catch (inner:any) {
+        // Team is admin/owner-only; if an agent lands on it, fall back to My.
+        if (filter==="team" && inner?.response?.status===403) {
+          setActiveFilter("my-tasks");
+          raw = await taskApi.getMyTasks();
+        } else { throw inner; }
+      }
       const tasks=normalizeTaskList(raw); setColumns(tasks.length?toColumns(tasks):EMPTY_COLS);
       showToast(tasks.length?`Loaded ${tasks.length} task(s)`:`No tasks for "${filter}"`,tasks.length?"success":"info");
     } catch (err:any) { showToast(`Filter failed: ${err.message}`,"error"); } finally { setFilterLoading(false); }
@@ -867,7 +884,7 @@ export default function TaskKanbanScreen() {
 
       {(apiLoading||filterLoading) && <View style={{alignItems:"center",paddingVertical:4}}><ActivityIndicator size="small" color="#0f766e"/></View>}
 
-      <FilterPills active={activeFilter} loading={filterLoading} onSelect={fetchFilter}/>
+      <FilterPills active={activeFilter} loading={filterLoading} onSelect={fetchFilter} filters={visibleFilters}/>
 
       {!contactId&&!activeFilter&&!apiLoading ? (
         <View style={s.emptyState}>
