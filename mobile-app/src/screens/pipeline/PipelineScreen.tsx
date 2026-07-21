@@ -719,6 +719,8 @@ const APPOINTMENT_LABELS: Record<string, string> = {
   GENERAL: "General",
 };
 
+const APPOINTMENT_STATUSES = ["SCHEDULED", "COMPLETED", "NO_SHOW", "CANCELLED"];
+
 interface OppAppointment {
   id: number;
   title?: string;
@@ -727,6 +729,19 @@ interface OppAppointment {
   location?: string;
   startAt?: string;
   endAt?: string;
+  description?: string;
+  category?: string;
+  contactId?: number | string;
+  opportunityId?: number | string;
+  allDay?: boolean;
+  outcome?: string;
+}
+
+interface ApptEdit {
+  status?: string;
+  outcome?: string;
+  followUpTitle?: string;
+  followUpDueAt?: Date | null;
 }
 
 function normalizeEventList(payload: any): OppAppointment[] {
@@ -762,10 +777,29 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
   const [scheduling, setScheduling] = useState(false);
   const [calendarFor, setCalendarFor] = useState<"start" | "end" | null>(null);
 
+  // Appointment tracking (web parity: OpportunityDetail updateAppointmentOutcome)
+  const [expandedApptId, setExpandedApptId] = useState<number | null>(null);
+  const [apptEdits, setApptEdits] = useState<Record<number, ApptEdit>>({});
+  const [updatingApptId, setUpdatingApptId] = useState<number | null>(null);
+  const [followUpCalFor, setFollowUpCalFor] = useState<number | null>(null);
+
   const loadAppointments = React.useCallback(async (oppId: number | string) => {
     try {
       const res = await api.get(`/api/events/opportunity/${oppId}`);
-      setAppointments(normalizeEventList(res.data));
+      const list = normalizeEventList(res.data);
+      setAppointments(list);
+      // Seed the per-appointment tracking form with current values.
+      setApptEdits(
+        list.reduce((acc: Record<number, ApptEdit>, a) => {
+          acc[a.id] = {
+            status: a.status || "SCHEDULED",
+            outcome: a.outcome || "",
+            followUpTitle: `Follow up after ${a.title || "appointment"}`,
+            followUpDueAt: null,
+          };
+          return acc;
+        }, {})
+      );
     } catch {
       setAppointments([]);
     }
@@ -809,6 +843,46 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
       setApptMsg(err?.response?.data?.message || err?.message || "Appointment scheduling failed");
     } finally {
       setScheduling(false);
+    }
+  }
+
+  function setApptEdit(id: number, field: keyof ApptEdit, value: any) {
+    setApptEdits((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+  }
+
+  // Web parity: PUT /api/events/{id} updating status/outcome, optionally
+  // creating a follow-up task from the appointment.
+  async function updateAppointmentOutcome(a: OppAppointment, createFollowUpTask: boolean) {
+    if (!opp || updatingApptId) return;
+    const edit = apptEdits[a.id] || {};
+    setUpdatingApptId(a.id);
+    setApptMsg("");
+    try {
+      await api.put(`/api/events/${a.id}`, {
+        title: a.title,
+        description: a.description || null,
+        category: a.category || "MEETING",
+        appointmentType: a.appointmentType || "GENERAL",
+        status: edit.status || a.status || "SCHEDULED",
+        location: a.location || null,
+        contactId: a.contactId || opp.contactId,
+        opportunityId: a.opportunityId || opp.id,
+        startAt: a.startAt,
+        endAt: a.endAt,
+        allDay: Boolean(a.allDay),
+        outcome: edit.outcome || null,
+        createFollowUpTask,
+        followUpTitle: edit.followUpTitle || `Follow up after ${a.title || "appointment"}`,
+        followUpDescription: edit.outcome || a.description || null,
+        followUpDueAt: edit.followUpDueAt ? edit.followUpDueAt.toISOString() : null,
+      });
+      setApptMsg(createFollowUpTask ? "Appointment updated and follow-up task created." : "Appointment updated.");
+      setExpandedApptId(null);
+      await loadAppointments(opp.id);
+    } catch (err: any) {
+      setApptMsg(err?.response?.data?.message || err?.message || "Appointment update failed");
+    } finally {
+      setUpdatingApptId(null);
     }
   }
 
@@ -865,17 +939,96 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
             ) : (
               appointments.map((a) => {
                 const sc = appointmentStatusColors(a.status);
+                const expanded = expandedApptId === a.id;
+                const edit = apptEdits[a.id] || {};
                 return (
-                  <View key={String(a.id)} style={dm.apptRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={dm.apptTitle} numberOfLines={1}>{a.title || APPOINTMENT_LABELS[a.appointmentType || ""] || "Appointment"}</Text>
-                      <Text style={dm.apptMeta}>
-                        {formatDate(a.startAt)}{a.location ? ` • ${a.location}` : ""}
-                      </Text>
-                    </View>
-                    <View style={[dm.apptStatus, { backgroundColor: sc.bg }]}>
-                      <Text style={[dm.apptStatusText, { color: sc.text }]}>{String(a.status || "SCHEDULED").replace("_", " ")}</Text>
-                    </View>
+                  <View key={String(a.id)} style={dm.apptCard}>
+                    <TouchableOpacity
+                      style={dm.apptRow}
+                      activeOpacity={0.7}
+                      onPress={() => setExpandedApptId(expanded ? null : a.id)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={dm.apptTitle} numberOfLines={1}>{a.title || APPOINTMENT_LABELS[a.appointmentType || ""] || "Appointment"}</Text>
+                        <Text style={dm.apptMeta}>
+                          {formatDate(a.startAt)}{a.location ? ` • ${a.location}` : ""}
+                        </Text>
+                      </View>
+                      <View style={[dm.apptStatus, { backgroundColor: sc.bg }]}>
+                        <Text style={[dm.apptStatusText, { color: sc.text }]}>{String(a.status || "SCHEDULED").replace("_", " ")}</Text>
+                      </View>
+                      <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color="#94a3b8" style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+
+                    {!!a.outcome && !expanded && (
+                      <Text style={dm.apptOutcomePreview} numberOfLines={2}>{a.outcome}</Text>
+                    )}
+
+                    {expanded && (
+                      <View style={dm.apptEditor}>
+                        <Text style={dm.apptEditLabel}>Status</Text>
+                        <View style={dm.apptTypeRow}>
+                          {APPOINTMENT_STATUSES.map((st) => {
+                            const on = (edit.status || a.status || "SCHEDULED") === st;
+                            return (
+                              <TouchableOpacity
+                                key={st}
+                                style={[dm.apptChip, on && dm.apptChipActive]}
+                                onPress={() => setApptEdit(a.id, "status", st)}
+                              >
+                                <Text style={[dm.apptChipText, on && dm.apptChipTextActive]}>{st.replace("_", " ")}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        <Text style={dm.apptEditLabel}>Outcome notes</Text>
+                        <TextInput
+                          style={[dm.apptInput, { minHeight: 64, textAlignVertical: "top" }]}
+                          value={edit.outcome || ""}
+                          onChangeText={(v) => setApptEdit(a.id, "outcome", v)}
+                          placeholder="What happened in the visit / session / test ride?"
+                          placeholderTextColor="#94a3b8"
+                          multiline
+                        />
+
+                        <Text style={dm.apptEditLabel}>Follow-up task title</Text>
+                        <TextInput
+                          style={dm.apptInput}
+                          value={edit.followUpTitle || ""}
+                          onChangeText={(v) => setApptEdit(a.id, "followUpTitle", v)}
+                          placeholder={`Follow up after ${a.title || "appointment"}`}
+                          placeholderTextColor="#94a3b8"
+                        />
+
+                        <Text style={dm.apptEditLabel}>Follow-up due (optional)</Text>
+                        <TouchableOpacity style={dm.apptField} onPress={() => setFollowUpCalFor(a.id)} activeOpacity={0.7}>
+                          <Text style={[dm.apptFieldText, !edit.followUpDueAt && dm.apptFieldPlaceholder]}>
+                            {edit.followUpDueAt ? edit.followUpDueAt.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Pick date & time"}
+                          </Text>
+                          <Ionicons name="calendar-outline" size={17} color="#0f766e" />
+                        </TouchableOpacity>
+
+                        <View style={dm.apptBtnRow}>
+                          <TouchableOpacity
+                            style={[dm.apptSaveOutcomeBtn, updatingApptId === a.id && { opacity: 0.6 }]}
+                            onPress={() => updateAppointmentOutcome(a, false)}
+                            disabled={updatingApptId === a.id}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={dm.apptSaveOutcomeText}>{updatingApptId === a.id ? "Saving…" : "Save Outcome"}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[dm.apptFollowBtn, updatingApptId === a.id && { opacity: 0.6 }]}
+                            onPress={() => updateAppointmentOutcome(a, true)}
+                            disabled={updatingApptId === a.id}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={dm.apptFollowText}>Save + Follow-up</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })
@@ -958,6 +1111,16 @@ function DetailModal({ opp, stagesMap, onClose, onEdit, onDelete }: {
             setCalendarFor(null);
           }}
         />
+
+        <CalendarSheet
+          visible={followUpCalFor !== null}
+          initial={followUpCalFor != null ? apptEdits[followUpCalFor]?.followUpDueAt ?? null : null}
+          onCancel={() => setFollowUpCalFor(null)}
+          onConfirm={(d) => {
+            if (followUpCalFor != null) setApptEdit(followUpCalFor, "followUpDueAt", d);
+            setFollowUpCalFor(null);
+          }}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -972,7 +1135,16 @@ const dm = StyleSheet.create({
   body:        { padding: 16, gap: 12, paddingBottom: 40 },
   sectionTitle:{ fontSize: 12, fontWeight: "700", color: "#64748b", letterSpacing: 0.6, textTransform: "uppercase", marginTop: 4 },
   apptEmpty:   { fontSize: 12.5, color: "#94a3b8" },
-  apptRow:     { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#f8fafc", borderRadius: 10, padding: 10 },
+  apptCard:    { backgroundColor: "#f8fafc", borderRadius: 10, borderWidth: 1, borderColor: "#eef2f6", overflow: "hidden" },
+  apptRow:     { flexDirection: "row", alignItems: "center", gap: 8, padding: 10 },
+  apptOutcomePreview: { fontSize: 12, color: "#047857", backgroundColor: "#ecfdf5", marginHorizontal: 10, marginBottom: 10, padding: 8, borderRadius: 8, lineHeight: 17 },
+  apptEditor:  { padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: "#eef2f6", backgroundColor: "#fff" },
+  apptEditLabel: { fontSize: 11, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 },
+  apptBtnRow:  { flexDirection: "row", gap: 8, marginTop: 2 },
+  apptSaveOutcomeBtn: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingVertical: 11, backgroundColor: "#fff" },
+  apptSaveOutcomeText: { fontSize: 13, fontWeight: "600", color: "#334155" },
+  apptFollowBtn: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10, paddingVertical: 11, backgroundColor: "#0f766e" },
+  apptFollowText: { fontSize: 13, fontWeight: "600", color: "#fff" },
   apptTitle:   { fontSize: 13.5, fontWeight: "600", color: "#0f172a" },
   apptMeta:    { fontSize: 11.5, color: "#64748b", marginTop: 2 },
   apptStatus:  { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
