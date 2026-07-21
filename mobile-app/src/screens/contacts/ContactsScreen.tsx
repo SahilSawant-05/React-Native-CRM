@@ -38,6 +38,7 @@ function avatarColors(name: string) {
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { fetchContacts } from "../../api/contacts";
+import { emailValidationMessage, phoneValidationMessage } from "../../utils/validation";
 import api from "../../api/client";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -85,6 +86,12 @@ function AddContactModal({ visible, onClose, onSaved }: {
 
   async function handleSave() {
     if (!form.name.trim()) { setError("Name is required."); return; }
+    // Format validation (web parity): only enforced when a value is entered,
+    // since email and phone are optional.
+    const emailErr = emailValidationMessage(form.email);
+    if (emailErr) { setError(emailErr); return; }
+    const phoneErr = phoneValidationMessage(form.phone);
+    if (phoneErr) { setError(phoneErr); return; }
     setSaving(true);
     setError("");
     try {

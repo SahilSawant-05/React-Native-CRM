@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
 import { RouteProp } from "@react-navigation/native";
 import { fetchContactById, fetchContactTimeline, updateContact, deleteContact } from "../../api/contacts";
+import { emailValidationMessage, phoneValidationMessage } from "../../utils/validation";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
@@ -240,6 +241,10 @@ function EditContactModal({
   async function save() {
     if (saving) return;
     if (!name.trim()) { setError("Name is required."); return; }
+    const emailErr = emailValidationMessage(email);
+    if (emailErr) { setError(emailErr); return; }
+    const phoneErr = phoneValidationMessage(phone);
+    if (phoneErr) { setError(phoneErr); return; }
     setSaving(true);
     setError("");
     try {
