@@ -257,6 +257,33 @@ export default function AiSettingsScreen() {
             autoCorrect={false}
           />
 
+          {/* Key status hint (web parity: AiSettings.jsx) */}
+          <View
+            style={[
+              styles.keyHint,
+              settings.hasApiKey ? styles.keyHintSaved : styles.keyHintNone,
+            ]}
+          >
+            <Ionicons
+              name={settings.hasApiKey ? "shield-checkmark" : "alert-circle-outline"}
+              size={15}
+              color={settings.hasApiKey ? "#047857" : "#b45309"}
+              style={{ marginTop: 1 }}
+            />
+            <Text
+              style={[
+                styles.keyHintText,
+                settings.hasApiKey ? styles.keyHintTextSaved : styles.keyHintTextNone,
+              ]}
+            >
+              {settings.hasApiKey
+                ? apiKey.trim()
+                  ? "You are replacing the saved encrypted key. Save settings to apply the new key."
+                  : "A key is already saved securely. Paste a new key only when you want to replace it."
+                : "No API key saved yet. Paste your provider key, then save and test connection."}
+            </Text>
+          </View>
+
           {/* Active toggle */}
           <View style={styles.toggleRow}>
             <Text style={styles.toggleLabel}>Enable AI for CRM features</Text>
@@ -392,6 +419,15 @@ const styles = StyleSheet.create({
   modelName: { fontSize: 14, fontWeight: "600", color: "#111827", fontFamily: androidMedium, letterSpacing: Platform.OS === "ios" ? -0.15 : 0 },
   modelHelper: { fontSize: 12.5, color: "#6b7280", marginTop: 2 },
   modelHint: { fontSize: 11, color: "#9ca3af", marginTop: 4 },
+  keyHint: {
+    flexDirection: "row", gap: 8, alignItems: "flex-start",
+    borderRadius: 10, borderWidth: 1, padding: 10, marginTop: 8,
+  },
+  keyHintSaved: { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" },
+  keyHintNone: { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
+  keyHintText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: "500" },
+  keyHintTextSaved: { color: "#047857" },
+  keyHintTextNone: { color: "#b45309" },
 
   input: {
     borderWidth: StyleSheet.hairlineWidth,
