@@ -55,6 +55,7 @@ function formatDateTime(value) {
     return new Intl.DateTimeFormat("en-IN", {
       dateStyle: "medium",
       timeStyle: "short",
+      hour12: true,
     }).format(new Date(value));
   } catch {
     return value;
@@ -405,6 +406,7 @@ export default function AiWorkQueue() {
       await api.post(`/api/contacts/${item.contactId}/tasks`, {
         title: `Follow up: ${item.reasonLabel || item.sectionLabel || "AI Work Queue"}`,
         description: item.summary || "Follow up from AI Work Queue.",
+        priority: item.priority >= 80 ? "HIGH" : item.priority >= 50 ? "MEDIUM" : "LOW",
         dueAt: dueAt.toISOString(),
       });
       setMessage("Follow-up task created for tomorrow at 10:00.");

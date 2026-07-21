@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 import CustomFieldInputs from "./CustomFieldInputs";
 import { LEAD_SOURCE_OPTIONS } from "../config/leadSources";
+import { sanitizeLocalPhone, validateContactMethods } from "../utils/contactValidation";
 
 function AddContact({ show, onClose, onSave, customFields = [] }) {
   const dialogRef = useRef(null);
@@ -22,6 +23,7 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
   const [duplicateMatches, setDuplicateMatches] = useState([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [confirmedDuplicate, setConfirmedDuplicate] = useState(false);
+  const [formError, setFormError] = useState("");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -30,9 +32,19 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
   }, [show]);
 
   const handleContactChange = (e) => {
+    const { name, value } = e.target;
     setConfirmedDuplicate(false);
     setDuplicateMatches([]);
-    setContactForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormError("");
+    setContactForm((prev) => {
+      if (name === "phone") {
+        return { ...prev, phone: sanitizeLocalPhone(value, prev.countryCode) };
+      }
+      if (name === "countryCode") {
+        return { ...prev, countryCode: value, phone: sanitizeLocalPhone(prev.phone, value) };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
   const resetContactForm = () =>
@@ -55,28 +67,48 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
     setCustomFieldValues({});
     setDuplicateMatches([]);
     setConfirmedDuplicate(false);
+    setFormError("");
     onClose();
   };
 
   const saveContact = () => {
-    if (!contactForm.name.trim()) return;
+    if (!contactForm.name.trim()) {
+      setFormError("Please enter contact name.");
+      return;
+    }
+    const validation = validateContactMethods(contactForm);
+    if (!validation.ok) {
+      setFormError(validation.message);
+      return;
+    }
     onSave({
       ...contactForm,
-      phone: contactForm.phone ? `${contactForm.countryCode}${contactForm.phone}` : "",
+      email: validation.email,
+      phone: validation.phone,
       customFieldValues,
     });
     resetContactForm();
     setCustomFieldValues({});
     setDuplicateMatches([]);
     setConfirmedDuplicate(false);
+    setFormError("");
   };
 
   const handleContactSave = async () => {
-    if (!contactForm.name.trim() || checkingDuplicates) return;
+    if (checkingDuplicates) return;
+    if (!contactForm.name.trim()) {
+      setFormError("Please enter contact name.");
+      return;
+    }
+    const validation = validateContactMethods(contactForm);
+    if (!validation.ok) {
+      setFormError(validation.message);
+      return;
+    }
 
     if (!confirmedDuplicate) {
-      const phone = contactForm.phone ? `${contactForm.countryCode}${contactForm.phone}` : "";
-      const email = contactForm.email.trim();
+      const phone = validation.phone;
+      const email = validation.email;
       if (phone || email) {
         setCheckingDuplicates(true);
         try {
@@ -142,7 +174,7 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
               className="border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-teal-400 bg-white"
             >
               <option value="91">🇮🇳 +91</option>
-              <option value="1">🇺🇸 +1</option>
+              <option value="1">🇨🇦/🇺🇸 +1</option>
               <option value="44">🇬🇧 +44</option>
               <option value="61">🇦🇺 +61</option>
               <option value="971">🇦🇪 +971</option>
@@ -152,7 +184,9 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
               name="phone"
               value={contactForm.phone}
               onChange={handleContactChange}
-              placeholder="Phone number"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="10 digit number"
               className="border border-gray-200 rounded-xl p-2.5 w-full text-sm focus:outline-none focus:border-teal-400"
             />
           </div>
@@ -200,7 +234,7 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
             onChange={handleContactChange}
             className="border border-gray-200 rounded-xl p-2.5 w-full text-sm focus:outline-none focus:border-teal-400 bg-white"
           >
-            <option value="">Select source</option>
+          <option value="">Select source</option>
             {LEAD_SOURCE_OPTIONS.map((option) => (
               <option key={option.value || "blank"} value={option.value}>
                 {option.label}
@@ -245,6 +279,12 @@ function AddContact({ show, onClose, onSave, customFields = [] }) {
           values={customFieldValues}
           onChange={setCustomFieldValues}
         />
+
+        {formError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {formError}
+          </div>
+        )}
 
         {duplicateMatches.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">

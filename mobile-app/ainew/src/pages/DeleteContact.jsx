@@ -1,6 +1,11 @@
 import { useState } from "react";
 import "../index.css";
 
+const isWhatsAppLead = (contact) => {
+  const source = String(contact?.leadSource || "").trim().toUpperCase();
+  return source === "WHATSAPP" || source === "WHATSAPP_FLOW";
+};
+
 // ─── Delete Confirmation Popup ────────────────────────────────────────────────
 function DeleteConfirmPopup({ contact, onConfirm, onCancel, isBulk, count }) {
   const [shaking, setShaking] = useState(false);
@@ -88,6 +93,11 @@ export default function DeleteContact({ selectedId, contacts, setContacts, setSe
   const handleClick = () => {
     if (!ids.length) return;
     setError("");
+    const selectedContacts = contacts?.filter((contact) => ids.includes(contact.id || contact._id)) || [];
+    if (selectedContacts.some(isWhatsAppLead)) {
+      setError("WhatsApp leads cannot be deleted.");
+      return;
+    }
     setShowPopup(true);
   };
 

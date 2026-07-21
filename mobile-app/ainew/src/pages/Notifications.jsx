@@ -30,6 +30,12 @@ const readError = (error, fallback) => {
   return data?.message || data?.error || (typeof data === "string" ? data : null) || error.message || fallback;
 };
 
+const emitNotificationRefresh = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("notifications:refresh"));
+  }
+};
+
 export default function Notifications() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState({
@@ -49,25 +55,29 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
-  const load = useCallback(async () => {
+  const applySummary = (data = {}) => {
+    const items = Array.isArray(data.items) ? data.items : [];
+    setSummary({
+      unreadCount: data.unreadCount || 0,
+      readCount: data.readCount || 0,
+      totalCount: data.totalCount ?? items.length,
+      totalElements: data.totalElements ?? items.length,
+      page: data.page || 0,
+      size: data.size || PAGE_SIZE,
+      totalPages: data.totalPages || 0,
+      items,
+    });
+  };
+
+  const load = useCallback(async (overrides = {}) => {
     setLoading(true);
     setMessage("");
+    const nextPage = overrides.page ?? page;
     try {
       const response = await api.get("/api/notifications", {
-        params: { status: activeTab, ...dateRangeParams(dateRange), page, size: PAGE_SIZE },
+        params: { status: activeTab, ...dateRangeParams(dateRange), page: nextPage, size: PAGE_SIZE },
       });
-      const data = response.data || {};
-      const items = Array.isArray(data.items) ? data.items : [];
-      setSummary({
-        unreadCount: data.unreadCount || 0,
-        readCount: data.readCount || 0,
-        totalCount: data.totalCount ?? items.length,
-        totalElements: data.totalElements ?? items.length,
-        page: data.page || 0,
-        size: data.size || PAGE_SIZE,
-        totalPages: data.totalPages || 0,
-        items,
-      });
+      applySummary(response.data || {});
     } catch (error) {
       setMessage(readError(error, "Failed to load notifications"));
       setSummary((current) => ({ ...current, items: [] }));
@@ -95,6 +105,7 @@ export default function Notifications() {
     try {
       await api.post(`/api/notifications/${notification.id}/read`, null, { params: { read } });
       await load();
+      emitNotificationRefresh();
     } catch (error) {
       setMessage(readError(error, "Failed to update notification"));
     }
@@ -112,8 +123,17 @@ export default function Notifications() {
   const markAllRead = async () => {
     try {
       await api.post("/api/notifications/read-all");
+      setSummary((current) => ({
+        ...current,
+        unreadCount: 0,
+        readCount: current.totalCount,
+        items: activeTab === "UNREAD"
+          ? []
+          : current.items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })),
+      }));
       setPage(0);
-      await load();
+      emitNotificationRefresh();
+      await load({ page: 0 });
     } catch (error) {
       setMessage(readError(error, "Failed to mark notifications read"));
     }

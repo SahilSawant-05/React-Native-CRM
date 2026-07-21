@@ -435,9 +435,9 @@ export default function Reports() {
             accent="bg-rose-50 text-rose-700"
           />
           <MetricCard
-            label="Appointment Outcomes"
-            value={(summary?.appointmentOutcomes || []).reduce((sum, item) => sum + Number(item.count || 0), 0)}
-            helper="Scheduled, completed, no-show, cancelled"
+            label="Total Appointments"
+            value={summary?.totalAppointments ?? 0}
+            helper="Appointments scheduled in this report range"
             icon={CalendarCheck2}
             accent="bg-cyan-50 text-cyan-700"
           />
@@ -471,7 +471,7 @@ export default function Reports() {
           />
           <BreakdownPanel
             title="Appointment Outcome Report"
-            description="Site visits, demos, counseling sessions, and test rides by status."
+            description="Site visits, demos, counseling sessions, and test rides scheduled in this report range by current status."
             items={summary?.appointmentOutcomes || []}
             chart="donut"
           />

@@ -851,6 +851,20 @@ const listFromPayload = (payload, ...keys) => {
   return [];
 };
 
+const byNewestDate = (...fields) => (a, b) => {
+  const dateFor = (item) => {
+    for (const field of fields) {
+      const value = item?.[field];
+      if (value) {
+        const time = new Date(value).getTime();
+        if (Number.isFinite(time)) return time;
+      }
+    }
+    return 0;
+  };
+  return dateFor(b) - dateFor(a);
+};
+
 const loadSavedViews = () => {
   try {
     const raw = localStorage.getItem(SAVED_VIEWS_KEY);
@@ -1057,14 +1071,19 @@ export default function Contacts() {
       if (cancelled) return;
 
       const nextWorkspace = {
-        timeline: timelineResult.status === "fulfilled" ? timelineResult.value.data : null,
+        timeline: timelineResult.status === "fulfilled"
+          ? {
+              ...timelineResult.value.data,
+              items: listFromPayload(timelineResult.value.data?.items).sort(byNewestDate("occurredAt", "createdAt")),
+            }
+          : null,
         notes:
           notesResult.status === "fulfilled"
-            ? listFromPayload(notesResult.value.data, "data", "notes")
+            ? listFromPayload(notesResult.value.data, "data", "notes").sort(byNewestDate("createdAt"))
             : [],
         tasks:
           tasksResult.status === "fulfilled"
-            ? listFromPayload(tasksResult.value.data, "data", "tasks")
+            ? listFromPayload(tasksResult.value.data, "data", "tasks").sort(byNewestDate("assignedAt", "createdAt", "dueAt"))
             : [],
       };
 

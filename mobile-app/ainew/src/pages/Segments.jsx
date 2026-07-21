@@ -4,13 +4,11 @@ import api from "../api/axios";
 import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "../config/leadSources";
 
 const CONVERSATION_OPTIONS = ["", "OPEN", "CLOSED"];
-const INDUSTRY_OPTIONS = ["", "REAL_ESTATE", "EDUCATION", "BIKE_SALES", "GENERIC"];
 
 const FILTER_DEFS = [
   { key: "pipelineId", label: "Pipeline" },
   { key: "stage", label: "Pipeline Stage" },
   { key: "leadSource", label: "Lead Source" },
-  { key: "industryKey", label: "Industry" },
   { key: "city", label: "City" },
   { key: "tag", label: "Tag" },
   { key: "query", label: "Contact Search" },
@@ -25,7 +23,6 @@ const blankForm = {
   tag: "",
   stage: "",
   leadSource: "",
-  industryKey: "",
   city: "",
   assignedUserId: "",
   conversationStatus: "",
@@ -66,7 +63,7 @@ export default function Segments() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(blankForm);
-  const [filterRows, setFilterRows] = useState(["stage"]);
+  const [filterRows, setFilterRows] = useState(["pipelineId", "stage"]);
   const [editingId, setEditingId] = useState(null);
   const [preview, setPreview] = useState({ loading: false, count: null, contacts: [], error: "" });
   const [contactsModal, setContactsModal] = useState({ open: false, segment: null, contacts: [], loading: false, error: "" });
@@ -78,13 +75,12 @@ export default function Segments() {
     tag: form.tag.trim() || null,
     stage: form.stage || null,
     leadSource: form.leadSource || null,
-    industryKey: form.industryKey || null,
     city: form.city.trim() || null,
     assignedUserId: form.assignedUserId ? Number(form.assignedUserId) : null,
     conversationStatus: form.conversationStatus || null,
   }), [form]);
 
-  const visibleFilterKeys = filterRows.length > 0 ? filterRows : ["stage"];
+  const visibleFilterKeys = filterRows.length > 0 ? filterRows : ["pipelineId", "stage"];
   const hasAllFiltersVisible = visibleFilterKeys.length >= FILTER_DEFS.length;
 
   useEffect(() => {
@@ -210,7 +206,6 @@ export default function Segments() {
         segment.tag,
         segment.stage,
         segment.leadSource,
-        segment.industryKey,
         segment.city,
         segment.conversationStatus,
         segment.createdByUserEmail,
@@ -223,7 +218,7 @@ export default function Segments() {
   const resetForm = () => {
     setEditingId(null);
     setForm(blankForm);
-    setFilterRows(["stage"]);
+    setFilterRows(["pipelineId", "stage"]);
   };
 
   const availableFilterKeys = (currentKey = "") =>
@@ -242,7 +237,7 @@ export default function Segments() {
     setForm((current) => ({ ...current, [key]: "" }));
     setFilterRows((current) => {
       const next = current.filter((item) => item !== key);
-      return next.length > 0 ? next : ["stage"];
+      return next.length > 0 ? next : ["pipelineId", "stage"];
     });
   };
 
@@ -275,7 +270,7 @@ export default function Segments() {
   const startEdit = (segment) => {
     setEditingId(segment.id);
     const keys = FILTER_DEFS.map((filter) => filter.key).filter((key) => segment[key]);
-    setFilterRows(keys.length > 0 ? keys : ["stage"]);
+    setFilterRows(keys.length > 0 ? keys : ["pipelineId", "stage"]);
     setForm({
       name: segment.name || "",
       pipelineId: segment.pipelineId ? String(segment.pipelineId) : "",
@@ -283,7 +278,6 @@ export default function Segments() {
       tag: segment.tag || "",
       stage: segment.stage || "",
       leadSource: segment.leadSource || "",
-      industryKey: segment.industryKey || "",
       city: segment.city || "",
       assignedUserId: segment.assignedUserId ? String(segment.assignedUserId) : "",
       conversationStatus: segment.conversationStatus || "",
@@ -594,7 +588,6 @@ export default function Segments() {
                     {segment.pipelineId && <Badge label={`Pipeline: ${pipelineName(pipelines, segment.pipelineId)}`} color="#1d4ed8" bg="#dbeafe" />}
                     {segment.stage && <Badge label={`Stage: ${labelFor(segment.stage)}`} color="#1d4ed8" bg="#dbeafe" />}
                     {segment.leadSource && <Badge label={`Source: ${labelFor(segment.leadSource)}`} color="#0e7490" bg="#cffafe" />}
-                    {segment.industryKey && <Badge label={`Industry: ${labelFor(segment.industryKey)}`} color="#047857" bg="#d1fae5" />}
                     {segment.city && <Badge label={`City: ${segment.city}`} color="#4338ca" bg="#e0e7ff" />}
                     {segment.tag && <Badge label={`Tag: ${segment.tag}`} color="#7c3aed" bg="#ede9fe" />}
                     {segment.conversationStatus && <Badge label={`Conversation: ${segment.conversationStatus}`} color="#b45309" bg="#fef3c7" />}
@@ -677,7 +670,6 @@ export default function Segments() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {contact.stage && <Badge label={labelFor(contact.stage)} color="#1d4ed8" bg="#dbeafe" />}
                       {contact.leadSource && <Badge label={labelFor(contact.leadSource)} color="#0e7490" bg="#cffafe" />}
-                      {contact.industryKey && <Badge label={labelFor(contact.industryKey)} color="#047857" bg="#d1fae5" />}
                       {contact.city && <Badge label={contact.city} color="#4338ca" bg="#e0e7ff" />}
                       {contact.conversationStatus && <Badge label={contact.conversationStatus} color="#b45309" bg="#fef3c7" />}
                       {contact.tags && <Badge label={contact.tags} color="#7c3aed" bg="#ede9fe" />}
@@ -743,15 +735,6 @@ function renderFilterValue(key, value, { stages, users, pipelines, setValue }) {
         <option value="">Any source</option>
         {LEAD_SOURCE_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    );
-  }
-  if (key === "industryKey") {
-    return (
-      <select value={value} onChange={(event) => setValue(key, event.target.value)} style={inputStyle}>
-        {INDUSTRY_OPTIONS.map((option) => (
-          <option key={option || "all"} value={option}>{option ? labelFor(option) : "Any industry"}</option>
         ))}
       </select>
     );
@@ -834,7 +817,6 @@ function defaultFilterValue(key, stages, users, pipelines) {
     : pipelines[0]?.id ? String(pipelines[0].id) : "";
   if (key === "stage") return stages[0]?.stageKey || stages[0]?.key || "";
   if (key === "leadSource") return "WHATSAPP";
-  if (key === "industryKey") return "REAL_ESTATE";
   if (key === "assignedUserId") return users[0]?.id ? String(users[0].id) : "";
   if (key === "conversationStatus") return "OPEN";
   return "";

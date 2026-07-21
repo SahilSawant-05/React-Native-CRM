@@ -799,6 +799,7 @@ export default function TaskKanban() {
       description: data.text,
       assignedUserId: data.assignedUserId ? Number(data.assignedUserId) : null,
       dueAt: toDueAt(data.date),
+      priority: String(data.priority || "medium").toUpperCase(),
     };
     setTaskSaving(true);
     try {
@@ -807,7 +808,14 @@ export default function TaskKanban() {
         if (status !== normalizeStatus(editCard.status)) {
           await taskApi.updateStatus(effectiveContactId, data.id, status);
         }
-        const merged = { ...data, ...(updated || {}), id: data.id, contactId: effectiveContactId, status };
+        const merged = {
+          ...data,
+          ...(updated || {}),
+          id: data.id,
+          contactId: effectiveContactId,
+          status,
+          priority: String(updated?.priority || data.priority || "medium").toLowerCase(),
+        };
         setColumns(prev => prev.map(col => {
           const without = col.cards.filter(c => c.id !== data.id);
           if (col.id === (data.colId || activeColId)) return { ...col, cards: [merged, ...without] };
@@ -820,7 +828,14 @@ export default function TaskKanban() {
         if (status !== "OPEN") {
           await taskApi.updateStatus(effectiveContactId, createdId, status);
         }
-        const newCard = { ...data, id: createdId, ...(created || {}), contactId: effectiveContactId, status };
+        const newCard = {
+          ...data,
+          id: createdId,
+          ...(created || {}),
+          contactId: effectiveContactId,
+          status,
+          priority: String(created?.priority || data.priority || "medium").toLowerCase(),
+        };
         setColumns(prev => prev.map(col => col.id === (data.colId || activeColId) ? { ...col, cards: [newCard, ...col.cards] } : col));
         showToast("Task created");
       }

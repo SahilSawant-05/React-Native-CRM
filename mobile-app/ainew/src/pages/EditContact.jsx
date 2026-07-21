@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import CustomFieldInputs from "./CustomFieldInputs";
 import { LEAD_SOURCE_OPTIONS } from "../config/leadSources";
+import { isInternalPhonePlaceholder, sanitizeLocalPhone, validateContactMethods } from "../utils/contactValidation";
+
+const COUNTRY_OPTIONS = [
+  { value: "91", label: "🇮🇳 +91" },
+  { value: "1", label: "🇨🇦/🇺🇸 +1" },
+  { value: "44", label: "🇬🇧 +44" },
+  { value: "61", label: "🇦🇺 +61" },
+  { value: "971", label: "🇦🇪 +971" },
+  { value: "65", label: "🇸🇬 +65" },
+];
+
+function splitStoredPhone(value) {
+  if (isInternalPhonePlaceholder(value)) return { countryCode: "91", phone: "" };
+  const digits = String(value || "").replace(/\D/g, "");
+  const code = COUNTRY_OPTIONS.find((option) => digits.startsWith(option.value) && digits.length > option.value.length + 6)?.value || "91";
+  const localPhone = digits.startsWith(code) ? digits.slice(code.length) : digits;
+  return { countryCode: code, phone: sanitizeLocalPhone(localPhone, code) };
+}
 
 function EditContact({
   show,
@@ -22,16 +40,20 @@ function EditContact({
     leadSourceDetail: "",
     city: "",
     lead_score: "",
+    countryCode: "91",
   });
   const [fieldValues, setFieldValues] = useState({});
+  const [formError, setFormError] = useState("");
 
   // Pre-fill form whenever the contact changes
   useEffect(() => {
     if (contact) {
+      const phoneParts = splitStoredPhone(contact.phone);
       setForm({
         name:        contact.name        || "",
         email:       contact.email       || "",
-        phone:       contact.phone       || "",
+        phone:       phoneParts.phone,
+        countryCode: phoneParts.countryCode,
         company:     contact.company     || "",
         designation: contact.designation || "",
         tags: Array.isArray(contact.tags)
@@ -56,15 +78,35 @@ function EditContact({
   }, [show]);
 
   const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormError("");
+    setForm((prev) => {
+      if (name === "phone") {
+        return { ...prev, phone: sanitizeLocalPhone(value, prev.countryCode) };
+      }
+      if (name === "countryCode") {
+        return { ...prev, countryCode: value, phone: sanitizeLocalPhone(prev.phone, value) };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleSave = () => {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) {
+      setFormError("Please enter contact name.");
+      return;
+    }
+    const validation = validateContactMethods(form);
+    if (!validation.ok) {
+      setFormError(validation.message);
+      return;
+    }
     // Spread original contact first so id / _id are preserved
     onSave({
       ...contact,
       ...form,
+      email: validation.email,
+      phone: validation.phone || contact.phone,
       customFieldValues: fieldValues,
     });
   };
@@ -104,7 +146,7 @@ function EditContact({
         </div>
 
         {/* Email + Phone */}
-        <div className="flex gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
             <input
@@ -117,13 +159,27 @@ function EditContact({
           </div>
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 mb-1 block">Phone</label>
-            <input
-              name="phone"
-              value={form.phone}
-              onChange={handleChange}
-              placeholder="Phone number"
-              className="border border-gray-200 rounded-xl p-2.5 w-full text-sm focus:outline-none focus:border-teal-400"
-            />
+            <div className="flex gap-2">
+              <select
+                name="countryCode"
+                value={form.countryCode}
+                onChange={handleChange}
+                className="w-28 rounded-xl border border-gray-200 bg-white p-2.5 text-sm focus:border-teal-400 focus:outline-none"
+              >
+                {COUNTRY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <input
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="10 digit number"
+                className="min-w-0 flex-1 rounded-xl border border-gray-200 p-2.5 text-sm focus:border-teal-400 focus:outline-none"
+              />
+            </div>
           </div>
         </div>
 
@@ -226,6 +282,12 @@ function EditContact({
           values={fieldValues}
           onChange={setFieldValues}
         />
+
+        {formError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {formError}
+          </div>
+        )}
 
       </div>
 

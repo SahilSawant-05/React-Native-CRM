@@ -225,11 +225,24 @@ export default function Phase2Settings() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    const oauthError = params.get("error");
+    const oauthErrorDescription = params.get("error_description");
+    if (oauthError) {
+      setError(oauthErrorDescription || oauthError || "Email OAuth was cancelled or failed.");
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
     if (!code) return;
 
     const finishEmailOAuth = async () => {
       clearMessages();
-      const oauthProvider = window.localStorage.getItem("emailOAuthProvider") || "gmail";
+      const state = params.get("state") || "";
+      const providerFromState = state.includes("provider=outlook")
+        ? "outlook"
+        : state.includes("provider=gmail")
+          ? "gmail"
+          : "";
+      const oauthProvider = providerFromState || window.localStorage.getItem("emailOAuthProvider") || "gmail";
       const savingKey = oauthProvider === "outlook" ? "outlook-oauth" : "gmail-oauth";
       setSaving(savingKey);
       try {

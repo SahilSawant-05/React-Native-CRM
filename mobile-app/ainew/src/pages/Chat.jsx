@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  Sparkles,
   UserRound,
   X,
 } from "lucide-react";
@@ -120,7 +121,13 @@ function parseTags(value) {
 function formatDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        hour12: true,
+      }).format(date);
 }
 
 function callOutcomeLabel(value) {
@@ -196,6 +203,79 @@ function templateBodyText(template) {
   if (template?.body) return template.body;
   const body = parseTemplateComponents(template).find((component) => String(component?.type || "").toUpperCase() === "BODY");
   return body?.text || "";
+}
+
+function templateComponent(template, type) {
+  return parseTemplateComponents(template).find((component) => String(component?.type || "").toUpperCase() === type);
+}
+
+function templateFooterText(template) {
+  if (template?.footer) return template.footer;
+  return templateComponent(template, "FOOTER")?.text || "";
+}
+
+function templateButtons(template) {
+  const buttons = templateComponent(template, "BUTTONS")?.buttons;
+  return Array.isArray(buttons) ? buttons : [];
+}
+
+function WhatsAppTemplatePreview({ template, bodyParameters = [], headerMediaUrl, bodyOverride, sentView = false }) {
+  if (!template) return null;
+
+  const header = templateComponent(template, "HEADER");
+  const headerFormat = String(header?.format || template.headerType || "").toUpperCase();
+  const headerText = headerFormat === "TEXT" ? renderTemplatePreview(header?.text || template.headerText || "", bodyParameters) : "";
+  const body = bodyOverride || renderTemplatePreview(templateBodyText(template), bodyParameters);
+  const footer = templateFooterText(template);
+  const buttons = templateButtons(template);
+  const mediaUrl = headerMediaUrl?.trim();
+
+  return (
+    <div className={sentView ? "" : "rounded-2xl border border-emerald-100 bg-[#e5ddd5] p-3"}>
+      <div className="mx-auto max-w-sm rounded-2xl rounded-tl-sm bg-white p-2 shadow-sm">
+        {sentView && (
+          <div className="mb-2 rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+            WhatsApp template
+          </div>
+        )}
+        {headerFormat === "IMAGE" && mediaUrl && (
+          <img src={mediaUrl} alt="Template header" className="mb-2 max-h-56 w-full rounded-xl object-cover" />
+        )}
+        {headerFormat === "VIDEO" && mediaUrl && (
+          <video controls className="mb-2 max-h-56 w-full rounded-xl bg-black">
+            <source src={mediaUrl} />
+          </video>
+        )}
+        {headerFormat === "DOCUMENT" && mediaUrl && (
+          <a href={mediaUrl} target="_blank" rel="noreferrer" className="mb-2 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-800">
+            <FileText size={18} />
+            <span className="min-w-0 flex-1 truncate">Document header</span>
+          </a>
+        )}
+        {headerFormat && headerFormat !== "TEXT" && !mediaUrl && (
+          <div className="mb-2 flex h-32 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-xs font-bold uppercase tracking-wide text-gray-400">
+            {headerFormat} header
+          </div>
+        )}
+        {headerText && (
+          <p className="mb-2 whitespace-pre-wrap break-words text-sm font-extrabold text-gray-950">{headerText}</p>
+        )}
+        <p className="whitespace-pre-wrap break-words text-sm leading-5 text-gray-900">{body}</p>
+        {footer && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-gray-500">{footer}</p>}
+        {buttons.length > 0 && (
+          <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
+            {buttons.map((button, index) => (
+              <div key={`${button.type || "button"}-${index}`} className="flex items-center justify-center gap-2 px-2 py-2 text-sm font-bold text-sky-600">
+                <Link2 size={14} />
+                <span className="truncate">{button.text || button.url || button.phone_number || "Button"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-1 text-right text-[10px] text-gray-400">Template preview</div>
+      </div>
+    </div>
+  );
 }
 
 function isMetaSampleMediaUrl(value) {
@@ -313,9 +393,10 @@ function MediaBubble({ message }) {
   );
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, template }) {
   const inbound = message.direction === "INBOUND";
   const failed = String(message.status || "").toUpperCase() === "FAILED";
+  const isTemplateMessage = !inbound && message.templateId && template;
 
   return (
     <article className={`flex ${inbound ? "justify-start" : "justify-end"}`}>
@@ -336,19 +417,26 @@ function MessageBubble({ message }) {
           <span>{formatDateTime(message.createdAt)}</span>
         </div>
 
-        {message.mediaType && (
+        {isTemplateMessage ? (
+          <WhatsAppTemplatePreview
+            template={template}
+            headerMediaUrl={message.mediaUrl || ""}
+            bodyOverride={message.textBody}
+            sentView
+          />
+        ) : message.mediaType && (
           <div className="mb-3">
             <MediaBubble message={message} />
           </div>
         )}
 
-        {message.textBody && (
+        {!isTemplateMessage && message.textBody && (
           <p className="whitespace-pre-wrap break-words text-sm">
             {message.textBody}
           </p>
         )}
 
-        {!message.textBody && !message.mediaType && (
+        {!isTemplateMessage && !message.textBody && !message.mediaType && (
           <p className={`text-sm ${failed ? "text-red-700" : inbound ? "text-gray-500" : "text-teal-100"}`}>
             No message body stored
           </p>
@@ -521,12 +609,17 @@ export default function ChatApp() {
     () => whatsAppTemplates.find((template) => String(template.id) === String(templateForm.templateId)) || null,
     [templateForm.templateId, whatsAppTemplates]
   );
+  const templateById = useMemo(() => {
+    const map = new Map();
+    whatsAppTemplates.forEach((template) => {
+      if (template?.id !== undefined && template?.id !== null) {
+        map.set(String(template.id), template);
+      }
+    });
+    return map;
+  }, [whatsAppTemplates]);
   const selectedTemplateVariableCount = useMemo(() => templateVariableCount(selectedTemplate), [selectedTemplate]);
   const selectedTemplateHeaderFormat = useMemo(() => templateHeaderMediaFormat(selectedTemplate), [selectedTemplate]);
-  const selectedTemplatePreview = useMemo(
-    () => renderTemplatePreview(templateBodyText(selectedTemplate), templateForm.bodyParameters),
-    [selectedTemplate, templateForm.bodyParameters]
-  );
   const selectedFlowNeedsMeta = Boolean(
     selectedFlow && (!selectedFlow.metaFlowId || String(selectedFlow.metaFlowId).startsWith("local-flow-"))
   );
@@ -579,6 +672,13 @@ export default function ChatApp() {
   const recentCalls = useMemo(
     () => contactTimeline
       .filter((item) => item.itemType === "CALL")
+      .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime()),
+    [contactTimeline]
+  );
+
+  const recentNotes = useMemo(
+    () => contactTimeline
+      .filter((item) => item.itemType === "NOTE")
       .sort((a, b) => new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime()),
     [contactTimeline]
   );
@@ -1632,6 +1732,7 @@ export default function ChatApp() {
                   <MessageBubble
                     key={message.id || `${message.createdAt}-${index}`}
                     message={message}
+                    template={message.templateId ? templateById.get(String(message.templateId)) : null}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -1640,19 +1741,24 @@ export default function ChatApp() {
           </div>
 
           <div className="max-h-[46vh] shrink-0 overflow-y-auto border-t border-gray-100 bg-white px-3 py-3 sm:max-h-[40vh] sm:px-5 sm:py-4">
-            <section className="mb-3 rounded-2xl border border-teal-100 bg-teal-50/60">
+            <section className="mb-3 rounded-2xl border border-teal-100 bg-teal-50/60 shadow-sm">
               <button
                 type="button"
                 onClick={() => setAiPanelOpen((current) => !current)}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                className="flex w-full flex-col gap-3 px-3 py-3 text-left transition hover:bg-teal-50/80 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-teal-950">AI chat assistant</p>
-                  <p className="truncate text-xs font-semibold text-teal-700">
-                    {aiPanelOpen ? "Hide AI tools to focus on messages." : "Open only when you need summary, reply, or next action."}
-                  </p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-teal-700 shadow-sm ring-1 ring-teal-200">
+                    <Sparkles size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-teal-950">AI chat assistant</p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-teal-700">
+                      {aiPanelOpen ? "AI tools are open. Collapse when you want more room for messages." : "Generate a summary, reply, or recommendation only when needed."}
+                    </p>
+                  </div>
                 </div>
-                <span className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-black text-teal-800 shadow-sm ring-1 ring-teal-200">
+                <span className="inline-flex w-full shrink-0 items-center justify-center rounded-lg bg-white px-3 py-2 text-xs font-black text-teal-800 shadow-sm ring-1 ring-teal-200 sm:w-auto">
                   {aiPanelOpen ? "Collapse" : "Expand"}
                 </span>
               </button>
@@ -1673,6 +1779,7 @@ Contact: ${contactDetails?.name || selectedConversation?.contactName || selected
 Recent messages:
 ${aiMessageContext || "No recent messages loaded."}`}
                     onApply={(text) => setDraft((current) => [current, text].filter(Boolean).join(current ? "\n" : ""))}
+                    onSaved={() => loadContactTimeline(selectedContactId)}
                     applyLabel="Use in message"
                     compact
                   />
@@ -1937,9 +2044,21 @@ ${aiMessageContext || "No recent messages loaded."}`}
                 )}
 
                 {selectedTemplate && (
-                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-3">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Preview</div>
-                    <p className="whitespace-pre-wrap text-sm text-gray-800">{selectedTemplatePreview}</p>
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">WhatsApp Preview</div>
+                        <p className="text-xs text-gray-500">This matches the template structure customers will see in WhatsApp.</p>
+                      </div>
+                      <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-gray-500">
+                        {selectedTemplate.metaTemplateName}
+                      </span>
+                    </div>
+                    <WhatsAppTemplatePreview
+                      template={selectedTemplate}
+                      bodyParameters={templateForm.bodyParameters}
+                      headerMediaUrl={templateForm.headerMediaUrl}
+                    />
                   </div>
                 )}
 
@@ -2500,6 +2619,49 @@ ${aiMessageContext || "No recent messages loaded."}`}
                         <dd className="font-medium text-gray-900">{timeAgo(selectedConversation.lastMessageAt) || "—"}</dd>
                       </div>
                     </dl>
+                  </section>
+                  <section className="rounded-2xl border border-gray-200 bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Recent Notes</p>
+                      <button
+                        type="button"
+                        onClick={() => loadContactTimeline(selectedContactId)}
+                        disabled={loadingTimeline}
+                        className="text-xs font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60"
+                      >
+                        {loadingTimeline ? "Loading..." : "Refresh"}
+                      </button>
+                    </div>
+                    {loadingTimeline ? (
+                      <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">Loading notes...</p>
+                    ) : recentNotes.length > 0 ? (
+                      <div className="space-y-3">
+                        {recentNotes.slice(0, 3).map((note) => (
+                          <article key={note.noteId || note.occurredAt} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-bold text-teal-950">
+                                {String(note.textBody || note.description || "").startsWith("AI note:")
+                                  ? "AI saved note"
+                                  : note.title || "Contact note"}
+                              </p>
+                              <span className="text-[11px] font-semibold text-teal-700">
+                                {formatDateTime(note.occurredAt) || "No time"}
+                              </span>
+                            </div>
+                            <p className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-white px-3 py-2 text-xs leading-5 text-gray-700">
+                              {note.textBody || note.description || "No note content saved."}
+                            </p>
+                            {note.actorUserEmail && (
+                              <p className="mt-2 text-[11px] font-semibold text-gray-500">{note.actorUserEmail}</p>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500">
+                        No notes yet. Save an AI recommendation or add a contact note to see it here.
+                      </p>
+                    )}
                   </section>
                   <section className="rounded-2xl border border-gray-200 bg-white p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">

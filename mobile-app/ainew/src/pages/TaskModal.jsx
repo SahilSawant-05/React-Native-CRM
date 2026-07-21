@@ -16,6 +16,7 @@ export default function TaskModal({
     description: "",
     assignedUserId: "",
     dueAt: "",
+    priority: "MEDIUM",
   });
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function TaskModal({
         description: "",
         assignedUserId: defaultAssignedUserId ? String(defaultAssignedUserId) : "",
         dueAt: "",
+        priority: "MEDIUM",
       });
     }
   }, [show, defaultAssignedUserId]);
@@ -70,6 +72,7 @@ export default function TaskModal({
       description: form.description,
       assignedUserId: form.assignedUserId ? Number(form.assignedUserId) : null,
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null,
+      priority: form.priority || "MEDIUM",
     };
 
     try {
@@ -84,6 +87,7 @@ export default function TaskModal({
         description: "",
         assignedUserId: defaultAssignedUserId ? String(defaultAssignedUserId) : "",
         dueAt: "",
+        priority: "MEDIUM",
       });
       onClose();
     } catch (err) {
@@ -185,6 +189,19 @@ export default function TaskModal({
               onChange={(e) => setForm((prev) => ({ ...prev, dueAt: e.target.value }))}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Priority</label>
+            <select
+              value={form.priority}
+              onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-teal-500 bg-white"
+            >
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
           </div>
         </div>
 

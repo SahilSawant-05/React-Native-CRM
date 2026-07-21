@@ -96,9 +96,8 @@ export default function AiCallActionPanel({ callId, contactId, opportunityId, co
     try {
       await api.post(`/api/contacts/${contactId}/tasks`, {
         title: form.taskTitle.trim(),
-        description: [form.taskDescription, form.priority ? `Priority: ${form.priority}` : null]
-          .filter(Boolean)
-          .join("\n\n"),
+        description: form.taskDescription,
+        priority: form.priority || "MEDIUM",
         dueAt: fromLocalDateTime(form.dueAt),
       });
       setSavedMessage("Follow-up task created.");

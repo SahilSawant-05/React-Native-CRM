@@ -110,6 +110,18 @@ function slug(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
+function parseSelectOptions(value) {
+  return String(value || "")
+    .split(",")
+    .map((option) => option.trim())
+    .filter(Boolean);
+}
+
+function selectOptionsText(field) {
+  if (field?.optionsText !== undefined) return field.optionsText;
+  return (field?.options || []).join(", ");
+}
+
 function flattenScreens(screens = []) {
   return screens.flatMap((screen) => screen.fields || []);
 }
@@ -159,6 +171,7 @@ export default function WhatsAppFlowBuilder() {
   const [activeScreenIndex, setActiveScreenIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [metaPublishingId, setMetaPublishingId] = useState(null);
   const [retryingSubmissionId, setRetryingSubmissionId] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -361,10 +374,25 @@ export default function WhatsAppFlowBuilder() {
       screens.map((screen, screenIndex) => {
         if (screenIndex !== activeScreenIndex) return screen;
         const fields = [...screen.fields];
-        const previousKey = fields[fieldIndex].fieldKey;
+        const previous = fields[fieldIndex];
+        const previousKey = previous.fieldKey;
+        const previousLabelKey = slug(previous.label);
         const current = { ...fields[fieldIndex], [key]: value };
-        if (key === "label" && (!current.fieldKey || current.fieldKey.startsWith("field_"))) current.fieldKey = slug(value) || current.fieldKey;
-        if (key === "fieldKey") current.fieldKey = slug(value);
+        if (key === "label") {
+          const shouldAutoKey = !previousKey || previousKey.startsWith("field_") || previousKey === previousLabelKey || previous.autoFieldKey === true;
+          if (shouldAutoKey) {
+            current.fieldKey = slug(value) || previousKey;
+            current.autoFieldKey = true;
+          }
+        }
+        if (key === "fieldKey") {
+          current.fieldKey = slug(value);
+          current.autoFieldKey = false;
+        }
+        if (key === "optionsText") {
+          current.optionsText = value;
+          current.options = parseSelectOptions(value);
+        }
         fields[fieldIndex] = current;
         if (previousKey !== current.fieldKey) {
           setForm((prev) => ({
@@ -438,8 +466,11 @@ export default function WhatsAppFlowBuilder() {
           displayOrder: blockIndex,
         })),
         fields: screen.fields.map((field, fieldIndex) => ({
-          ...field,
           fieldKey: slug(field.fieldKey || field.label) || `field_${fieldIndex + 1}`,
+          label: field.label,
+          type: field.type || "TEXT",
+          required: Boolean(field.required),
+          options: field.type === "SELECT" ? parseSelectOptions(selectOptionsText(field)) : (field.options || []),
           displayOrder: fieldIndex,
         })),
       }));
@@ -454,8 +485,23 @@ export default function WhatsAppFlowBuilder() {
         mappings: form.mappings,
       };
       const response = form.id ? await api.put(`/api/whatsapp-flows/${form.id}`, payload) : await api.post("/api/whatsapp-flows", payload);
-      setForm((prev) => ({ ...prev, id: response.data.id, screens: response.data.screens || screens }));
-      setMessage("WhatsApp Flow saved as draft.");
+      const saved = response.data || {};
+      setForm((prev) => ({
+        ...prev,
+        ...saved,
+        id: saved.id || prev.id,
+        pipelineId: saved.pipelineId || "",
+        stageKey: saved.stageKey || "",
+        screens: saved.screens || screens,
+        mappings: saved.mappings || payload.mappings,
+      }));
+      setFlows((current) => {
+        const exists = current.some((flow) => String(flow.id) === String(saved.id));
+        return exists
+          ? current.map((flow) => String(flow.id) === String(saved.id) ? { ...flow, ...saved } : flow)
+          : [saved, ...current];
+      });
+      setMessage(form.id ? "WhatsApp Flow changes saved. It is now a draft until you publish it again." : "WhatsApp Flow saved as draft.");
       await loadData();
     } catch (err) {
       setError(err?.response?.data?.error || "Could not save flow.");
@@ -490,7 +536,8 @@ export default function WhatsAppFlowBuilder() {
 
   const publishToMeta = async (id) => {
     setError("");
-    setMessage("");
+    setMessage("Publishing Flow to Meta. Please keep this page open until Meta responds.");
+    setMetaPublishingId(id);
     try {
       const response = await api.post(`/api/whatsapp-flows/${id}/publish-meta`);
       setMessage(response.data?.message || "Flow published to Meta.");
@@ -498,6 +545,8 @@ export default function WhatsAppFlowBuilder() {
       await syncMetaFlows();
     } catch (err) {
       setError(err?.response?.data?.error || err?.response?.data?.message || "Could not publish flow to Meta.");
+    } finally {
+      setMetaPublishingId(null);
     }
   };
 
@@ -581,20 +630,28 @@ export default function WhatsAppFlowBuilder() {
             <h1 className="text-2xl font-extrabold text-slate-950">WhatsApp Flow Builder</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Build customer-friendly WhatsApp forms, map answers into CRM fields, and convert submissions into Contacts + Opportunities.</p>
           </div>
-          <button type="button" onClick={() => { setForm(emptyForm); setActiveScreenIndex(0); setActiveTab("builder"); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-teal-800">
+          <button type="button" disabled={!!metaPublishingId} onClick={() => { setForm(emptyForm); setActiveScreenIndex(0); setActiveTab("builder"); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
             <Plus size={16} /> New Flow
           </button>
         </div>
 
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {[["builder", "Flow Builder", FormInput], ["published", "Published Flows", Send], ["meta", "Meta Flows", Cloud], ["submissions", "Submissions", ClipboardList], ["analytics", "Analytics", BarChart3]].map(([key, label, Icon]) => (
-            <button key={key} type="button" onClick={() => setActiveTab(key)} className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition ${activeTab === key ? "bg-teal-950 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>
+            <button key={key} type="button" disabled={!!metaPublishingId} onClick={() => setActiveTab(key)} className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${activeTab === key ? "bg-teal-950 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>
               <Icon size={16} /> {label}
             </button>
           ))}
         </div>
 
         {(message || error) && <div className={`max-h-96 overflow-auto whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm font-semibold ${error ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{error || message}</div>}
+        {metaPublishingId && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Loader2 className="animate-spin" size={17} />
+              Publishing Flow #{metaPublishingId} to Meta. This can take a little time. Buttons are paused until Meta returns a response.
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-6 text-slate-500"><Loader2 className="animate-spin" size={18} /> Loading WhatsApp flows...</div>
@@ -784,7 +841,7 @@ export default function WhatsAppFlowBuilder() {
                             <label><span className="text-xs font-bold text-slate-500">Type</span><select className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={field.type} onChange={(e) => updateField(index, "type", e.target.value)}>{FIELD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
                             <label><span className="text-xs font-bold text-slate-500">CRM Mapping</span><select className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={mappingByField[field.fieldKey]?.target || ""} onChange={(e) => updateMapping(field.fieldKey, e.target.value)}>{CRM_TARGETS.map((target) => <option key={target.value} value={target.value}>{target.label}</option>)}</select></label>
                           </div>
-                          {field.type === "SELECT" && <Input label="Options, comma separated" value={(field.options || []).join(", ")} onChange={(value) => updateField(index, "options", value.split(",").map((option) => option.trim()).filter(Boolean))} />}
+                          {field.type === "SELECT" && <Input label="Options, comma separated" value={selectOptionsText(field)} onChange={(value) => updateField(index, "optionsText", value)} />}
                         </div>
                       ))}
                     </div>
@@ -830,14 +887,14 @@ export default function WhatsAppFlowBuilder() {
                     <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <button type="button" onClick={saveFlow} disabled={saving} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-teal-800 disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Save Draft</button>
                       {form.id && <button type="button" onClick={() => publishFlow(form.id)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-teal-300 bg-white px-4 py-2.5 text-sm font-bold text-teal-800 hover:bg-teal-50"><Send size={16} /> Publish in CRM</button>}
-                      {form.id && <button type="button" onClick={() => publishToMeta(form.id)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"><Cloud size={16} /> Publish to Meta</button>}
+                      {form.id && <button type="button" onClick={() => publishToMeta(form.id)} disabled={!!metaPublishingId} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">{metaPublishingId === form.id ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />} {metaPublishingId === form.id ? "Publishing to Meta..." : "Publish to Meta"}</button>}
                     </div>
                   </section>
                 </aside>
               </div>
             )}
 
-            {activeTab === "published" && <PublishedFlows flows={publishedFlows.length ? publishedFlows : flows} onEdit={editFlow} onPublish={publishFlow} onPublishMeta={publishToMeta} onPreviewMeta={previewMetaJson} onTest={createTestSubmission} onArchive={archiveFlow} onLinkMeta={linkMetaFlow} />}
+            {activeTab === "published" && <PublishedFlows flows={publishedFlows.length ? publishedFlows : flows} onEdit={editFlow} onPublish={publishFlow} onPublishMeta={publishToMeta} onPreviewMeta={previewMetaJson} onTest={createTestSubmission} onArchive={archiveFlow} onLinkMeta={linkMetaFlow} metaPublishingId={metaPublishingId} />}
             {activeTab === "meta" && <MetaFlows flows={visibleMetaFlows} crmFlows={flows} onSync={syncMetaFlows} onImport={importMetaFlow} onEdit={editFlow} />}
             {activeTab === "submissions" && <Submissions submissions={submissions} onRetry={retrySubmission} retryingId={retryingSubmissionId} />}
             {activeTab === "analytics" && <Analytics analytics={analytics} />}
@@ -915,16 +972,23 @@ function PreviewContentBlock({ block }) {
   return <div className="text-xs leading-5 text-slate-600">{block.text || "Paragraph text"}</div>;
 }
 
-function PublishedFlows({ flows, onEdit, onPublish, onPublishMeta, onPreviewMeta, onTest, onArchive, onLinkMeta }) {
+function PublishedFlows({ flows, onEdit, onPublish, onPublishMeta, onPreviewMeta, onTest, onArchive, onLinkMeta, metaPublishingId }) {
   if (flows.length === 0) return <EmptyState title="No flows yet" text="Create your first WhatsApp Flow from the builder tab." />;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {flows.map((flow) => (
+      {flows.map((flow) => {
+        const isPublishing = metaPublishingId === flow.id;
+        return (
         <div key={flow.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div><div className="text-lg font-extrabold text-slate-950">{flow.name}</div><p className="mt-1 text-sm text-slate-500">{flow.description || "No description"}</p></div>
             <span className={`rounded-full border px-2.5 py-1 text-xs font-extrabold ${flowStatusStyle(flow.status)}`}>{flow.status}</span>
           </div>
+          {isPublishing && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-800">
+              <span className="inline-flex items-center gap-2"><Loader2 className="animate-spin" size={15} /> Publishing this Flow to Meta...</span>
+            </div>
+          )}
           <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
             <Metric label="Screens" value={flow.screens?.length || 0} />
             <Metric label="Fields" value={flow.fields?.length || 0} />
@@ -937,15 +1001,15 @@ function PublishedFlows({ flows, onEdit, onPublish, onPublishMeta, onPreviewMeta
           )}
           <MetaFlowLink flow={flow} onLinkMeta={onLinkMeta} />
           <div className="mt-4 flex flex-wrap gap-2">
-            <Action onClick={() => onEdit(flow)} icon={Eye} label="Edit" />
-            {flow.status !== "PUBLISHED" && <Action onClick={() => onPublish(flow.id)} icon={Send} label="Publish" tone="teal" />}
-            <Action onClick={() => onPublishMeta(flow.id)} icon={Cloud} label="Publish to Meta" tone="teal" />
-            <Action onClick={() => onPreviewMeta(flow.id)} icon={Eye} label="Preview JSON" />
-            <Action onClick={() => onTest(flow)} icon={GitBranch} label="Test Submit" tone="blue" />
-            <Action onClick={() => onArchive(flow.id)} icon={Archive} label="Archive" />
+            <Action onClick={() => onEdit(flow)} icon={Eye} label="Edit" disabled={!!metaPublishingId} />
+            {flow.status !== "PUBLISHED" && <Action onClick={() => onPublish(flow.id)} icon={Send} label="Publish" tone="teal" disabled={!!metaPublishingId} />}
+            <Action onClick={() => onPublishMeta(flow.id)} icon={isPublishing ? Loader2 : Cloud} label={isPublishing ? "Publishing..." : "Publish to Meta"} tone="teal" disabled={!!metaPublishingId} spinning={isPublishing} />
+            <Action onClick={() => onPreviewMeta(flow.id)} icon={Eye} label="Preview JSON" disabled={!!metaPublishingId} />
+            <Action onClick={() => onTest(flow)} icon={GitBranch} label="Test Submit" tone="blue" disabled={!!metaPublishingId} />
+            <Action onClick={() => onArchive(flow.id)} icon={Archive} label="Archive" disabled={!!metaPublishingId} />
           </div>
         </div>
-      ))}
+      );})}
     </div>
   );
 }
@@ -1167,9 +1231,9 @@ function Metric({ label, value }) {
   return <div className="rounded-lg bg-slate-50 p-3"><div className="font-extrabold text-slate-900">{value}</div><div className="text-xs text-slate-500">{label}</div></div>;
 }
 
-function Action({ onClick, icon: Icon, label, tone = "slate" }) {
+function Action({ onClick, icon: Icon, label, tone = "slate", disabled = false, spinning = false }) {
   const styles = tone === "teal" ? "border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100" : tone === "blue" ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100" : "border-slate-300 text-slate-700 hover:bg-slate-50";
-  return <button type="button" onClick={onClick} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold ${styles}`}><Icon size={15} /> {label}</button>;
+  return <button type="button" onClick={onClick} disabled={disabled} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60 ${styles}`}><Icon size={15} className={spinning ? "animate-spin" : ""} /> {label}</button>;
 }
 
 function EmptyState({ title, text }) {

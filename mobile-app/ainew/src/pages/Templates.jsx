@@ -174,6 +174,178 @@ function renderPreviewText(text, values) {
   });
 }
 
+function findComponent(components, type) {
+  return components.find((component) => String(component?.type || "").toUpperCase() === type);
+}
+
+function storedBodyExamples(bodyComponent) {
+  const raw = bodyComponent?.example?.body_text || bodyComponent?.bodyTextExamples;
+  const values = Array.isArray(raw?.[0]) ? raw[0] : raw;
+  return Array.isArray(values) ? values.map((value) => String(value ?? "")) : [];
+}
+
+function storedHeaderExamples(headerComponent) {
+  const raw = headerComponent?.example?.header_text || headerComponent?.headerTextExamples;
+  const values = Array.isArray(raw?.[0]) ? raw[0] : raw;
+  return Array.isArray(values) ? values.map((value) => String(value ?? "")) : [];
+}
+
+function storedHeaderMediaExample(headerComponent) {
+  const raw =
+    headerComponent?.example?.header_handle ||
+    headerComponent?.headerMediaExamples ||
+    headerComponent?.example?.header_url;
+  const values = Array.isArray(raw) ? raw : [];
+  return values[0] || "";
+}
+
+function StoredTemplatePreview({ template }) {
+  const components = template.parsedComponents || [];
+  const header = findComponent(components, "HEADER");
+  const body = findComponent(components, "BODY");
+  const footer = findComponent(components, "FOOTER");
+  const buttonsComponent = findComponent(components, "BUTTONS");
+  const buttons = Array.isArray(buttonsComponent?.buttons) ? buttonsComponent.buttons : [];
+  const headerFormat = String(header?.format || template.headerType || "").toUpperCase();
+  const bodyText = body?.text || template.body || "";
+  const bodyExamples = storedBodyExamples(body);
+  const headerExamples = storedHeaderExamples(header);
+  const headerText = headerFormat === "TEXT"
+    ? renderPreviewText(header?.text || template.headerText || "", headerExamples.length ? headerExamples : bodyExamples)
+    : "";
+  const mediaExample = storedHeaderMediaExample(header);
+  const footerText = footer?.text || template.footer || "";
+  const renderedBody = renderPreviewText(bodyText || "No body text stored", bodyExamples);
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <section className="rounded-2xl border border-gray-200 bg-slate-950 p-4">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3 text-white">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Customer Preview</p>
+            <p className="mt-1 text-sm text-slate-300">WhatsApp template message</p>
+          </div>
+          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+            {template.status || "Stored"}
+          </span>
+        </div>
+
+        <div className="rounded-[1.75rem] bg-[#e5ddd5] p-3 sm:p-4">
+          <div className="mb-3 flex items-center gap-2 rounded-t-[1.35rem] bg-[#075e54] px-4 py-3 text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-xs font-black">
+              VF
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">Business</p>
+              <p className="text-[11px] text-white/75">WhatsApp Business</p>
+            </div>
+          </div>
+
+          <div className="ml-auto max-w-[94%] rounded-xl rounded-tr-sm bg-white p-3 shadow">
+            {headerFormat && (
+              <div className="mb-3 overflow-hidden rounded-lg border border-gray-100 bg-gray-50">
+                {headerFormat === "TEXT" ? (
+                  <div className="px-3 py-2 text-sm font-bold leading-5 text-gray-900">
+                    {headerText || "Header text"}
+                  </div>
+                ) : mediaExample && /^https?:\/\//i.test(mediaExample) && headerFormat === "IMAGE" ? (
+                  <img src={mediaExample} alt="Template header" className="max-h-56 w-full object-cover" />
+                ) : (
+                  <div className="flex aspect-[1.9/1] flex-col items-center justify-center gap-2 bg-gray-100 px-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <span>{headerFormat} header</span>
+                    {mediaExample && <span className="max-w-full truncate normal-case tracking-normal text-gray-400">Sample/handle stored</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-900">{renderedBody}</p>
+
+            {footerText && (
+              <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-gray-400">{footerText}</p>
+            )}
+
+            {buttons.length > 0 && (
+              <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+                {buttons.map((button, index) => (
+                  <div key={`${button.type || "button"}-${index}`} className="flex items-center justify-center gap-2 py-2 text-center text-sm font-semibold text-sky-600">
+                    <span className="text-[10px] uppercase tracking-wide">
+                      {button.type === "URL" ? "Link" : button.type === "PHONE_NUMBER" ? "Call" : "Reply"}
+                    </span>
+                    <span className="min-w-0 truncate">{button.text || button.url || button.phone_number || "Button"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-2 text-right text-[10px] text-gray-400">Template preview</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Template Details</p>
+          <dl className="mt-3 grid gap-3 text-sm">
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-gray-400">Name</dt>
+              <dd className="mt-1 break-words font-semibold text-gray-900">{template.metaTemplateName || "—"}</dd>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-wide text-gray-400">Category</dt>
+                <dd className="mt-1 font-semibold text-gray-900">{template.category || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-wide text-gray-400">Language</dt>
+                <dd className="mt-1 font-semibold text-gray-900">{template.languageCode || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-wide text-gray-400">Status</dt>
+                <dd className="mt-1 font-semibold text-gray-900">{template.status || "—"}</dd>
+              </div>
+            </div>
+          </dl>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">What will send</p>
+          <div className="mt-3 space-y-3 text-sm">
+            <div>
+              <p className="font-bold text-gray-900">Header</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-gray-600">
+                {header ? (headerFormat === "TEXT" ? headerText || "Text header" : `${headerFormat || "Media"} header`) : "No header"}
+              </p>
+            </div>
+            <div>
+              <p className="font-bold text-gray-900">Body</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-gray-600">{renderedBody}</p>
+            </div>
+            <div>
+              <p className="font-bold text-gray-900">Footer</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-gray-600">{footerText || "No footer"}</p>
+            </div>
+            <div>
+              <p className="font-bold text-gray-900">Buttons</p>
+              {buttons.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {buttons.map((button, index) => (
+                    <span key={`${button.type || "button"}-${index}`} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">
+                      {button.text || button.type}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-gray-600">No buttons</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TemplateLivePreview({ form }) {
   const examples = exampleValues(form);
   const body = renderPreviewText(form.body || "Write your template body...", examples);
@@ -919,11 +1091,11 @@ export default function Templates() {
           onClick={() => setViewingTemplate(null)}
         >
           <div
-            className="max-h-[90dvh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
+            className="max-h-[92dvh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-5 flex items-center justify-between">
-              <div>
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <h3 className="text-lg font-bold text-gray-900">{viewingTemplate.metaTemplateName}</h3>
                 <p className="text-sm text-gray-500">
                   {viewingTemplate.category} • {viewingTemplate.languageCode} • {viewingTemplate.status || "—"}
@@ -937,29 +1109,19 @@ export default function Templates() {
               </button>
             </div>
 
-            <div className="mb-4 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Header</p>
-                <p className="mt-2 text-sm text-gray-800">
-                  {viewingTemplate.headerType
-                    ? `${viewingTemplate.headerType}${viewingTemplate.headerText ? ` • ${viewingTemplate.headerText}` : ""}`
-                    : "No header"}
-                </p>
-              </div>
-              <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Footer</p>
-                <p className="mt-2 text-sm text-gray-800">{viewingTemplate.footer || "No footer"}</p>
-              </div>
-            </div>
+            <StoredTemplatePreview template={viewingTemplate} />
 
-            <div className="mb-4 rounded-xl bg-gray-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Body</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{viewingTemplate.body || "—"}</p>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Components</p>
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs text-gray-700">
+            <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Raw JSON Components</p>
+                  <p className="mt-1 text-xs text-gray-500">Kept for diagnostics and Meta payload checking.</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-500">
+                  {viewingTemplate.parsedComponents?.length || 0} components
+                </span>
+              </div>
+              <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
                 {JSON.stringify(viewingTemplate.parsedComponents, null, 2)}
               </pre>
             </div>

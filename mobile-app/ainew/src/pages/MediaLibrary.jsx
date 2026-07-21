@@ -4,6 +4,8 @@ import api from "../api/axios";
 
 const mediaTypes = ["ALL", "IMAGE", "DOCUMENT", "VIDEO", "AUDIO"];
 const categories = ["General", "Property", "Course", "Vehicle", "Product", "Brochure", "Quotation"];
+const IMAGE_UPLOAD_ACCEPT = "image/png,image/jpeg,.png,.jpg,.jpeg";
+const imageUploadMessage = "Only PNG and JPEG images are allowed. Please upload a .png, .jpg, or .jpeg file.";
 
 const typeIcons = {
   IMAGE: Image,
@@ -11,6 +13,18 @@ const typeIcons = {
   VIDEO: Video,
   AUDIO: Music,
 };
+
+function isImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp|heic|heif|tiff?)$/.test(name);
+}
+
+function isAllowedImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return ["image/png", "image/jpeg", "image/jpg"].includes(type) || /\.(png|jpe?g)$/.test(name);
+}
 
 export default function MediaLibrary() {
   const [assets, setAssets] = useState([]);
@@ -51,6 +65,10 @@ export default function MediaLibrary() {
     event.preventDefault();
     if (!file) {
       setMessage("Choose a file before uploading.");
+      return;
+    }
+    if (isImageFile(file) && !isAllowedImageFile(file)) {
+      setMessage(imageUploadMessage);
       return;
     }
 
@@ -126,7 +144,18 @@ export default function MediaLibrary() {
           <Field label="File">
             <input
               type="file"
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              accept={filter === "IMAGE" ? IMAGE_UPLOAD_ACCEPT : undefined}
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] || null;
+                if (nextFile && isImageFile(nextFile) && !isAllowedImageFile(nextFile)) {
+                  setMessage(imageUploadMessage);
+                  setFile(null);
+                  event.target.value = "";
+                  return;
+                }
+                setMessage("");
+                setFile(nextFile);
+              }}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             />
           </Field>

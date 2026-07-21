@@ -48,7 +48,7 @@ const normalizeList = (payload) => {
 
 const buildStages = (rawStages) => {
   const source = rawStages?.length ? rawStages : DEFAULT_STAGES;
-  return source
+  const stages = source
     .filter((stage) => stage.active !== false)
     .sort((a, b) => (a.displayOrder ?? 100) - (b.displayOrder ?? 100))
     .map((stage, index) => {
@@ -59,6 +59,11 @@ const buildStages = (rawStages) => {
         color: COLORS[index % COLORS.length],
       };
     });
+  return stages.length ? stages : DEFAULT_STAGES.map((stage, index) => ({
+    key: normalizeStageKey(stage.stageKey),
+    label: stage.label,
+    color: COLORS[index % COLORS.length],
+  }));
 };
 
 const displayDate = (raw) => {
@@ -1147,6 +1152,7 @@ export default function ContactPipeline() {
   const [datePreset, setDatePreset] = useState("ALL");
   const [dateRange, setDateRange] = useState(() => presetDateRange("ALL"));
   const [toast, setToast] = useState(null);
+  const [boardDebug, setBoardDebug] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editCard, setEditCard] = useState(null);
   const [activeStage, setActiveStage] = useState("NEW");
@@ -1210,6 +1216,16 @@ export default function ContactPipeline() {
         totalPages: Number(opportunityResponse.data?.totalPages) || 0,
         hasNext: Boolean(opportunityResponse.data?.hasNext),
       };
+      const nextColumnsForDebug = buildColumns(cards, nextStages);
+      const loadedCardCount = nextStages.reduce((sum, stage) => sum + (nextColumnsForDebug[stage.key]?.length || 0), 0);
+      setBoardDebug({
+        apiItems: opportunities.length,
+        apiTotal: nextOpportunityPage.totalElements,
+        loadedCards: loadedCardCount,
+        stageCount: nextStages.length,
+        pipelineId: resolvedPipelineId,
+        filtersActive: Boolean(search.trim() || Object.entries(filters).some(([, value]) => value !== "" && value !== false && value !== null && value !== undefined)),
+      });
 
       setStages(nextStages);
       setContacts(nextContacts.map((contact) => ({
@@ -1221,7 +1237,7 @@ export default function ContactPipeline() {
       setDomainItems(nextDomainItems);
       setStageTotals(stageCountResponse.data || {});
       setColumns((current) => {
-        const nextColumns = buildColumns(cards, nextStages);
+        const nextColumns = nextColumnsForDebug;
         if (!append) return nextColumns;
         const merged = {};
         nextStages.forEach((stage) => {
@@ -1249,7 +1265,7 @@ export default function ContactPipeline() {
     } finally {
       setLoading(false);
     }
-  }, [dateRange, resetStageVisibleLimits, selectedPipelineId, showToast]);
+  }, [dateRange, filters, resetStageVisibleLimits, search, selectedPipelineId, showToast]);
 
   useEffect(() => {
     reloadBoard();
@@ -1617,6 +1633,16 @@ export default function ContactPipeline() {
             compact
           />
         </div>
+        )}
+
+        {boardDebug?.apiTotal > 0 && boardDebug.loadedCards === 0 && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-extrabold">Pipeline records were returned, but no cards are visible.</p>
+            <p className="mt-1 text-xs leading-5">
+              API returned {formatCount(boardDebug.apiItems)} item(s), total {formatCount(boardDebug.apiTotal)}, pipeline #{boardDebug.pipelineId || "-"}, stages {formatCount(boardDebug.stageCount)}.
+              Clear filters or check pipeline stages if this remains blank.
+            </p>
+          </div>
         )}
       </header>
 

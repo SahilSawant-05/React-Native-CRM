@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   CalendarPlus,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CircleDollarSign,
   Clock3,
   Edit3,
@@ -14,6 +16,7 @@ import {
   Send,
   Target,
   UserRound,
+  XCircle,
 } from "lucide-react";
 import api from "../api/axios";
 import EmailTemplatePicker from "../components/email/EmailTemplatePicker";
@@ -264,6 +267,20 @@ const normalizeList = (payload) => {
   return [];
 };
 
+const byNewestDate = (...fields) => (a, b) => {
+  const dateFor = (item) => {
+    for (const field of fields) {
+      const value = item?.[field];
+      if (value) {
+        const time = new Date(value).getTime();
+        if (Number.isFinite(time)) return time;
+      }
+    }
+    return 0;
+  };
+  return dateFor(b) - dateFor(a);
+};
+
 const buildStages = (rawStages) => {
   const source = rawStages?.length ? rawStages : DEFAULT_STAGES;
   return source
@@ -291,6 +308,12 @@ const formatDate = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-IN");
 };
+
+const apiErrorMessage = (error, fallback) =>
+  error?.response?.data?.message
+  || error?.response?.data?.error
+  || error?.message
+  || fallback;
 
 const toDateTimeLocal = (date = new Date()) => {
   const offsetMs = date.getTimezoneOffset() * 60000;
@@ -655,6 +678,10 @@ export default function OpportunityDetail() {
   });
   const [appointmentEdits, setAppointmentEdits] = useState({});
   const [updatingAppointmentId, setUpdatingAppointmentId] = useState(null);
+  const [appointmentError, setAppointmentError] = useState("");
+  const [appointmentSuccess, setAppointmentSuccess] = useState("");
+  const [schedulingAppointment, setSchedulingAppointment] = useState(false);
+  const [appointmentsOpen, setAppointmentsOpen] = useState(true);
   const [callOutcomeForm, setCallOutcomeForm] = useState({
     callId: null,
     disposition: "INTERESTED",
@@ -807,7 +834,9 @@ export default function OpportunityDetail() {
           api.get(`/api/opportunities/${id}/timeline`),
         ]);
         setContact(contactResponse.status === "fulfilled" ? contactResponse.value.data : null);
-        setTimeline(timelineResponse.status === "fulfilled" ? normalizeList(timelineResponse.value.data?.items) : []);
+        setTimeline(timelineResponse.status === "fulfilled"
+          ? normalizeList(timelineResponse.value.data?.items).sort(byNewestDate("occurredAt", "createdAt"))
+          : []);
       }
     } catch (error) {
       setMessage(error?.response?.data?.message || error.message || "Failed to load opportunity");
@@ -1000,19 +1029,22 @@ export default function OpportunityDetail() {
 
   const scheduleAppointment = async (event) => {
     event.preventDefault();
+    setAppointmentError("");
+    setAppointmentSuccess("");
     if (!opportunity) {
-      setMessage("Appointment cannot be scheduled because the opportunity is not loaded yet.");
+      setAppointmentError("Appointment cannot be scheduled because the opportunity is not loaded yet.");
       return;
     }
     if (!appointmentForm.startAt) {
-      setMessage("Appointment cannot be scheduled because start date and time are missing.");
+      setAppointmentError("Appointment cannot be scheduled because start date and time are missing.");
       return;
     }
     if (appointmentForm.endAt && new Date(appointmentForm.endAt) <= new Date(appointmentForm.startAt)) {
-      setMessage("Appointment cannot be scheduled because end time must be after start time.");
+      setAppointmentError("Appointment cannot be scheduled because end time must be after start time.");
       return;
     }
     setMessage("");
+    setSchedulingAppointment(true);
     try {
       await api.post("/api/events", {
         title: `${APPOINTMENT_LABELS[appointmentForm.appointmentType] || "Appointment"} - ${opportunity.title}`,
@@ -1027,7 +1059,8 @@ export default function OpportunityDetail() {
         endAt: appointmentForm.endAt ? new Date(appointmentForm.endAt).toISOString() : null,
         allDay: false,
       });
-      setMessage(`Appointment scheduled for ${formatDate(new Date(appointmentForm.startAt).toISOString())}. It will now appear in this opportunity, calendar, and the pipeline card.`);
+      setAppointmentSuccess(`Appointment scheduled for ${formatDate(new Date(appointmentForm.startAt).toISOString())}. It will appear in this opportunity, calendar, and the pipeline card.`);
+      setAppointmentsOpen(false);
       setAppointmentForm((current) => ({
         ...current,
         startAt: toDateTimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)),
@@ -1037,7 +1070,9 @@ export default function OpportunityDetail() {
       }));
       await loadDetail();
     } catch (error) {
-      setMessage(error?.response?.data?.message || error.message || "Appointment scheduling failed");
+      setAppointmentError(apiErrorMessage(error, "Appointment scheduling failed"));
+    } finally {
+      setSchedulingAppointment(false);
     }
   };
 
@@ -1055,6 +1090,8 @@ export default function OpportunityDetail() {
     const edit = appointmentEdits[appointment.id] || {};
     setUpdatingAppointmentId(appointment.id);
     setMessage("");
+    setAppointmentError("");
+    setAppointmentSuccess("");
     try {
       await api.put(`/api/events/${appointment.id}`, {
         title: appointment.title,
@@ -1074,10 +1111,11 @@ export default function OpportunityDetail() {
         followUpDescription: edit.outcome || appointment.description || null,
         followUpDueAt: edit.followUpDueAt ? new Date(edit.followUpDueAt).toISOString() : null,
       });
-      setMessage(createFollowUpTask ? "Appointment updated and follow-up task created." : "Appointment updated.");
+      setAppointmentSuccess(createFollowUpTask ? "Appointment updated and follow-up task created." : "Appointment updated.");
+      setAppointmentsOpen(false);
       await loadDetail();
     } catch (error) {
-      setMessage(error?.response?.data?.message || error.message || "Appointment update failed");
+      setAppointmentError(apiErrorMessage(error, "Appointment update failed"));
     } finally {
       setUpdatingAppointmentId(null);
     }
@@ -1583,6 +1621,18 @@ Next appointment: ${nextAppointment ? formatDate(nextAppointment.startAt) : "No 
                   />
                 </label>
                 <div className="md:col-span-2">
+                  {appointmentError && (
+                    <div className="mb-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                      <XCircle size={16} className="mt-0.5 shrink-0" />
+                      <span>{appointmentError}</span>
+                    </div>
+                  )}
+                  {appointmentSuccess && (
+                    <div className="mb-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                      <span>{appointmentSuccess}</span>
+                    </div>
+                  )}
                   {!appointmentForm.startAt && (
                     <p className="mb-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                       Select a start date and time before scheduling this appointment.
@@ -1593,14 +1643,37 @@ Next appointment: ${nextAppointment ? formatDate(nextAppointment.startAt) : "No 
                       End time must be after start time.
                     </p>
                   )}
-                  <button className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">
-                    Schedule Appointment
+                  <button
+                    disabled={schedulingAppointment}
+                    className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {schedulingAppointment ? "Scheduling..." : "Schedule Appointment"}
                   </button>
                 </div>
               </form>
 
-              <div className="mt-4 space-y-3">
-                {appointments.map((appointment) => (
+              <div className="mt-4 rounded-lg border border-gray-100 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setAppointmentsOpen((open) => !open)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left hover:bg-slate-50"
+                >
+                  <div>
+                    <p className="text-sm font-bold text-gray-950">Scheduled appointments</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {appointments.length
+                        ? `${appointments.length} appointment${appointments.length === 1 ? "" : "s"} linked to this opportunity`
+                        : "No appointment scheduled yet"}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                    {appointmentsOpen ? "Hide" : "Show"}
+                    {appointmentsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </span>
+                </button>
+                {appointmentsOpen && (
+                  <div className="space-y-3 border-t border-gray-100 p-3">
+                    {appointments.map((appointment) => (
                   <article key={appointment.id} className="rounded-lg border border-gray-100 bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -1677,8 +1750,10 @@ Next appointment: ${nextAppointment ? formatDate(nextAppointment.startAt) : "No 
                       </div>
                     </div>
                   </article>
-                ))}
-                {appointments.length === 0 && <p className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">No appointments scheduled for this opportunity.</p>}
+                    ))}
+                    {appointments.length === 0 && <p className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">No appointments scheduled for this opportunity.</p>}
+                  </div>
+                )}
               </div>
             </section>
 

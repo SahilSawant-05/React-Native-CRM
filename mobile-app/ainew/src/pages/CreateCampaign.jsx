@@ -1614,6 +1614,199 @@ function templateHeaderMediaFormat(template) {
   return ["IMAGE", "VIDEO", "DOCUMENT"].includes(format) ? format : "";
 }
 
+function templateComponent(template, type) {
+  return parseTemplateComponents(template).find((component) => String(component?.type || "").toUpperCase() === type);
+}
+
+function templateBodyText(template) {
+  if (template?.body) return template.body;
+  return templateComponent(template, "BODY")?.text || "";
+}
+
+function templateFooterText(template) {
+  if (template?.footer) return template.footer;
+  return templateComponent(template, "FOOTER")?.text || "";
+}
+
+function templateButtons(template) {
+  const buttons = templateComponent(template, "BUTTONS")?.buttons;
+  return Array.isArray(buttons) ? buttons : [];
+}
+
+function templateVariableCount(text) {
+  let max = 0;
+  for (const match of String(text || "").matchAll(/\{\{\s*(\d+)\s*}}/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  return max;
+}
+
+function templateExampleValues(component, exampleKey) {
+  const raw = component?.example?.[exampleKey];
+  const values = Array.isArray(raw?.[0]) ? raw[0] : raw;
+  return Array.isArray(values) ? values.map((value) => String(value ?? "")) : [];
+}
+
+function templatePreviewBodyParameters(template) {
+  const body = templateComponent(template, "BODY");
+  const examples = templateExampleValues(body, "body_text");
+  if (examples.length) return examples;
+  return Array.from({ length: templateVariableCount(templateBodyText(template)) }, (_, index) => `Sample ${index + 1}`);
+}
+
+function renderTemplatePreview(text, params = []) {
+  return String(text || "[WhatsApp template]").replace(/\{\{\s*(\d+)\s*}}/g, (_, index) => {
+    const value = params[Number(index) - 1];
+    return value?.trim() || `{{${index}}}`;
+  });
+}
+
+function WhatsAppTemplatePreview({ template, headerMediaUrl }) {
+  if (!template) return null;
+
+  const header = templateComponent(template, "HEADER");
+  const headerFormat = String(header?.format || template.headerType || "").toUpperCase();
+  const bodyParams = templatePreviewBodyParameters(template);
+  const headerParams = templateExampleValues(header, "header_text");
+  const headerText = headerFormat === "TEXT"
+    ? renderTemplatePreview(header?.text || template.headerText || "", headerParams.length ? headerParams : bodyParams)
+    : "";
+  const body = renderTemplatePreview(templateBodyText(template), bodyParams);
+  const footer = templateFooterText(template);
+  const buttons = templateButtons(template);
+  const mediaUrl = headerMediaUrl?.trim();
+  const templateMeta = [template.languageCode, template.category].filter(Boolean).join(" · ");
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 8 }}>
+        <div>
+          <p className="field-label" style={{ marginBottom: 2 }}>WhatsApp Preview</p>
+          <p className="field-hint" style={{ margin: 0 }}>This is how the campaign template will feel before sending.</p>
+        </div>
+        {templateMeta && (
+          <span style={{
+            border: "1px solid #d1fae5",
+            borderRadius: 999,
+            color: "#047857",
+            background: "#ecfdf5",
+            fontSize: 11,
+            fontWeight: 800,
+            padding: "5px 9px",
+            whiteSpace: "nowrap",
+          }}>
+            {templateMeta}
+          </span>
+        )}
+      </div>
+      <div style={{
+        background: "#e5ddd5",
+        border: "1px solid #dbeafe",
+        borderRadius: 16,
+        padding: 14,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45)",
+      }}>
+        <div style={{
+          maxWidth: 360,
+          margin: "0 auto",
+          background: "#fff",
+          borderRadius: "4px 16px 16px 16px",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.10)",
+          padding: 10,
+          color: "#111827",
+        }}>
+          {headerFormat === "IMAGE" && mediaUrl && (
+            <img src={mediaUrl} alt="Template header" style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 12, marginBottom: 10 }} />
+          )}
+          {headerFormat === "VIDEO" && mediaUrl && (
+            <video controls style={{ width: "100%", maxHeight: 220, background: "#111827", borderRadius: 12, marginBottom: 10 }}>
+              <source src={mediaUrl} />
+            </video>
+          )}
+          {headerFormat === "DOCUMENT" && mediaUrl && (
+            <a href={mediaUrl} target="_blank" rel="noreferrer" style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              background: "#f9fafb",
+              color: "#111827",
+              textDecoration: "none",
+              padding: 12,
+              marginBottom: 10,
+              fontSize: 13,
+              fontWeight: 800,
+            }}>
+              <span aria-hidden="true">DOC</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Document header</span>
+            </a>
+          )}
+          {headerFormat && headerFormat !== "TEXT" && !mediaUrl && (
+            <div style={{
+              height: 130,
+              border: "1px dashed #cbd5e1",
+              borderRadius: 12,
+              background: "#f8fafc",
+              color: "#64748b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 900,
+              letterSpacing: 0.4,
+              marginBottom: 10,
+              textTransform: "uppercase",
+            }}>
+              {headerFormat} header required
+            </div>
+          )}
+          {headerText && (
+            <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 14, lineHeight: 1.45, fontWeight: 900 }}>
+              {headerText}
+            </p>
+          )}
+          <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 14, lineHeight: 1.55 }}>
+            {body}
+          </p>
+          {footer && (
+            <p style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "#6b7280", fontSize: 12, lineHeight: 1.4 }}>
+              {footer}
+            </p>
+          )}
+          {buttons.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: "1px solid #f1f5f9" }}>
+              {buttons.map((button, index) => (
+                <div
+                  key={`${button.type || "button"}-${index}`}
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 6px",
+                    borderBottom: index < buttons.length - 1 ? "1px solid #f1f5f9" : "none",
+                    color: "#0284c7",
+                    fontSize: 13,
+                    fontWeight: 900,
+                    textAlign: "center",
+                  }}
+                >
+                  <span aria-hidden="true">↗</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {button.text || button.url || button.phone_number || "Button"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 6, textAlign: "right", fontSize: 10, color: "#94a3b8" }}>Template preview</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function isMetaSampleMediaUrl(value) {
   try {
     const hostname = new URL(value).hostname.toLowerCase();
@@ -1912,26 +2105,37 @@ function StatsDrawer({ campaign, onClose }) {
       .finally(() => setLoading(false));
   }, [campaign.id]);
 
-  const mergedStats = useMemo(() => {
-    const live = {
-      totalRecipients:  campaign.recipientCount ?? 0,
-      delivered:        campaign.deliveredCount  ?? 0,
-      failed:           campaign.failedCount     ?? 0,
-      pending:          calcPendingCount({
-        total: campaign.recipientCount,
-        pending: campaign.pendingCount,
-        sent: campaign.sentCount,
-        delivered: campaign.deliveredCount,
-        read: campaign.readCount,
-        failed: campaign.failedCount,
-        cancelled: campaign.cancelledCount,
-      }),
-      read:             campaign.readCount       ?? 0,
-      successRate:      campaign.recipientCount > 0
-        ? parseFloat(((campaign.deliveredCount ?? 0) / campaign.recipientCount * 100).toFixed(1))
-        : 0,
-    };
-    return apiStats ? { ...live, ...apiStats } : live;
+  const statTiles = useMemo(() => {
+    const total = Number(apiStats?.totalMessages ?? campaign.recipientCount ?? 0);
+    const sent = Number(apiStats?.sentMessages ?? campaign.sentCount ?? 0);
+    const delivered = Number(apiStats?.deliveredMessages ?? campaign.deliveredCount ?? 0);
+    const read = Number(apiStats?.readMessages ?? campaign.readCount ?? 0);
+    const failed = Number(apiStats?.failedMessages ?? campaign.failedCount ?? 0);
+    const cancelled = Number(apiStats?.cancelledMessages ?? campaign.cancelledCount ?? 0);
+    const pending = Number(
+      apiStats?.pendingMessages ??
+        calcPendingCount({
+          total,
+          pending: campaign.pendingCount,
+          sent,
+          delivered,
+          read,
+          failed,
+          cancelled,
+        })
+    );
+    const successRate = total > 0 ? parseFloat(((delivered / total) * 100).toFixed(1)) : 0;
+
+    return [
+      { key: "total", label: "Total Recipients", value: total, color: "#374151" },
+      { key: "pending", label: "Pending", value: pending, color: "#f59e0b" },
+      { key: "sent", label: "Sent", value: sent, color: "#0ea5e9" },
+      { key: "delivered", label: "Delivered", value: delivered, color: "#10b981" },
+      { key: "read", label: "Read", value: read, color: "#8b5cf6" },
+      { key: "failed", label: "Failed", value: failed, color: "#ef4444" },
+      { key: "cancelled", label: "Cancelled", value: cancelled, color: "#6b7280" },
+      { key: "successRate", label: "Success Rate", value: successRate, color: rateColor(successRate), isRate: true },
+    ];
   }, [apiStats, campaign]);
 
   return (
@@ -1961,25 +2165,12 @@ function StatsDrawer({ campaign, onClose }) {
 
       {!loading && (
         <div className="stats-grid">
-          {Object.entries(mergedStats).map(([key, val]) => {
-            const label   = key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
-            const isRate  = key.toLowerCase().includes("rate") || key.toLowerCase().includes("percent");
-            const display = isRate
-              ? `${typeof val === "number" ? val.toFixed(1) : val}%`
-              : typeof val === "number"
-                ? val.toLocaleString()
-                : (val ?? "—");
-
-            let color = "#374151";
-            if (key.toLowerCase().includes("delivered") || key.toLowerCase().includes("success")) color = "#10b981";
-            if (key.toLowerCase().includes("fail"))    color = "#ef4444";
-            if (key.toLowerCase().includes("read"))    color = "#8b5cf6";
-            if (key.toLowerCase().includes("pending")) color = "#f59e0b";
-
+          {statTiles.map((stat) => {
+            const display = stat.isRate ? `${stat.value.toFixed(1)}%` : stat.value.toLocaleString();
             return (
-              <div key={key} className="stat-tile">
-                <div className="stat-tile-val" style={{ color }}>{display}</div>
-                <div className="stat-tile-lbl">{label}</div>
+              <div key={stat.key} className="stat-tile">
+                <div className="stat-tile-val" style={{ color: stat.color }}>{display}</div>
+                <div className="stat-tile-lbl">{stat.label}</div>
               </div>
             );
           })}
@@ -3649,6 +3840,12 @@ export default function CreateCampaign() {
                     )}
                     <p className="field-hint">This image/document/video is sent with every campaign message for this template.</p>
                   </div>
+                )}
+                {selectedTemplate && (
+                  <WhatsAppTemplatePreview
+                    template={selectedTemplate}
+                    headerMediaUrl={selectedTemplateHeaderFormat ? headerMediaUrl : ""}
+                  />
                 )}
               </div>
 

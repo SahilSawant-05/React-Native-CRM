@@ -149,6 +149,12 @@ async function uploadDesignerImage(file) {
   if (!file) {
     throw new Error("Choose an image first.");
   }
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  const isAllowedImage = ["image/png", "image/jpeg", "image/jpg"].includes(type) || /\.(png|jpe?g)$/.test(name);
+  if (!isAllowedImage) {
+    throw new Error("Only PNG and JPEG images are allowed. Please upload a .png, .jpg, or .jpeg file.");
+  }
 
   const formData = new FormData();
   const fileName = file.name || "email-image.png";

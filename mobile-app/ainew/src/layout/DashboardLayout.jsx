@@ -203,16 +203,23 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get("/api/notifications")
-      .then((response) => {
-        if (!cancelled) setUnreadNotifications(response.data?.unreadCount || 0);
-      })
-      .catch(() => {
-        if (!cancelled) setUnreadNotifications(0);
-      });
+    const loadUnreadNotifications = () => {
+      api
+        .get("/api/notifications")
+        .then((response) => {
+          if (!cancelled) setUnreadNotifications(response.data?.unreadCount || 0);
+        })
+        .catch(() => {
+          if (!cancelled) setUnreadNotifications(0);
+        });
+    };
+
+    loadUnreadNotifications();
+    window.addEventListener("notifications:refresh", loadUnreadNotifications);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("notifications:refresh", loadUnreadNotifications);
     };
   }, []);
 

@@ -3,12 +3,26 @@ import { Copy, FileText, Image, Music, Upload, Video } from "lucide-react";
 import api from "../../api/axios";
 
 const mediaTypes = ["ALL", "IMAGE", "DOCUMENT", "VIDEO", "AUDIO"];
+const IMAGE_UPLOAD_ACCEPT = "image/png,image/jpeg,.png,.jpg,.jpeg";
+const imageUploadMessage = "Only PNG and JPEG images are allowed. Please upload a .png, .jpg, or .jpeg file.";
 const typeIcons = {
   IMAGE: Image,
   DOCUMENT: FileText,
   VIDEO: Video,
   AUDIO: Music,
 };
+
+function isImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp|heic|heif|tiff?)$/.test(name);
+}
+
+function isAllowedImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return ["image/png", "image/jpeg", "image/jpg"].includes(type) || /\.(png|jpe?g)$/.test(name);
+}
 
 export default function MediaLibraryPicker({
   title = "Media Library",
@@ -39,6 +53,13 @@ export default function MediaLibraryPicker({
     });
   }, [assets, effectiveTypes, filter]);
 
+  const uploadAccept = useMemo(() => {
+    const uploadIsImageOnly =
+      filter === "IMAGE" ||
+      (allowedTypes.length === 1 && allowedTypes[0] === "IMAGE");
+    return uploadIsImageOnly ? IMAGE_UPLOAD_ACCEPT : undefined;
+  }, [allowedTypes, filter]);
+
   const loadAssets = async () => {
     setLoading(true);
     setMessage("");
@@ -59,6 +80,10 @@ export default function MediaLibraryPicker({
   const uploadFile = async () => {
     if (!file) {
       setMessage("Choose a file first.");
+      return;
+    }
+    if (isImageFile(file) && !isAllowedImageFile(file)) {
+      setMessage(imageUploadMessage);
       return;
     }
 
@@ -117,7 +142,23 @@ export default function MediaLibraryPicker({
       </div>
 
       <div className="mb-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,180px)_auto]">
-        <input key={fileInputKey} type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs" />
+        <input
+          key={fileInputKey}
+          type="file"
+          accept={uploadAccept}
+          onChange={(event) => {
+            const nextFile = event.target.files?.[0] || null;
+            if (nextFile && isImageFile(nextFile) && !isAllowedImageFile(nextFile)) {
+              setMessage(imageUploadMessage);
+              setFile(null);
+              setFileInputKey((current) => current + 1);
+              return;
+            }
+            setMessage("");
+            setFile(nextFile);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs"
+        />
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" className="rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-teal-500" />
         <button type="button" onClick={uploadFile} disabled={uploading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800 disabled:opacity-60">
           <Upload size={14} />
