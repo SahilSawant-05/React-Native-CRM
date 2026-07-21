@@ -8,7 +8,7 @@
     "icon": "./assets/logo.png",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#0f766e"
+      "backgroundColor": "#062a29"
     },
     "ios": {
       "supportsTablet": true,
