@@ -208,8 +208,11 @@ function AddContactModal({ visible, onClose, onSaved }: {
                   placeholder="9876543210"
                   placeholderTextColor="#94a3b8"
                   value={form.phone}
-                  onChangeText={(v) => set("phone", v)}
+                  // Digits only, capped at 10 (web parity) — the country code is
+                  // chosen separately, so the national number is at most 10 digits.
+                  onChangeText={(v) => set("phone", v.replace(/\D/g, "").slice(0, 10))}
                   keyboardType="phone-pad"
+                  maxLength={10}
                   autoCorrect={false}
                   onFocus={() => {
                     // Nudge the scroll so the phone row clears the keyboard on smaller screens
