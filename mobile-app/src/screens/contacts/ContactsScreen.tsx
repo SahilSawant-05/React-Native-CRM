@@ -208,10 +208,12 @@ function AddContactModal({ visible, onClose, onSaved }: {
                   placeholder="9876543210"
                   placeholderTextColor="#94a3b8"
                   value={form.phone}
-                  // Digits only, capped at 12 (incl. the 91 country code).
-                  onChangeText={(v) => set("phone", v.replace(/\D/g, "").slice(0, 12))}
+                  // Digits only, capped at 10 — the country code (+91) is shown
+                  // in the dropdown to the left and prepended on save, so the
+                  // field holds only the 10-digit national number (web parity).
+                  onChangeText={(v) => set("phone", v.replace(/\D/g, "").slice(0, 10))}
                   keyboardType="phone-pad"
-                  maxLength={12}
+                  maxLength={10}
                   autoCorrect={false}
                   onFocus={() => {
                     // Nudge the scroll so the phone row clears the keyboard on smaller screens
