@@ -1,0 +1,164 @@
+import React, { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import api from "../../api/client";
+import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { ErrorBanner } from "../../components/common/ErrorBanner";
+import { useFocusEffect } from "@react-navigation/native";
+
+interface Template {
+  id: string;
+  name?: string;
+  metaTemplateName?: string;
+  category?: string;
+  status?: string;
+  languageCode?: string;
+  body?: string;
+}
+
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  APPROVED: { bg: "#dcfce7", text: "#22c55e" },
+  PENDING: { bg: "#fef3c7", text: "#f59e0b" },
+  REJECTED: { bg: "#fee2e2", text: "#ef4444" },
+};
+
+export default function TemplatesScreen() {
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      setError(null);
+      const res = await api.get("/api/templates");
+      const data = res.data ?? {};
+      const items: Template[] = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.content) ? data.content : [];
+      setTemplates(items);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load templates");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      fetchTemplates();
+    }, [fetchTemplates])
+  );
+
+  const syncTemplates = useCallback(async () => {
+    setSyncing(true);
+    setSyncMsg("");
+    setError(null);
+    try {
+      const res = await api.post("/api/templates/sync");
+      const count = res.data?.synced ?? res.data?.count;
+      setSyncMsg(count != null ? `${count} templates synced from WhatsApp` : "Templates synced from WhatsApp");
+      setTimeout(() => setSyncMsg(""), 4000);
+      fetchTemplates();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchTemplates]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchTemplates();
+  };
+
+  if (loading) return <LoadingSpinner message="Loading templates..." />;
+
+  return (
+    <SafeAreaView edges={[]} style={styles.container}>
+      {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchTemplates(); }} />}
+      {!!syncMsg && <View style={styles.syncBanner}><Text style={styles.syncText}>{syncMsg}</Text></View>}
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionHeader}>WHATSAPP TEMPLATES</Text>
+        <TouchableOpacity onPress={syncTemplates} disabled={syncing} style={styles.syncBtn}>
+          {syncing ? <ActivityIndicator size="small" color="#0f766e" /> : <Text style={styles.syncBtnText}>↻ Sync</Text>}
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        data={templates}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        contentContainerStyle={templates.length === 0 ? styles.emptyContainer : { paddingBottom: 16 }}
+        ListEmptyComponent={<Text style={styles.emptyText}>No templates found</Text>}
+        renderItem={({ item }) => {
+          const displayName = item.metaTemplateName || item.name || "(unnamed)";
+          const statusStyle = STATUS_COLORS[item.status ?? "PENDING"] || STATUS_COLORS.PENDING;
+          return (
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+                {item.status ? (
+                  <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                    <Text style={[styles.badgeText, { color: statusStyle.text }]}>{item.status}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {!!item.body && (
+                <Text style={styles.body} numberOfLines={3}>{item.body}</Text>
+              )}
+              <View style={styles.metaRow}>
+                {!!item.category && (
+                  <View style={[styles.badge, { backgroundColor: "#e0f2fe" }]}>
+                    <Text style={[styles.badgeText, { color: "#0ea5e9" }]}>{item.category}</Text>
+                  </View>
+                )}
+                {!!item.languageCode && <Text style={styles.lang}>🌐 {item.languageCode}</Text>}
+              </View>
+            </View>
+          );
+        }}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyText: { fontSize: 16, color: "#94a3b8", marginTop: 40 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 },
+  sectionHeader: { fontSize: 11, fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, paddingHorizontal: 16, paddingVertical: 8 },
+  syncBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: "#f0fdfa", borderRadius: 8, borderWidth: 1, borderColor: "#99f6e4", minWidth: 60, alignItems: "center" },
+  syncBtnText: { fontSize: 13, fontWeight: "700", color: "#0f766e" },
+  syncBanner: { backgroundColor: "#d1fae5", paddingHorizontal: 16, paddingVertical: 8 },
+  syncText: { fontSize: 13, color: "#065f46", fontWeight: "600" },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  name: { fontSize: 15, fontWeight: "600", color: "#1e293b", flex: 1, marginRight: 8 },
+  badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { fontSize: 11, fontWeight: "700" },
+  body: { fontSize: 13, color: "#475569", lineHeight: 18, marginBottom: 8 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  lang: { fontSize: 12, color: "#64748b", marginLeft: 8 },
+});

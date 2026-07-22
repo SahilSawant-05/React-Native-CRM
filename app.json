@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Vistaar Flow",
+    "slug": "crm-agent-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/logo.png",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#062a29"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.techoceanhub.vistaarflow",
+      "googleServicesFile": "./GoogleService-Info.plist"
+    },
+    "android": {
+      "package": "com.techoceanhub.vistaarflow",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png"
+      },
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#003b85"
+        }
+      ],
+      "expo-build-properties"
+    ],
+    "web": {},
+    "extra": {
+      "eas": {
+        "projectId": "b76117df-ae59-42ab-a8f1-ad119b9ff181"
+      }
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#003b85"
+    }
+  }
+}

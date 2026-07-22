@@ -1,0 +1,57 @@
+{
+  "name": "whatsapp-sass-techoceanhub",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@arco-design/web-react": "^2.66.15",
+    "@stomp/stompjs": "^7.3.0",
+    "@tailwindcss/vite": "^4.2.1",
+    "@xyflow/react": "^12.11.0",
+    "apexcharts": "^5.10.6",
+    "axios": "^1.13.2",
+    "cheerio": "^1.2.0",
+    "easy-email-core": "^4.16.5",
+    "easy-email-editor": "^4.16.6",
+    "easy-email-extensions": "^4.16.5",
+    "easy-email-localization": "^4.16.1",
+    "global": "^4.4.0",
+    "lucide-react": "^1.14.0",
+    "mjml-browser": "^4.10.4",
+    "react": "^18.2.0",
+    "react-apexcharts": "^2.1.0",
+    "react-calendar": "^6.0.1",
+    "react-countup": "^6.5.3",
+    "react-dom": "^18.2.0",
+    "react-final-form": "^6.5.9",
+    "react-router-dom": "^7.11.0",
+    "recharts": "^3.8.1",
+    "sockjs-client": "^1.6.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^18.2.79",
+    "@types/react-dom": "^18.2.25",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "vite": "^7.2.4"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-x64": "4.59.0"
+  }
+}

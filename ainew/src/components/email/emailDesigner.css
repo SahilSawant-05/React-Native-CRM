@@ -1,0 +1,42 @@
+.email-designer-shell {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.email-designer-shell .arco-layout {
+  background: #ffffff;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.email-designer-shell > .arco-layout {
+  display: flex !important;
+}
+
+.email-designer-shell .arco-layout-sider {
+  flex-shrink: 0 !important;
+}
+
+.email-designer-shell .arco-layout-content,
+.email-designer-shell .arco-layout > .arco-layout {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.email-designer-shell .easy-email-editor-tabWrapper {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.email-designer-shell #rightSide {
+  display: block !important;
+  min-width: 300px !important;
+  visibility: visible !important;
+}
+
+.email-designer-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
