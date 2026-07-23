@@ -233,6 +233,7 @@ function QueueCard({
         <View style={{ marginTop: 10 }}>
           <AiAssistPanel
             contactId={item.contactId}
+            opportunityId={item.opportunityId ?? (item as any).openOpportunityId ?? null}
             title={item.opportunityTitle || item.contactName || "Selected CRM record"}
             contextPrompt={recommendationPrompt(toAiContext(item)!)}
             replyPrompt={replyPrompt(toAiContext(item)!)}
