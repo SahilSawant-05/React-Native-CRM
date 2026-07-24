@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import api from "../api/client";
 import { fetchInbox } from "../api/chat";
 import { useAuth } from "../auth/AuthContext";
+import { setActiveConversationId, isActiveConversation } from "./activeConversation";
 
 // Local-notification fallback: even without backend FCM pushes, the app
 // alerts the user when polling detects NEW unread chat/mail. Lazy-required
@@ -72,9 +73,9 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   // Conversation currently open on screen — its unread is excluded from the
   // notification decision so viewing a chat never notifies for its own
   // incoming messages.
-  const activeConvRef = useRef<string | number | null>(null);
   const setActiveConversation = useCallback((contactId: string | number | null) => {
-    activeConvRef.current = contactId;
+    // Shared module so the FCM foreground handler can read it too.
+    setActiveConversationId(contactId);
   }, []);
 
   const refresh = useCallback(() => {
@@ -89,12 +90,9 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
         const total = items.reduce((sum, i) => sum + (Number(i.unreadCount) || 0), 0);
         // Notification decision ignores the conversation the user is viewing,
         // so a message arriving in the open chat never raises a notification.
-        const activeId = activeConvRef.current;
         const notifiable = items.reduce(
           (sum, i) =>
-            activeId != null && String(i.contactId) === String(activeId)
-              ? sum
-              : sum + (Number(i.unreadCount) || 0),
+            isActiveConversation(i.contactId) ? sum : sum + (Number(i.unreadCount) || 0),
           0
         );
         if (notifiable > prevChatRef.current) {

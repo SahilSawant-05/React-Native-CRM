@@ -27,6 +27,7 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
 import { useBadges } from "../../state/BadgeContext";
+import { setActiveConversationId } from "../../state/activeConversation";
 import { useChatSocket } from "../../realtime/chatSocket";
 
 type Props = {
@@ -101,17 +102,36 @@ function formatDate(dateStr?: string) {
 // in an arbitrary position instead of at the bottom, looking exactly like
 // "new messages don't appear until I reopen the chat". Normalise first.
 function parseMessageDate(raw: string): number {
-  let t = new Date(raw).getTime();
+  if (!raw) return NaN;
+  const s = String(raw).trim();
+
+  // Epoch seconds/millis sent as a pure numeric string.
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
+  }
+
+  // Normalise "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO ("T" separator) and turn a
+  // "+0530" offset into the colon form "+05:30" that Hermes requires.
+  let iso = s.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+
+  // CRITICAL: the backend stores UTC but omits the zone on many timestamps
+  // ("2026-07-23T19:00:00"). Without a zone, JS parses it as LOCAL time, so an
+  // inbound message near midnight lands on the WRONG day (and shows a time
+  // ~hours off) while outbound optimistic messages — created with
+  // toISOString() (real UTC) — land on the right day. That mismatch is what
+  // splits a pair of same-day messages across two date separators. If the
+  // string has a time component but no zone designator, treat it as UTC so
+  // every message converts to local consistently.
+  const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso);
+  if (!hasZone && /T\d{2}:\d{2}/.test(iso)) iso += "Z";
+
+  let t = new Date(iso).getTime();
   if (!Number.isNaN(t)) return t;
-  // "YYYY-MM-DD HH:mm:ss(.SSS)" → ISO-ish, and "+0530" → "+05:30"
-  // (Hermes only accepts the colon form of zone offsets).
-  const isoish = raw.replace(" ", "T").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
-  t = new Date(isoish).getTime();
-  if (!Number.isNaN(t)) return t;
-  // Epoch seconds/millis sent as a numeric string
-  const n = Number(raw);
-  if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
-  return NaN;
+
+  // Last resort: let the engine try the raw string as-is.
+  t = new Date(s).getTime();
+  return Number.isNaN(t) ? NaN : t;
 }
 
 function messageTime(m?: Message): number {
@@ -1591,13 +1611,18 @@ export default function ChatConversationScreen({ route }: Props) {
 
   const badges = useBadges();
 
-  // Register this conversation as active while the screen is focused so the
-  // badge poller never raises a notification for messages arriving in the
-  // chat the user is currently viewing. Cleared on blur/unmount.
+  // Register this conversation as active while the screen is focused so
+  // neither notification path (badge poll + foreground FCM banner) raises a
+  // notification for messages arriving in the chat the user is viewing.
+  // Cleared on blur/unmount.
   useFocusEffect(
     useCallback(() => {
+      setActiveConversationId(inbox.contactId);
       badges.setActiveConversation?.(inbox.contactId);
-      return () => badges.setActiveConversation?.(null);
+      return () => {
+        setActiveConversationId(null);
+        badges.setActiveConversation?.(null);
+      };
     }, [inbox.contactId])
   );
 

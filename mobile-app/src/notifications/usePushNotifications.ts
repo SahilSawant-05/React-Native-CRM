@@ -3,6 +3,7 @@ import { Alert, Linking, PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../api/client";
 import { displayFcmNotification, ensureNotificationChannel } from "./displayNotification";
+import { isActiveConversation } from "../state/activeConversation";
  
 // Many Android OEMs (Xiaomi/MIUI, Oppo/Realme/ColorOS, Vivo, Samsung, …)
 // force-stop apps that are swiped away or left idle, which BLOCKS FCM
@@ -175,6 +176,15 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
         // Show a local notification banner so "app open" pushes are visible.
         unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
           onMessageReceived?.(remoteMessage);
+          // Do NOT show a banner for a message that belongs to the chat the
+          // user is already viewing (WhatsApp behaviour). The FCM payload
+          // carries the conversation/contact id in its data block.
+          const data = remoteMessage?.data ?? {};
+          const convId =
+            data.contactId ?? data.conversationId ?? data.chatId ?? data.senderId ?? data.fromContactId;
+          if (convId != null && isActiveConversation(convId)) {
+            return;
+          }
           // FCM never auto-displays in the foreground — render it ourselves
           // via Notifee (same path used in the background handler, so the
           // notification looks identical in every app state).
