@@ -20,6 +20,8 @@ import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
 import { useBadges } from "../../state/BadgeContext";
+import { useChatSocket } from "../../realtime/chatSocket";
+import { isActiveConversation } from "../../state/activeConversation";
 
 // "RESOLVED" removed — these map to backend status filters.
 // "UNREAD" is a client-side-only pseudo-tab (see selectTab below) — it
@@ -213,6 +215,54 @@ export default function ChatInboxScreen({ navigation }: Props) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
+
+  // Real-time inbox updates over the same STOMP topic the conversation screen
+  // uses. On a new message we update that conversation IN PLACE and move it to
+  // the top instantly — last-message preview, timestamp and unread badge — so
+  // the list stays in sync without waiting for the 15s poll. The unread count
+  // increments only for INBOUND messages in a conversation that isn't the one
+  // currently open on screen (that one is being read).
+  useChatSocket((payload: any) => {
+    const cid = payload?.contactId;
+    if (cid == null) return;
+    const isInbound = String(payload?.direction ?? "").toUpperCase() === "INBOUND";
+    const text = payload?.textBody || payload?.body || payload?.text || "";
+    const at = payload?.createdAt || payload?.timestamp;
+
+    setAllItems((prev) => {
+      const idx = prev.findIndex((i) => String(i.contactId) === String(cid));
+      let next: InboxItem[];
+      if (idx >= 0) {
+        const item = prev[idx];
+        const bumpUnread = isInbound && !isActiveConversation(cid);
+        const updated: InboxItem = {
+          ...item,
+          lastMessage: text || item.lastMessage,
+          lastMessageAt: at || item.lastMessageAt,
+          unreadCount: bumpUnread ? (Number(item.unreadCount) || 0) + 1 : item.unreadCount,
+        };
+        // Move the updated conversation to the top.
+        next = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      } else {
+        // Unknown conversation — insert a placeholder at the top and pull the
+        // authoritative row (name, etc.) from the backend.
+        const placeholder: InboxItem = {
+          contactId: cid,
+          contactName: payload?.contactName || String(cid),
+          contactPhone: payload?.contactPhone,
+          lastMessage: text,
+          lastMessageAt: at,
+          unreadCount: isInbound && !isActiveConversation(cid) ? 1 : 0,
+        };
+        next = [placeholder, ...prev];
+        load(0, statusRef.current, searchRef.current, true).catch(() => {});
+      }
+      if (!isTypingRef.current) {
+        setItems(applyFilter(next, searchRef.current, unreadOnlyRef.current));
+      }
+      return next;
+    });
+  });
 
   // Single entry point for the tab row now that Unread lives inside it.
   // "" / "OPEN" hit the backend status filter and turn unreadOnly off.

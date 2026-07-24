@@ -1628,17 +1628,41 @@ export default function ChatConversationScreen({ route }: Props) {
 
   useEffect(() => {
     load();
-    // Mark ONLY this conversation read (same as the web app), then pull the
-    // badge down by this conversation's unread count so the tab updates
-    // immediately instead of waiting for the next inbox load.
-    markAsRead(inbox.contactId)
-      .then(() => {
-        const mine = Number(inbox.unreadCount) || 0;
-        if (mine > 0) badges.setChatCount(Math.max(0, badges.chat - mine));
-        else badges.refresh();
-      })
-      .catch(() => {});
+    // NOTE: marking-as-read is intentionally NOT done here. Opening the screen
+    // must not mark a conversation read on its own — that happens only once the
+    // latest message is actually on screen (see markReadIfViewing below), and
+    // the badge is only cleared after the backend acknowledges the read.
   }, []);
+
+  // Marks this conversation read ONLY when the user is actually viewing the
+  // latest message (at the bottom of the thread). It awaits the backend so
+  // local unread state is cleared strictly after a successful acknowledgement
+  // — never optimistically — which keeps the chat list in sync when the user
+  // navigates back. While the user is scrolled up reading history, an inbound
+  // message stays unread (a "New message" pill is shown instead).
+  const lastReadKeyRef = useRef<string | null>(null);
+  const markReadIfViewing = useCallback(async (newestKey?: string) => {
+    if (!atBottomRef.current) return;
+    // Skip when we've already marked read up to this newest message — avoids
+    // re-hitting the backend on status-only updates to our own sent messages.
+    if (newestKey && lastReadKeyRef.current === newestKey) return;
+    try {
+      await markAsRead(inbox.contactId);
+      if (newestKey) lastReadKeyRef.current = newestKey;
+      badges.refresh();
+    } catch {
+      // Leave unread; a later view / focus will retry.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inbox.contactId]);
+
+  // Re-evaluate read state whenever the thread updates (initial load or a new
+  // message). If the newest message is on screen it gets marked read; if the
+  // user is scrolled up it does not.
+  useEffect(() => {
+    if (loading || messages.length === 0) return;
+    markReadIfViewing(topMessageKey(messages[0]));
+  }, [loading, messages, markReadIfViewing]);
 
   // Silent page-0 refresh (no loading spinner) used by the live poll so new
   // inbound messages stream in while the chat is open, WhatsApp-style.
@@ -1720,10 +1744,9 @@ export default function ChatConversationScreen({ route }: Props) {
     } else {
       setMessages((prev) => mergeMessages(prev, incoming));
     }
-    // Chat is open, so inbound messages are read immediately (web parity).
-    if (String(payload?.direction ?? "").toUpperCase() === "INBOUND") {
-      markAsRead(inbox.contactId).catch(() => {});
-    }
+    // NOTE: do NOT mark read here. An inbound message that arrives while the
+    // user is scrolled up reading history must stay unread. The markReadIfViewing
+    // effect handles marking read only when the newest message is on screen.
   }, (status) => {
     setSockLine(`socket ${new Date().toLocaleTimeString()}: ${status}`);
   });
@@ -1810,7 +1833,10 @@ export default function ChatConversationScreen({ route }: Props) {
     atBottomRef.current = true;
     setShowNewMessagePill(false);
     setNewMessageCount(0);
-  }, []);
+    // The newest message is now on screen — mark read (backend-acknowledged).
+    markReadIfViewing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markReadIfViewing]);
 
   // Whenever the newest message changes (poll picked up an inbound reply, or
   // we/another tab sent something), either silently keep following the
@@ -2101,10 +2127,16 @@ export default function ChatConversationScreen({ route }: Props) {
             onScroll={(e) => {
               const y = e.nativeEvent.contentOffset.y;
               const nowAtBottom = y < 60;
+              const wasAtBottom = atBottomRef.current;
               atBottomRef.current = nowAtBottom;
               if (nowAtBottom && showNewMessagePill) {
                 setShowNewMessagePill(false);
                 setNewMessageCount(0);
+              }
+              // Reaching the bottom means the latest message has now actually
+              // been seen — mark the conversation read (backend-acknowledged).
+              if (nowAtBottom && !wasAtBottom) {
+                markReadIfViewing();
               }
             }}
             scrollEventThrottle={80}
