@@ -361,6 +361,10 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  // Month/year jump picker (web parity): tap the title to pick any month/year
+  // instead of stepping one month at a time.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(today.getFullYear());
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -427,11 +431,30 @@ export default function CalendarScreen() {
           <TouchableOpacity onPress={() => setCursor(new Date(year, month - 1, 1))} style={s.navBtn} hitSlop={8}>
             <Ionicons name="chevron-back" size={20} color="#0f766e" />
           </TouchableOpacity>
-          <Text style={s.monthTitle}>{fmtMonthYear(cursor)}</Text>
+          <TouchableOpacity
+            style={s.monthTitleBtn}
+            onPress={() => { setPickerYear(year); setPickerOpen(true); }}
+            activeOpacity={0.7}
+          >
+            <Text style={s.monthTitle}>{fmtMonthYear(cursor)}</Text>
+            <Ionicons name="chevron-down" size={16} color="#0f766e" style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setCursor(new Date(year, month + 1, 1))} style={s.navBtn} hitSlop={8}>
             <Ionicons name="chevron-forward" size={20} color="#0f766e" />
           </TouchableOpacity>
         </View>
+
+        {/* Quick "jump to today" */}
+        {(year !== today.getFullYear() || month !== today.getMonth()) && (
+          <TouchableOpacity
+            style={s.todayBtn}
+            onPress={() => { setCursor(new Date(today.getFullYear(), today.getMonth(), 1)); setSelected(today); }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="today-outline" size={14} color="#0f766e" />
+            <Text style={s.todayBtnText}>Today</Text>
+          </TouchableOpacity>
+        )}
 
         {/* ── Calendar grid ── */}
         <View style={s.calCard}>
@@ -496,9 +519,56 @@ export default function CalendarScreen() {
         onClose={() => setShowCreate(false)}
         onCreated={fetchEvents}
       />
+
+      {/* ── Month / Year picker ── */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <TouchableOpacity style={s.pickerOverlay} activeOpacity={1} onPress={() => setPickerOpen(false)}>
+          <View style={s.pickerSheet} onStartShouldSetResponder={() => true}>
+            {/* Year stepper */}
+            <View style={s.pickerYearRow}>
+              <TouchableOpacity onPress={() => setPickerYear(y => y - 1)} style={s.navBtn} hitSlop={8}>
+                <Ionicons name="chevron-back" size={22} color="#0f766e" />
+              </TouchableOpacity>
+              <Text style={s.pickerYearText}>{pickerYear}</Text>
+              <TouchableOpacity onPress={() => setPickerYear(y => y + 1)} style={s.navBtn} hitSlop={8}>
+                <Ionicons name="chevron-forward" size={22} color="#0f766e" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Month grid */}
+            <View style={s.pickerMonthGrid}>
+              {MONTHS_SHORT.map((label, m) => {
+                const isCurrent = m === month && pickerYear === year;
+                const isThisMonth = m === today.getMonth() && pickerYear === today.getFullYear();
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    style={[s.pickerMonthCell, isCurrent && s.pickerMonthCellActive]}
+                    onPress={() => {
+                      setCursor(new Date(pickerYear, m, 1));
+                      setPickerOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      s.pickerMonthText,
+                      isCurrent && s.pickerMonthTextActive,
+                      !isCurrent && isThisMonth && s.pickerMonthTextToday,
+                    ]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -510,10 +580,30 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12,
   },
   navBtn: { padding: 8 },
+  monthTitleBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 4 },
   monthTitle: {
     fontSize: 17, fontWeight: "600", color: "#111827",
     fontFamily: MEDIUM_FONT, letterSpacing: LS_LG,
   },
+  todayBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "center",
+    marginTop: -4, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 99, borderWidth: 1, borderColor: "#5eead4", backgroundColor: "#f0fdfa",
+  },
+  todayBtnText: { fontSize: 12, fontWeight: "700", color: "#0f766e" },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "center", padding: 28 },
+  pickerSheet: { backgroundColor: "#fff", borderRadius: 18, padding: 16, gap: 14 },
+  pickerYearRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pickerYearText: { fontSize: 19, fontWeight: "800", color: "#0f172a" },
+  pickerMonthGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pickerMonthCell: {
+    width: "22%", flexGrow: 1, alignItems: "center", justifyContent: "center",
+    paddingVertical: 12, borderRadius: 10, backgroundColor: "#f1f5f9",
+  },
+  pickerMonthCellActive: { backgroundColor: "#0f766e" },
+  pickerMonthText: { fontSize: 14, fontWeight: "600", color: "#334155" },
+  pickerMonthTextActive: { color: "#fff", fontWeight: "800" },
+  pickerMonthTextToday: { color: "#0f766e", fontWeight: "800" },
 
   calCard: {
     backgroundColor: "#fff", marginHorizontal: 12, borderRadius: 14, padding: 12,
