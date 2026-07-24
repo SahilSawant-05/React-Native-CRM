@@ -14,6 +14,7 @@ import { fetchWorkQueue } from "../../api/workQueue";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { WorkQueue, WorkSection, WorkItem } from "../../types";
+import { useAppNav, tabForTarget } from "../../navigation/useAppNav";
 
 const SECTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   OVERDUE_TASKS: { bg: "#fef2f2", text: "#b91c1c", border: "#fecaca" },
@@ -49,8 +50,27 @@ function formatDateTime(value?: string) {
   }).format(new Date(value));
 }
 
-function WorkItemCard({ item }: { item: WorkItem }) {
+function WorkItemCard({ item, sectionKey }: { item: WorkItem; sectionKey: string }) {
   const pc = priorityColor(item.priority);
+  const { navigateTo, openChat } = useAppNav();
+
+  // Route the Open button by type: prefer the item's targetPath, else infer
+  // from the section it belongs to (tasks / chats / appointments / deals).
+  const tab = tabForTarget(item.targetPath) || tabForTarget(sectionKey);
+
+  function handleOpen() {
+    if (!tab) return;
+    if (tab === "Chat" && item.contactId) {
+      openChat({
+        contactId: item.contactId,
+        contactName: item.contactName || item.title || "Chat",
+        contactPhone: item.contactPhone,
+      });
+      return;
+    }
+    navigateTo(tab);
+  }
+
   return (
     <View style={itemStyles.card}>
       <View style={itemStyles.row}>
@@ -81,6 +101,12 @@ function WorkItemCard({ item }: { item: WorkItem }) {
           </View>
         )}
       </View>
+      {!!tab && (
+        <TouchableOpacity style={itemStyles.openBtn} onPress={handleOpen} activeOpacity={0.8}>
+          <Text style={itemStyles.openBtnText}>Open</Text>
+          <Ionicons name="arrow-forward" size={14} color="#0f766e" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -133,7 +159,7 @@ function SectionCard({
         ) : (
           <View style={sectionStyles.items}>
             {section.items.map((item, i) => (
-              <WorkItemCard key={`${section.key}-item-${String(item.id ?? i)}`} item={item} />
+              <WorkItemCard key={`${section.key}-item-${String(item.id ?? i)}`} item={item} sectionKey={section.key} />
             ))}
             {section.count > section.items.length && (
               <Text style={sectionStyles.moreText}>
@@ -347,4 +373,11 @@ const itemStyles = StyleSheet.create({
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tag: { backgroundColor: "rgba(118,118,128,0.08)", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 },
   tagText: { fontSize: 11, color: "#6b7280" },
+  openBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
+    marginTop: 10, alignSelf: "flex-start",
+    borderWidth: 1, borderColor: "#5eead4", backgroundColor: "#f0fdfa",
+    borderRadius: 9, paddingHorizontal: 14, paddingVertical: 7,
+  },
+  openBtnText: { fontSize: 12.5, fontWeight: "700", color: "#0f766e" },
 });
