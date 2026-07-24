@@ -568,23 +568,28 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
     });
   }
 
-  async function save() {
+  // Simplified telephony: only an On/Off toggle. Flipping it saves the change
+  // while preserving the provider credentials already configured on the
+  // backend (masked secrets are sent as null = "keep existing", same as web).
+  async function setActive(next: boolean) {
     if (saving) return;
+    const prev = config.active;
+    setConfig((c) => ({ ...c, active: next }));
     setSaving(true);
     setError("");
     try {
-      // Same masking rule as web: a still-masked secret means "keep existing".
-      const { inboundWebhookUrl, ...editable } = config;
+      const payload = { ...config, active: next };
+      const { inboundWebhookUrl, ...editable } = payload;
       await api.post("/api/telephony/config", {
         ...editable,
-        apiToken: config.apiToken === "********" ? null : config.apiToken,
-        webhookSecret: config.webhookSecret === "********" ? null : config.webhookSecret,
+        apiToken: payload.apiToken === "********" ? null : payload.apiToken,
+        webhookSecret: payload.webhookSecret === "********" ? null : payload.webhookSecret,
       });
-      // Call buttons across the app re-read the toggles on next call.
       invalidateTelephonyToggles();
-      onInfo("Telephony settings saved.");
+      onInfo(next ? "CRM calling turned on." : "CRM calling turned off.");
     } catch (err: any) {
-      setError(apiErrorMessage(err, "Failed to save telephony settings."));
+      setConfig((c) => ({ ...c, active: prev })); // revert on failure
+      setError(apiErrorMessage(err, "Failed to update telephony."));
     } finally {
       setSaving(false);
     }
@@ -598,133 +603,23 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
         <View style={s.errorBox}><Text style={s.errorBoxText}>{error}</Text></View>
       )}
 
-      <View style={s.statusRow}>
-        <Badge
-          label={config.active ? "Active" : "Not active"}
-          bg={config.active ? "#ecfdf5" : "#f3f4f6"}
-          text={config.active ? "#047857" : "#6b7280"}
-        />
-        <Text style={s.providerHint}>{activeProvider.hint}</Text>
-      </View>
-
-      <FieldLabel>Provider</FieldLabel>
-      <View style={s.chipWrap}>
-        {PROVIDER_OPTIONS.map((p) => {
-          const selected = config.provider === p.value;
-          const locked = config.active && !selected;
-          return (
-            <TouchableOpacity
-              key={p.value}
-              style={[s.chip, selected && s.chipActive, locked && { opacity: 0.45 }]}
-              onPress={() => update("provider", p.value)}
-              disabled={locked}
-            >
-              <Text style={[s.chipText, selected && s.chipTextActive]}>
-                {p.label}{locked ? " 🔒" : ""}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      <Text style={s.providerLockHint}>
-        {config.active
-          ? `${activeProvider.label} is active — deactivate it before switching provider.`
-          : "Only one provider can be active at a time. Switching starts with blank credentials so provider data never mixes."}
-      </Text>
-
-      <View style={s.field}>
-        <FieldLabel>Region</FieldLabel>
-        <TextInput style={s.input} value={config.region} onChangeText={(v) => update("region", v)} placeholder="IN, CA, US" placeholderTextColor="#9ca3af" autoCapitalize="characters" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>{activeProvider.accountLabel}</FieldLabel>
-        <TextInput style={s.input} value={config.accountSid} onChangeText={(v) => update("accountSid", v)} placeholder="Provider account identifier" placeholderTextColor="#9ca3af" autoCapitalize="none" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>{activeProvider.apiKeyLabel}</FieldLabel>
-        <TextInput style={s.input} value={config.apiKey} onChangeText={(v) => update("apiKey", v)} placeholder="Provider API key" placeholderTextColor="#9ca3af" autoCapitalize="none" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>API Base URL</FieldLabel>
-        <TextInput style={s.input} value={config.apiBaseUrl} onChangeText={(v) => update("apiBaseUrl", v)} placeholder={activeProvider.basePlaceholder} placeholderTextColor="#9ca3af" autoCapitalize="none" keyboardType="url" />
-        <Text style={s.fieldHelp}>{activeProvider.baseHelp}</Text>
-      </View>
-      <View style={s.field}>
-        <FieldLabel>{activeProvider.tokenLabel}</FieldLabel>
-        <TextInput style={s.input} value={config.apiToken} onChangeText={(v) => update("apiToken", v)} placeholder={hasToken ? "Saved token hidden" : "Provider token"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>Webhook Secret</FieldLabel>
-        <TextInput style={s.input} value={config.webhookSecret} onChangeText={(v) => update("webhookSecret", v)} placeholder={hasWebhookSecret ? "Saved secret hidden" : "Optional callback verification secret"} placeholderTextColor="#9ca3af" secureTextEntry autoCapitalize="none" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>{activeProvider.callerLabel}</FieldLabel>
-        <TextInput style={s.input} value={config.callerId} onChangeText={(v) => update("callerId", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
-      </View>
-      <View style={s.field}>
-        <FieldLabel>{activeProvider.inboundLabel}</FieldLabel>
-        <TextInput style={s.input} value={config.inboundNumber} onChangeText={(v) => update("inboundNumber", v)} placeholder="+91…" placeholderTextColor="#9ca3af" keyboardType="phone-pad" />
-      </View>
-
       <View style={s.switchRow}>
-        <Text style={s.switchLabel}>Provider active</Text>
-        <Switch value={config.active} onValueChange={(v) => update("active", v)} trackColor={{ true: "#0f766e" }} />
-      </View>
-      <View style={s.switchRow}>
-        <Text style={s.switchLabel}>Enable click-to-call</Text>
-        <Switch value={config.clickToCallEnabled} onValueChange={(v) => update("clickToCallEnabled", v)} trackColor={{ true: "#0f766e" }} />
-      </View>
-
-      <View style={s.field}>
-        <FieldLabel>Internal notes</FieldLabel>
-        <TextInput style={[s.input, s.inputMultiline]} value={config.notes} onChangeText={(v) => update("notes", v)} placeholder="Example: Exotel number, support contact, provider account owner." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
+        <View style={{ flex: 1 }}>
+          <Text style={s.switchLabel}>CRM Calling</Text>
+          <Text style={s.switchSubLabel}>{config.active ? "On" : "Off"}</Text>
+        </View>
+        {saving
+          ? <ActivityIndicator color="#0f766e" size="small" style={{ marginRight: 6 }} />
+          : <Switch value={config.active} onValueChange={setActive} trackColor={{ true: "#0f766e" }} />}
       </View>
 
-      {!!config.inboundWebhookUrl && (() => {
-        const webhookUrl = providerWebhookUrl(config.inboundWebhookUrl, config.provider);
-        const voiceUrl = providerVoiceUrl(config.inboundWebhookUrl, config.provider);
-        const needsVoiceUrl = config.provider === "TWILIO" || config.provider === "PLIVO";
-        return (
-          <View style={s.webhookBox}>
-            <Text style={s.webhookLabel}>{activeProvider.webhookTitle}</Text>
-            <Text style={s.webhookHelp}>{activeProvider.webhookHelp}</Text>
-
-            {needsVoiceUrl && (
-              <>
-                <Text style={s.webhookSubLabel}>Voice URL — for "A call comes in" (returns TwiML)</Text>
-                <Text style={s.webhookUrl} selectable>{voiceUrl}</Text>
-              </>
-            )}
-
-            <Text style={s.webhookSubLabel}>
-              {needsVoiceUrl ? "Status Callback URL — call status, completed calls, recordings" : "Base webhook URL"}
-            </Text>
-            <Text style={s.webhookUrl} selectable>{webhookUrl}</Text>
-
-            <Text style={s.webhookSubLabel}>Missed / No Answer branch</Text>
-            <Text style={s.webhookUrl} selectable>{`${webhookUrl}?Status=NO_ANSWER`}</Text>
-
-            <Text style={s.webhookSubLabel}>Answered / Completed branch</Text>
-            <Text style={s.webhookUrl} selectable>{`${webhookUrl}?Status=COMPLETED`}</Text>
-
-            <Text style={s.webhookHelp}>
-              Long-press any URL to copy. Incoming calls appear in Call Logs, unknown numbers become
-              phone leads, and missed calls create follow-up tasks automatically.
-            </Text>
-          </View>
-        );
-      })()}
-
-      <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
-        {saving ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <>
-            <Ionicons name="save-outline" size={16} color="#fff" />
-            <Text style={s.primaryBtnText}>Save telephony settings</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      <View style={s.infoBox}>
+        <Ionicons name="information-circle-outline" size={16} color="#0f766e" style={{ marginTop: 1 }} />
+        <Text style={s.infoText}>
+          When on, calls are placed through your CRM telephony provider and logged automatically.
+          When off, calls open your phone's dialer. Provider setup is managed by your administrator.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -1842,6 +1737,13 @@ const s = StyleSheet.create({
     fontSize: 13.5, fontWeight: "600", color: "#374151",
     fontFamily: mediumFont,
   },
+  switchSubLabel: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  infoBox: {
+    flexDirection: "row", gap: 8, alignItems: "flex-start",
+    backgroundColor: "#f0fdfa", borderRadius: 12, borderWidth: 1, borderColor: "#99f6e4",
+    padding: 12,
+  },
+  infoText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: "#0f766e" },
   webhookBox: { backgroundColor: "#eff6ff", borderRadius: 12, padding: 12, gap: 5 },
   webhookLabel: { fontSize: 12.5, fontWeight: "700", color: "#1e40af" },
   webhookHelp: { fontSize: 11.5, color: "#1e40af", lineHeight: 16 },
