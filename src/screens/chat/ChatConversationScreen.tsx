@@ -74,12 +74,22 @@ interface MediaAsset {
 
 function formatTime(dateStr?: string) {
   if (!dateStr) return "";
-  return new Intl.DateTimeFormat("en-IN", { timeStyle: "short" }).format(new Date(dateStr));
+  // Normalise via parseMessageDate first — a raw `new Date()` on Hermes fails
+  // for backend timestamps like "2026-07-14 10:30:00" and would format an
+  // Invalid Date, so two messages in different formats show different times.
+  const t = parseMessageDate(String(dateStr));
+  if (Number.isNaN(t)) return "";
+  return new Intl.DateTimeFormat("en-IN", { timeStyle: "short" }).format(new Date(t));
 }
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return "";
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(dateStr));
+  // Same reason as formatTime: without normalising, a message stored with a
+  // space-separated (non-ISO) timestamp parses to Invalid Date and lands
+  // under the wrong day separator, so the messages split across two dates.
+  const t = parseMessageDate(String(dateStr));
+  if (Number.isNaN(t)) return "";
+  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(t));
 }
 
 // Returns a reliable epoch ms for a message regardless of which timestamp
@@ -1580,6 +1590,17 @@ export default function ChatConversationScreen({ route }: Props) {
   }, [inbox.contactId, loadingMore]);
 
   const badges = useBadges();
+
+  // Register this conversation as active while the screen is focused so the
+  // badge poller never raises a notification for messages arriving in the
+  // chat the user is currently viewing. Cleared on blur/unmount.
+  useFocusEffect(
+    useCallback(() => {
+      badges.setActiveConversation(inbox.contactId);
+      return () => badges.setActiveConversation(null);
+    }, [inbox.contactId])
+  );
+
   useEffect(() => {
     load();
     // Mark ONLY this conversation read (same as the web app), then pull the

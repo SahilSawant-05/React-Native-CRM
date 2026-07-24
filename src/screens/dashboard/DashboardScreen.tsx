@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useAppNav, tabForTarget } from "../../navigation/useAppNav";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,21 @@ function Card({ children }: { children: React.ReactNode }) {
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function DashboardScreen() {
+  const { navigateTo, openChat } = useAppNav();
+
+  // Route a recent-notification tap to the matching section — e.g. an email
+  // notification opens Mail, a chat notification opens the conversation.
+  function openNotification(n: any) {
+    const type = n?.type || n?.targetType || n?.targetPath || "";
+    const tab = tabForTarget(type) || tabForTarget(n?.targetPath);
+    if (!tab) return;
+    if (tab === "Chat" && n?.contactId) {
+      openChat({ contactId: n.contactId, contactName: n.contactName || n.title || "Chat", contactPhone: n.contactPhone });
+      return;
+    }
+    navigateTo(tab);
+  }
+
   const [summary, setSummary] = useState<any>(null);
   const [reports, setReports] = useState<any>(null);
   const [notifications, setNotifications] = useState<{ unreadCount: number; items: any[] }>({ unreadCount: 0, items: [] });
@@ -254,13 +270,19 @@ export default function DashboardScreen() {
             <SectionTitle title="RECENT NOTIFICATIONS" />
             <Card>
               {notifications.items.map((n: any, i: number) => (
-                <View key={n.id ?? i} style={[c.notifRow, i > 0 && c.notifBorder]}>
+                <TouchableOpacity
+                  key={n.id ?? i}
+                  style={[c.notifRow, i > 0 && c.notifBorder]}
+                  activeOpacity={0.6}
+                  onPress={() => openNotification(n)}
+                >
                   <View style={[c.notifDot, !n.read && c.notifDotUnread]} />
                   <View style={{ flex: 1 }}>
                     <Text style={c.notifTitle} numberOfLines={1}>{n.title || n.message || "Notification"}</Text>
                     {!!n.body && <Text style={c.notifBody} numberOfLines={1}>{n.body}</Text>}
                   </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />
+                </TouchableOpacity>
               ))}
             </Card>
           </>

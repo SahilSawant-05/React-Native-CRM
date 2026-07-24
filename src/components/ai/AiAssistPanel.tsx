@@ -20,24 +20,29 @@ function aiError(err: any): string {
 
 interface Props {
   contactId?: string | number | null;
+  opportunityId?: string | number | null;
   title?: string;
   contextPrompt?: string;
   replyPrompt?: string;
   onApply?: (text: string) => void;
   applyLabel?: string;
+  onSaved?: () => void;
 }
 
 export default function AiAssistPanel({
   contactId,
+  opportunityId,
   title = "AI Assistant",
   contextPrompt = "",
   replyPrompt = "",
   onApply,
   applyLabel = "Use result",
+  onSaved,
 }: Props) {
-  const [loadingType, setLoadingType] = useState<"summary" | "reply" | "">("");
+  const [loadingType, setLoadingType] = useState<"summary" | "reply" | "note" | "">("");
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   async function runSummary() {
     if (!contactId) {
@@ -80,6 +85,27 @@ export default function AiAssistPanel({
     if (!result) return;
     Clipboard.setString(result);
     Alert.alert("Copied", "AI result copied to clipboard.");
+  }
+
+  // Web parity (AiAssistPanel.jsx saveAsNote): persist the AI output as a
+  // contact note via POST /api/contacts/{id}/notes.
+  async function saveAsNote() {
+    if (!contactId || !result.trim()) return;
+    setLoadingType("note");
+    setError("");
+    setActionMessage("");
+    try {
+      await api.post(`/api/contacts/${contactId}/notes`, {
+        note: `AI note:\n\n${result}`,
+        opportunityId: opportunityId ?? null,
+      });
+      setActionMessage("AI output saved as contact note.");
+      onSaved?.();
+    } catch (err: any) {
+      setError(aiError(err));
+    } finally {
+      setLoadingType("");
+    }
   }
 
   const busy = Boolean(loadingType);
@@ -132,6 +158,13 @@ export default function AiAssistPanel({
         </View>
       )}
 
+      {!!actionMessage && (
+        <View style={styles.successBox}>
+          <Ionicons name="checkmark-circle" size={14} color="#047857" />
+          <Text style={styles.successText}>{actionMessage}</Text>
+        </View>
+      )}
+
       {!!result && (
         <View style={styles.resultBox}>
           <Text style={styles.resultText}>{result}</Text>
@@ -141,6 +174,20 @@ export default function AiAssistPanel({
                 <Ionicons name="copy-outline" size={13} color="#4b5563" />
                 <Text style={styles.copyBtnText}>Copy</Text>
               </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.noteBtn, (!contactId || loadingType === "note") && styles.btnDisabled]}
+              onPress={saveAsNote}
+              disabled={!contactId || loadingType === "note"}
+            >
+              {loadingType === "note"
+                ? <ActivityIndicator size="small" color="#0f766e" />
+                : (
+                  <View style={styles.btnInner}>
+                    <Ionicons name="create-outline" size={13} color="#0f766e" />
+                    <Text style={styles.noteBtnText}>Save Note</Text>
+                  </View>
+                )}
             </TouchableOpacity>
             {onApply && (
               <TouchableOpacity style={styles.applyBtn} onPress={() => onApply(result)}>
@@ -218,6 +265,23 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   copyBtnText: { fontSize: 11, fontWeight: "700", color: "#475569" },
+  noteBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#5eead4",
+    backgroundColor: "#f0fdfa",
+    minHeight: 28,
+    justifyContent: "center",
+  },
+  noteBtnText: { fontSize: 11, fontWeight: "700", color: "#0f766e" },
+  successBox: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#ecfdf5", borderRadius: 8, borderWidth: 1,
+    borderColor: "#a7f3d0", padding: 9,
+  },
+  successText: { fontSize: 12, color: "#047857", fontWeight: "600", flex: 1 },
   applyBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,

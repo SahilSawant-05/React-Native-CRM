@@ -37,6 +37,9 @@ interface BadgeCounts {
    *  matches exactly what the inbox screens display. */
   setChatCount: (n: number) => void;
   setMailCount: (n: number) => void;
+  /** The conversation the user is currently viewing. New messages for this
+   *  conversation must NOT raise a local notification (WhatsApp behaviour). */
+  setActiveConversation: (contactId: string | number | null) => void;
 }
 
 const BadgeCtx = createContext<BadgeCounts>({
@@ -45,6 +48,7 @@ const BadgeCtx = createContext<BadgeCounts>({
   refresh: () => {},
   setChatCount: () => {},
   setMailCount: () => {},
+  setActiveConversation: () => {},
 });
 
 const POLL_MS = 30_000;
@@ -65,6 +69,13 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   // Start at Infinity so the first poll after login never notifies.
   const prevChatRef = useRef(Number.POSITIVE_INFINITY);
   const prevMailRef = useRef(Number.POSITIVE_INFINITY);
+  // Conversation currently open on screen — its unread is excluded from the
+  // notification decision so viewing a chat never notifies for its own
+  // incoming messages.
+  const activeConvRef = useRef<string | number | null>(null);
+  const setActiveConversation = useCallback((contactId: string | number | null) => {
+    activeConvRef.current = contactId;
+  }, []);
 
   const refresh = useCallback(() => {
     if (!user) return;
@@ -74,15 +85,26 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     // here always summed 0
     fetchInbox({ page: 0, size: 100 })
       .then((page) => {
-        const total = (page.content ?? []).reduce((sum, i) => sum + (Number(i.unreadCount) || 0), 0);
-        if (total > prevChatRef.current) {
-          const diff = total - prevChatRef.current;
+        const items = page.content ?? [];
+        const total = items.reduce((sum, i) => sum + (Number(i.unreadCount) || 0), 0);
+        // Notification decision ignores the conversation the user is viewing,
+        // so a message arriving in the open chat never raises a notification.
+        const activeId = activeConvRef.current;
+        const notifiable = items.reduce(
+          (sum, i) =>
+            activeId != null && String(i.contactId) === String(activeId)
+              ? sum
+              : sum + (Number(i.unreadCount) || 0),
+          0
+        );
+        if (notifiable > prevChatRef.current) {
+          const diff = notifiable - prevChatRef.current;
           notifyLocally(
             "New WhatsApp message",
             diff === 1 ? "You have a new message." : `You have ${diff} new messages.`
           );
         }
-        prevChatRef.current = total;
+        prevChatRef.current = notifiable;
         setChat(total);
       })
       .catch(() => {});
@@ -121,7 +143,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   }, [user, refresh]);
 
   return (
-    <BadgeCtx.Provider value={{ chat, mail, refresh, setChatCount: setChat, setMailCount: setMail }}>
+    <BadgeCtx.Provider value={{ chat, mail, refresh, setChatCount: setChat, setMailCount: setMail, setActiveConversation }}>
       {children}
     </BadgeCtx.Provider>
   );
