@@ -87,7 +87,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.crmagent'
+    namespace 'com.techoceanhub.vistaarflow'
     defaultConfig {
         applicationId 'com.techoceanhub.vistaarflow'
         minSdkVersion rootProject.ext.minSdkVersion
