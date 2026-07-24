@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "333172123421",
+    "project_id": "vistaarflow",
+    "storage_bucket": "vistaarflow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:333172123421:android:396dc85251de455e7063f4",
+        "android_client_info": {
+          "package_name": "com.techoceanhub.vistaarflow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3msoHDFA9ufnbiXDLaqikGdszK2gSBUo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
