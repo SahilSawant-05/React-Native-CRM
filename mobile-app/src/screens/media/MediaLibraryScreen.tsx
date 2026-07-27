@@ -104,6 +104,29 @@ export default function MediaLibraryScreen() {
     }
   }
 
+  // Web parity (MediaLibrary.jsx deleteAsset): DELETE /api/media-assets/{id}.
+  function confirmDelete(asset: MediaAsset) {
+    const label = asset.name || asset.originalFileName || "this file";
+    Alert.alert("Delete media", `Delete "${label}"? This cannot be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          // Optimistic remove, restore on failure.
+          const prev = assets;
+          setAssets((cur) => cur.filter((a) => a.id !== asset.id));
+          try {
+            await api.delete(`/api/media-assets/${asset.id}`);
+          } catch (err: any) {
+            setAssets(prev);
+            Alert.alert("Delete failed", err?.response?.data?.message || err?.message || "Could not delete media.");
+          }
+        },
+      },
+    ]);
+  }
+
   if (loading) return <LoadingSpinner message="Loading media..." />;
 
   return (
@@ -147,15 +170,24 @@ export default function MediaLibraryScreen() {
                 <Text style={styles.urlPreview} numberOfLines={1}>{item.publicUrl}</Text>
               )}
 
-              <TouchableOpacity
-                style={[styles.copyBtn, !item.publicUrl && styles.copyBtnDisabled]}
-                onPress={() => copyUrl(item)}
-                disabled={!item.publicUrl}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="link-outline" size={14} color={item.publicUrl ? "#fff" : "#9ca3af"} />
-                <Text style={[styles.copyBtnText, !item.publicUrl && styles.copyBtnTextDisabled]}>Copy URL</Text>
-              </TouchableOpacity>
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.copyBtn, !item.publicUrl && styles.copyBtnDisabled]}
+                  onPress={() => copyUrl(item)}
+                  disabled={!item.publicUrl}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="link-outline" size={14} color={item.publicUrl ? "#fff" : "#9ca3af"} />
+                  <Text style={[styles.copyBtnText, !item.publicUrl && styles.copyBtnTextDisabled]}>Copy URL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => confirmDelete(item)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                </TouchableOpacity>
+              </View>
             </View>
           );
         }}
@@ -205,10 +237,16 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 10.5, fontWeight: "600" },
   size: { fontSize: 11.5, color: "#9ca3af" },
   urlPreview: { fontSize: 11.5, color: "#9ca3af", marginBottom: 10 },
+  actionRow: { flexDirection: "row", gap: 6, alignItems: "stretch" },
   copyBtn: {
+    flex: 1,
     backgroundColor: "#0f766e", borderRadius: 10,
     paddingVertical: 8, alignItems: "center",
     flexDirection: "row", justifyContent: "center", gap: 5,
+  },
+  deleteBtn: {
+    width: 38, borderRadius: 10, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2",
   },
   copyBtnDisabled: { backgroundColor: "#f3f4f6" },
   copyBtnText: {
