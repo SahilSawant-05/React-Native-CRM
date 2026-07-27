@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View, Text, FlatList, StyleSheet, Image,
   TouchableOpacity, Clipboard, Alert, ActivityIndicator, Platform,
@@ -48,19 +48,16 @@ function formatSize(bytes?: number) {
   return (bytes / 1024).toFixed(1) + " KB";
 }
 
-function copyUrl(asset: MediaAsset) {
-  const url = asset.publicUrl || "";
-  if (!url) { Alert.alert("No URL", "This asset has no public URL."); return; }
-  Clipboard.setString(url);
-  Alert.alert("Copied", "Public URL copied to clipboard.");
-}
-
 export default function MediaLibraryScreen() {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tracks which asset's "Copy URL" button should currently show the
+  // "Copied" state, keyed by assetId(). Cleared automatically after a delay.
+  const [copiedId, setCopiedId] = useState<string | number | null>(null);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAssets = useCallback(async () => {
     try {
@@ -84,6 +81,22 @@ export default function MediaLibraryScreen() {
     setLoading(true);
     fetchAssets();
   }, [fetchAssets]));
+
+  function copyUrl(asset: MediaAsset) {
+    const url = asset.publicUrl || "";
+    if (!url) { Alert.alert("No URL", "This asset has no public URL."); return; }
+    try {
+      Clipboard.setString(url);
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+      Alert.alert("Copy failed", "Could not copy the URL to your clipboard.");
+      return;
+    }
+    const id = assetId(asset);
+    if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    setCopiedId(id ?? null);
+    copiedTimeoutRef.current = setTimeout(() => setCopiedId(null), 1500);
+  }
 
   async function handleUpload() {
     let result;
@@ -118,6 +131,7 @@ export default function MediaLibraryScreen() {
     const id = assetId(asset);
     const label = asset.name || asset.originalFileName || "this file";
     if (id == null || id === "") {
+      console.warn("confirmDelete: no resolvable id on asset", asset);
       Alert.alert("Cannot delete", "This asset has no id to delete by.");
       return;
     }
@@ -128,11 +142,17 @@ export default function MediaLibraryScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await api.delete(`/api/media-assets/${id}`);
+            console.log("Deleting media asset", id);
+            const res = await api.delete(`/api/media-assets/${id}`);
+            console.log("Delete response:", res?.status, res?.data);
+            // Optimistically drop it from local state right away so the UI
+            // reflects the delete even if the refetch below has issues.
+            setAssets((prev) => prev.filter((a) => assetId(a) !== id));
             // Reload from the backend so the list reflects the real state
             // (and so a failed-but-swallowed delete can't look successful).
             await fetchAssets();
           } catch (err: any) {
+            console.error("Delete failed:", err?.response?.status, err?.response?.data || err);
             const status = err?.response?.status;
             Alert.alert(
               "Delete failed",
@@ -166,6 +186,8 @@ export default function MediaLibraryScreen() {
           const iconName = MEDIA_ICONS[type] || "folder";
           const displayName = item.name || item.originalFileName || "Untitled";
           const isImage = type === "IMAGE" && !!item.publicUrl;
+          const itemId = assetId(item);
+          const isCopied = copiedId != null && itemId != null && copiedId === itemId;
           return (
             <View style={styles.card}>
               {isImage ? (
@@ -191,13 +213,23 @@ export default function MediaLibraryScreen() {
 
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  style={[styles.copyBtn, !item.publicUrl && styles.copyBtnDisabled]}
+                  style={[
+                    styles.copyBtn,
+                    !item.publicUrl && styles.copyBtnDisabled,
+                    isCopied && styles.copyBtnCopied,
+                  ]}
                   onPress={() => copyUrl(item)}
                   disabled={!item.publicUrl}
                   activeOpacity={0.75}
                 >
-                  <Ionicons name="link-outline" size={14} color={item.publicUrl ? "#fff" : "#9ca3af"} />
-                  <Text style={[styles.copyBtnText, !item.publicUrl && styles.copyBtnTextDisabled]}>Copy URL</Text>
+                  <Ionicons
+                    name={isCopied ? "checkmark" : "link-outline"}
+                    size={14}
+                    color={item.publicUrl ? "#fff" : "#9ca3af"}
+                  />
+                  <Text style={[styles.copyBtnText, !item.publicUrl && styles.copyBtnTextDisabled]}>
+                    {isCopied ? "Copied" : "Copy URL"}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.deleteBtn}
@@ -263,6 +295,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8, alignItems: "center",
     flexDirection: "row", justifyContent: "center", gap: 5,
   },
+  copyBtnCopied: { backgroundColor: "#16a34a" },
   deleteBtn: {
     width: 38, borderRadius: 10, alignItems: "center", justifyContent: "center",
     borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2",
