@@ -13,6 +13,9 @@ import { useFocusEffect } from "@react-navigation/native";
 
 interface MediaAsset {
   id: string;
+  _id?: string;
+  assetId?: string | number;
+  mediaAssetId?: string | number;
   name?: string;
   originalFileName?: string;
   mediaType?: string;
@@ -20,6 +23,12 @@ interface MediaAsset {
   publicUrl?: string;
   category?: string;
   description?: string;
+}
+
+// The backend list can key an asset under any of these — resolve whichever
+// exists so the DELETE URL never ends up as ".../undefined".
+function assetId(a: MediaAsset): string | number | undefined {
+  return a.id ?? a._id ?? a.assetId ?? a.mediaAssetId;
 }
 
 const MEDIA_COLORS: Record<string, { bg: string; text: string }> = {
@@ -106,21 +115,31 @@ export default function MediaLibraryScreen() {
 
   // Web parity (MediaLibrary.jsx deleteAsset): DELETE /api/media-assets/{id}.
   function confirmDelete(asset: MediaAsset) {
+    const id = assetId(asset);
     const label = asset.name || asset.originalFileName || "this file";
+    if (id == null || id === "") {
+      Alert.alert("Cannot delete", "This asset has no id to delete by.");
+      return;
+    }
     Alert.alert("Delete media", `Delete "${label}"? This cannot be undone.`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          // Optimistic remove, restore on failure.
-          const prev = assets;
-          setAssets((cur) => cur.filter((a) => a.id !== asset.id));
           try {
-            await api.delete(`/api/media-assets/${asset.id}`);
+            await api.delete(`/api/media-assets/${id}`);
+            // Reload from the backend so the list reflects the real state
+            // (and so a failed-but-swallowed delete can't look successful).
+            await fetchAssets();
           } catch (err: any) {
-            setAssets(prev);
-            Alert.alert("Delete failed", err?.response?.data?.message || err?.message || "Could not delete media.");
+            const status = err?.response?.status;
+            Alert.alert(
+              "Delete failed",
+              err?.response?.data?.message ||
+                err?.response?.data?.error ||
+                `Could not delete media${status ? ` (HTTP ${status})` : ""}.`
+            );
           }
         },
       },
@@ -134,7 +153,7 @@ export default function MediaLibraryScreen() {
       {error && <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchAssets(); }} />}
       <FlatList
         data={assets}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => String(assetId(item) ?? index)}
         numColumns={2}
         refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); fetchAssets(); }}
