@@ -403,9 +403,6 @@ export default function ContactsScreen({ navigation }: Props) {
 
   const searchRef = useRef(search);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Prevent API response from overwriting list while user is actively typing
-  const isTypingRef = useRef(false);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const applyFilter = (data: Contact[], q: string) => {
     const query = q.toLowerCase().trim();
@@ -417,24 +414,33 @@ export default function ContactsScreen({ navigation }: Props) {
     );
   };
 
+  // The search query that the currently-loaded pages correspond to, so
+  // loadMore always paginates the SAME query the list is showing.
+  const activeQueryRef = useRef("");
+
   const load = useCallback(async (p = 0, q = "", silent = false) => {
     if (p === 0 && !silent) setLoading(true);
     else if (p > 0) setLoadingMore(true);
     setError("");
     setErrorDetail("");
     try {
+      // Server-side search + pagination (web parity). The server returns the
+      // matching page, so with a huge address book search still finds contacts
+      // that were never loaded on screen — a client-side filter can't.
       const data = await fetchContacts({ page: p, size: 50, search: q });
       const items = data.content ?? [];
 
+      // Drop a stale response: if the user has since changed the query, this
+      // page belongs to an old search and must not overwrite the new results.
+      if (q !== searchRef.current) return;
+
       setAllContacts((prev) => {
         const merged = p === 0 ? items : [...prev, ...items];
-        // Only update displayed list if user is NOT actively typing
-        if (!isTypingRef.current) {
-          setContacts(applyFilter(merged, searchRef.current));
-        }
+        setContacts(merged);
         return merged;
       });
 
+      activeQueryRef.current = q;
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
@@ -460,9 +466,8 @@ export default function ContactsScreen({ navigation }: Props) {
         didInitialFocus.current = true;
         return;
       }
-      if (!isTypingRef.current) {
-        load(0, searchRef.current || "", true);
-      }
+      // Silently reload the active query so edits/deletes are reflected.
+      load(0, searchRef.current || "", true);
     }, [load])
   );
 
@@ -470,35 +475,30 @@ export default function ContactsScreen({ navigation }: Props) {
     setSearch(text);
     searchRef.current = text;
 
-    // Mark as typing — blocks API response from overwriting local filter
-    isTypingRef.current = true;
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      isTypingRef.current = false;
-    }, 600);
-
-    // Instant local filter — zero flicker, no focus loss
+    // Instant preview: filter the rows already on screen so typing feels
+    // responsive. The debounced server search below then replaces this with
+    // the authoritative, fully-paginated result set.
     setAllContacts((all) => {
       setContacts(applyFilter(all, text));
       return all;
     });
 
-    // Debounced API call for deeper server-side results
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim()) {
-      debounceRef.current = setTimeout(() => load(0, text, true), 800);
+      // Debounced server-side search (finds matches across the whole address
+      // book, not just the pages already loaded).
+      debounceRef.current = setTimeout(() => load(0, text, true), 400);
     } else {
-      // Search cleared — restore full list immediately
-      setAllContacts((all) => {
-        setContacts(all);
-        return all;
-      });
+      // Search cleared — reload the full first page from the server so the
+      // complete list comes back (not the leftover search results).
+      load(0, "", true);
     }
   }
 
   function loadMore() {
-    if (!loadingMore && page + 1 < totalPages) {
-      load(page + 1, search);
+    // Paginate whichever query the loaded list currently reflects.
+    if (!loadingMore && !loading && page + 1 < totalPages) {
+      load(page + 1, activeQueryRef.current);
     }
   }
 
@@ -549,10 +549,19 @@ export default function ContactsScreen({ navigation }: Props) {
         }
         contentContainerStyle={contacts.length === 0 ? { flex: 1 } : { paddingBottom: 80 }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={15}
-        windowSize={10}
-        initialNumToRender={15}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={{ paddingVertical: 18 }}>
+              <ActivityIndicator color="#0f766e" />
+            </View>
+          ) : null
+        }
+        // removeClippedSubviews left OFF: on Android it can blank out rows in
+        // long lists, which looked like "contacts not loading properly".
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={20}
+        windowSize={11}
+        initialNumToRender={20}
       />
 
       {/* Add Contact FAB */}
