@@ -1,5 +1,6 @@
 import React, { useCallback, useContext, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   RefreshControl,
@@ -146,23 +147,38 @@ export default function ChatInboxScreen({ navigation }: Props) {
     return result;
   };
 
+  // The status filter + search query the currently-loaded pages correspond
+  // to, so loadMore paginates the SAME query/tab the list is showing.
+  const activeStatusRef = useRef("");
+  const activeQueryRef = useRef("");
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const load = useCallback(async (p = 0, s = "", q = "", silent = false) => {
     if (p === 0 && !silent) setLoading(true);
+    else if (p > 0) setLoadingMore(true);
     setError("");
     setErrorDetail("");
     try {
+      // Server-side search + pagination (web parity). The server returns the
+      // matching page, so with a huge inbox search still finds conversations
+      // that were never loaded on screen — a client-side filter can't.
       const data = await fetchInbox({ page: p, size: 100, status: s || undefined, search: q || undefined });
       const content = data.content ?? [];
 
+      // Drop a stale response: if the query/tab has since changed, this page
+      // belongs to an old request and must not overwrite the new results.
+      if (q !== searchRef.current || s !== statusRef.current) return;
+
       setAllItems((prev) => {
         const merged = p === 0 ? content : [...prev, ...content];
-        // Only update displayed list if user is NOT actively typing
-        if (!isTypingRef.current) {
-          setItems(applyFilter(merged, searchRef.current, unreadOnlyRef.current));
-        }
+        // applyFilter still applies the client-side UNREAD toggle (the search
+        // itself is already handled server-side).
+        setItems(applyFilter(merged, q, unreadOnlyRef.current));
         return merged;
       });
 
+      activeStatusRef.current = s;
+      activeQueryRef.current = q;
       setTotalPages(data.totalPages ?? 1);
       setPage(p);
     } catch (err: any) {
@@ -172,6 +188,7 @@ export default function ChatInboxScreen({ navigation }: Props) {
       setErrorDetail(st ? `HTTP ${st} — ${err.config?.url ?? ""}` : err.message ?? "");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }, []);
@@ -310,13 +327,11 @@ export default function ChatInboxScreen({ navigation }: Props) {
     if (text.trim()) {
       debounceRef.current = setTimeout(() => {
         load(0, statusRef.current, text, true);
-      }, 800); // longer delay = less interruption
+      }, 400);
     } else {
-      // Cleared search — restore full list immediately (still respecting unread toggle)
-      setAllItems((all) => {
-        setItems(applyFilter(all, "", unreadOnlyRef.current));
-        return all;
-      });
+      // Search cleared — reload the full first page from the server so the
+      // complete list comes back (not the leftover search results).
+      load(0, statusRef.current, "", true);
     }
   }
 
@@ -372,8 +387,24 @@ export default function ChatInboxScreen({ navigation }: Props) {
             tintColor="#0f766e"
           />
         }
-        onEndReached={() => { if (page + 1 < totalPages) load(page + 1); }}
+        onEndReached={() => {
+          // Paginate the active tab + search, not the default unfiltered list.
+          if (!loadingMore && !loading && page + 1 < totalPages) {
+            load(page + 1, activeStatusRef.current, activeQueryRef.current);
+          }
+        }}
         onEndReachedThreshold={0.4}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={{ paddingVertical: 18 }}>
+              <ActivityIndicator color="#0f766e" />
+            </View>
+          ) : null
+        }
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={20}
+        windowSize={11}
+        initialNumToRender={20}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -387,11 +418,6 @@ export default function ChatInboxScreen({ navigation }: Props) {
           </View>
         }
         contentContainerStyle={items.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
-        // Performance props to reduce re-render stutter
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={15}
-        windowSize={10}
-        initialNumToRender={15}
       />
     </SafeAreaView>
   );
