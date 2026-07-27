@@ -14,6 +14,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
+import { useBadges } from "../state/BadgeContext";
 import BottomTabBar from "./BottomTabBar";
 
 // Existing screens
@@ -156,6 +157,14 @@ function DrawerPanel({
   const [mounted, setMounted] = useState(false);
   const insets = useSafeAreaInsets();
   const { logout, user } = useAuth();
+  const badges = useBadges();
+
+  function countFor(name: string): number {
+    if (name === "Notifications") return badges.notifications;
+    if (name === "Chat") return badges.chat;
+    if (name === "Mail") return badges.mail;
+    return 0;
+  }
 
   React.useEffect(() => {
     if (visible) {
@@ -203,6 +212,7 @@ function DrawerPanel({
               <Text style={styles.sectionTitle}>{section.title.toUpperCase()}</Text>
               {section.items.map((item) => {
                 const focused = activeTab === item.name;
+                const count = countFor(item.name);
                 return (
                   <TouchableOpacity
                     key={item.name}
@@ -212,6 +222,11 @@ function DrawerPanel({
                   >
                     <Ionicons name={item.icon as any} size={21} color={focused ? "#0f766e" : "#6b7280"} style={styles.navIcon} />
                     <Text style={[styles.navLabel, focused && styles.navLabelActive]}>{item.label}</Text>
+                    {count > 0 && (
+                      <View style={styles.navBadge}>
+                        <Text style={styles.navBadgeText}>{count > 99 ? "99+" : count}</Text>
+                      </View>
+                    )}
                     {focused && <View style={styles.activeDot} />}
                   </TouchableOpacity>
                 );
@@ -417,7 +432,12 @@ const styles = StyleSheet.create({
   navIcon: { width: 24, textAlign: "center" },
   navLabel: { flex: 1, fontSize: 15, fontWeight: "600", color: "#374151", letterSpacing: Platform.OS === "ios" ? -0.24 : 0, fontFamily: Platform.OS === "android" ? "sans-serif-medium" : undefined },
   navLabelActive: { color: "#0f766e", fontWeight: "700" },
-  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0f766e" },
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0f766e", marginLeft: 8 },
+  navBadge: {
+    minWidth: 20, height: 20, borderRadius: 10, backgroundColor: "#dc2626",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 6,
+  },
+  navBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   signOutRow: {
     flexDirection: "row", alignItems: "center", gap: 12,
     paddingHorizontal: 22, paddingVertical: 14,

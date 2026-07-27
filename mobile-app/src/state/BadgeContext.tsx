@@ -33,11 +33,13 @@ function notifyLocally(title: string, body: string) {
 interface BadgeCounts {
   chat: number;
   mail: number;
+  notifications: number;
   refresh: () => void;
   /** Screens push their own computed unread totals so the badge always
    *  matches exactly what the inbox screens display. */
   setChatCount: (n: number) => void;
   setMailCount: (n: number) => void;
+  setNotificationCount: (n: number) => void;
   /** The conversation the user is currently viewing. New messages for this
    *  conversation must NOT raise a local notification (WhatsApp behaviour). */
   setActiveConversation: (contactId: string | number | null) => void;
@@ -46,9 +48,11 @@ interface BadgeCounts {
 const BadgeCtx = createContext<BadgeCounts>({
   chat: 0,
   mail: 0,
+  notifications: 0,
   refresh: () => {},
   setChatCount: () => {},
   setMailCount: () => {},
+  setNotificationCount: () => {},
   setActiveConversation: () => {},
 });
 
@@ -65,6 +69,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [chat, setChat] = useState(0);
   const [mail, setMail] = useState(0);
+  const [notifications, setNotifications] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Previous poll values — used to detect NEW arrivals (count increases).
   // Start at Infinity so the first poll after login never notifies.
@@ -122,12 +127,26 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
         setMail(total);
       })
       .catch(() => {});
+
+    // Unread notification count for the drawer's Notifications item (web parity).
+    api
+      .get("/api/notifications")
+      .then((res) => {
+        const n = res.data;
+        const count =
+          Number(n?.unreadCount) ||
+          (Array.isArray(n?.items) ? n.items.filter((i: any) => !i?.readAt && !i?.read).length : 0) ||
+          0;
+        setNotifications(count);
+      })
+      .catch(() => {});
   }, [user]);
 
   useEffect(() => {
     if (!user) {
       setChat(0);
       setMail(0);
+      setNotifications(0);
       prevChatRef.current = Number.POSITIVE_INFINITY;
       prevMailRef.current = Number.POSITIVE_INFINITY;
       if (timerRef.current) clearInterval(timerRef.current);
@@ -141,7 +160,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
   }, [user, refresh]);
 
   return (
-    <BadgeCtx.Provider value={{ chat, mail, refresh, setChatCount: setChat, setMailCount: setMail, setActiveConversation }}>
+    <BadgeCtx.Provider value={{ chat, mail, notifications, refresh, setChatCount: setChat, setMailCount: setMail, setNotificationCount: setNotifications, setActiveConversation }}>
       {children}
     </BadgeCtx.Provider>
   );

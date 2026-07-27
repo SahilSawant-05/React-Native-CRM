@@ -13,6 +13,7 @@ import api from "../../api/client";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { useFocusEffect } from "@react-navigation/native";
+import { useBadges } from "../../state/BadgeContext";
 
 interface Notification {
   id: number;
@@ -27,6 +28,7 @@ interface Notification {
 }
 
 export default function NotificationsScreen() {
+  const badges = useBadges();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,6 +87,7 @@ export default function NotificationsScreen() {
       setNotifications((prev) =>
         prev.map((n) => ({ ...n, readAt: new Date().toISOString() }))
       );
+      badges.setNotificationCount(0); // clear the nav badge immediately
     } catch (e: any) {
       setError(e?.message || "Failed to mark all as read");
     }
@@ -96,6 +99,7 @@ export default function NotificationsScreen() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
       );
+      badges.refresh(); // re-sync the nav badge from the backend
     } catch (e: any) {
       setError(e?.message || "Failed to mark notification as read");
     }
