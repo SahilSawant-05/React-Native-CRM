@@ -114,7 +114,11 @@ export async function fetchInbox(params: {
       page: params.page ?? 0,
       size: params.size ?? 20,
       ...(params.status ? { status: params.status } : {}),
-      ...(params.search ? { search: params.search } : {}),
+      // The backend inbox search param is `query` (see web Chat.jsx loadInbox).
+      // Sending only `search` was ignored server-side, so search fell back to
+      // filtering just the already-loaded pages — broken for large inboxes.
+      // Send both names so it works regardless of the backend's expectation.
+      ...(params.search ? { query: params.search, search: params.search } : {}),
     },
   });
 

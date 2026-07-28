@@ -171,9 +171,10 @@ export default function ChatInboxScreen({ navigation }: Props) {
 
       setAllItems((prev) => {
         const merged = p === 0 ? content : [...prev, ...content];
-        // applyFilter still applies the client-side UNREAD toggle (the search
-        // itself is already handled server-side).
-        setItems(applyFilter(merged, q, unreadOnlyRef.current));
+        // Search is already done server-side — only apply the client-side
+        // UNREAD toggle here. Passing "" avoids re-filtering out valid server
+        // matches (e.g. a phone-number match the client filter wouldn't catch).
+        setItems(applyFilter(merged, "", unreadOnlyRef.current));
         return merged;
       });
 
