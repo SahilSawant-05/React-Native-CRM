@@ -465,20 +465,22 @@ const MessageBubble = React.memo(
     const time = message.createdAt || message.timestamp;
     const failed = (message.status ?? "").toUpperCase() === "FAILED";
 
-    // In an inverted list prevMessage is the older message just above this one.
-    // Show the date separator BELOW this bubble (rendered above in inverted list)
-    // when it belongs to a different day than the older neighbour.
+    // prevMessage is the OLDER neighbour (messages[index+1] in the newest-first
+    // array). Show a date header at the start of each day — i.e. above the
+    // OLDEST message of the day — when this message is a different day than the
+    // older one.
+    //
+    // IMPORTANT: the list is `inverted`, which flips vertical order. An element
+    // rendered BEFORE the bubble in JSX ends up visually BELOW it, so the
+    // header must be rendered AFTER the bubble to appear ABOVE the message.
+    // (Previously it was before the bubble, which put the "30 Jul" header below
+    // the first 30-Jul message and grouped that message under the previous day.)
     const prevDate = prevMessage ? formatDate(prevMessage.createdAt || prevMessage.timestamp) : null;
     const thisDate = formatDate(time);
     const showDateSep = prevDate !== null && prevDate !== thisDate;
 
     return (
       <>
-        {showDateSep && (
-          <View style={styles.dateSep}>
-            <Text style={styles.dateSepText}>{thisDate}</Text>
-          </View>
-        )}
         <View style={[styles.bubbleRow, isOut ? styles.bubbleRowOut : styles.bubbleRowIn]}>
           <TouchableOpacity
             activeOpacity={failed ? 0.7 : 1}
@@ -501,6 +503,11 @@ const MessageBubble = React.memo(
             </View>
           </TouchableOpacity>
         </View>
+        {showDateSep && (
+          <View style={styles.dateSep}>
+            <Text style={styles.dateSepText}>{thisDate}</Text>
+          </View>
+        )}
       </>
     );
   },
