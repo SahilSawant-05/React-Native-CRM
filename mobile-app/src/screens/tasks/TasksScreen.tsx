@@ -738,7 +738,21 @@ export default function TaskKanbanScreen() {
   const isPrivileged = ["ADMIN","OWNER"].includes(String(user?.role||"").toUpperCase());
   const visibleFilters = (isPrivileged ? FILTERS : FILTERS.filter(f=>f.key!=="team")) as typeof FILTERS;
 
-  useEffect(() => { taskApi.getUsers().then(raw=>setUsers(normalizeTaskList(raw) as any)).catch(()=>setUsers([])); }, []);
+  // /api/users is admin/owner-only — calling it as an AGENT returns 403.
+  // Agents can only assign tasks to themselves, so skip the fetch entirely and
+  // seed the assignee list with just the current user.
+  useEffect(() => {
+    if (!isPrivileged) {
+      if (user?.email) {
+        setUsers([{ id: (user as any).id ?? (user as any).userId ?? "", email: user.email } as any]);
+      } else {
+        setUsers([]);
+      }
+      return;
+    }
+    taskApi.getUsers().then(raw => setUsers(normalizeTaskList(raw) as any)).catch(() => setUsers([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPrivileged]);
   useEffect(() => { fetchFilter(isPrivileged ? "team" : "my-tasks"); }, []); // eslint-disable-line
 
   const loadContactTasks = useCallback((cid:string, label:string) => {
