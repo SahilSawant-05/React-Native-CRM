@@ -117,6 +117,21 @@ const normalizeDueAt = (raw: unknown): string | undefined => {
   return undefined;
 };
 
+// Classifies a task's due date into today / overdue / other, tolerant of the
+// same odd dueAt shapes normalizeDueAt handles (ISO string, [y,m,d,…] array,
+// epoch number). Used for the client-side Today/Overdue filters.
+const dueBucket = (raw: unknown): "today" | "overdue" | "other" => {
+  const iso = normalizeDueAt(raw);
+  if (!iso) return "other";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "other";
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (day.getTime() < today.getTime()) return "overdue";
+  if (day.getTime() === today.getTime()) return "today";
+  return "other";
+};
+
 const taskToCard = (t: Task & Record<string, unknown>): TaskCard => {
   const dueAt = normalizeDueAt(t.dueAt);
   return {
@@ -724,21 +739,42 @@ export default function TaskKanbanScreen() {
       .finally(()=>setApiLoading(false));
   }, [showToast]);
 
+  // Loads the base task set for the current user (team for admins/owners,
+  // else my-tasks), with the agent 403 fallback. Used both directly and as
+  // the source for the client-side Today/Overdue filters.
+  const loadBaseTasks = async (): Promise<Task[]> => {
+    try {
+      const raw = isPrivileged ? await taskApi.getTeamTasks() : await taskApi.getMyTasks();
+      return normalizeTaskList(raw);
+    } catch (inner: any) {
+      if (isPrivileged && inner?.response?.status === 403) {
+        return normalizeTaskList(await taskApi.getMyTasks());
+      }
+      throw inner;
+    }
+  };
+
   const fetchFilter = async (filter: FilterKey) => {
     if (activeFilter===filter) { setActiveFilter(null); if (contactId) loadContactTasks(contactId,contactName??""); return; }
     setActiveFilter(filter); setFilterLoading(true);
     try {
-      let raw:any;
-      try {
-        raw = filter==="today"?await taskApi.getToday():filter==="overdue"?await taskApi.getOverdue():filter==="team"?await taskApi.getTeamTasks():await taskApi.getMyTasks();
-      } catch (inner:any) {
-        // Team is admin/owner-only; if an agent lands on it, fall back to My.
-        if (filter==="team" && inner?.response?.status===403) {
-          setActiveFilter("my-tasks");
-          raw = await taskApi.getMyTasks();
-        } else { throw inner; }
+      let tasks: Task[];
+      if (filter === "today" || filter === "overdue") {
+        // Compute Today/Overdue on the client from the base task list — the
+        // dedicated /api/tasks/today and /api/tasks/overdue endpoints error on
+        // this backend. Mirrors how the web derives these buckets from dueAt.
+        const base = await loadBaseTasks();
+        tasks = base.filter((t) => {
+          const st = normalizeStatus((t as any).status);
+          if (st === "COMPLETED" || st === "CANCELLED") return false;
+          return dueBucket((t as any).dueAt) === filter;
+        });
+      } else if (filter === "team") {
+        tasks = normalizeTaskList(await loadBaseTasks());
+      } else {
+        tasks = normalizeTaskList(await taskApi.getMyTasks());
       }
-      const tasks=normalizeTaskList(raw); setColumns(tasks.length?toColumns(tasks):EMPTY_COLS);
+      setColumns(tasks.length ? toColumns(tasks) : EMPTY_COLS);
       showToast(tasks.length?`Loaded ${tasks.length} task(s)`:`No tasks for "${filter}"`,tasks.length?"success":"info");
     } catch (err:any) { showToast(`Filter failed: ${err.message}`,"error"); } finally { setFilterLoading(false); }
   };
