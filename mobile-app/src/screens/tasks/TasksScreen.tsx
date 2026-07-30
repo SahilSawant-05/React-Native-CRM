@@ -154,6 +154,16 @@ const taskToCard = (t: Task & Record<string, unknown>): TaskCard => {
   };
 };
 
+// Turns an API error into a clear, human message (a raw "Request failed with
+// status code 403" is what users were seeing on the task board).
+const describeError = (err: any, fallback: string): string => {
+  const status = err?.response?.status;
+  if (status === 403) return "You don't have permission to do that. Ask an admin if you need access.";
+  if (status === 401) return "Your session expired — please sign in again.";
+  if (status === 404) return "That task or contact was not found.";
+  return err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
+};
+
 const toColumns = (tasks: Task[]): KanbanColumn[] => {
   const map = new Map<StatusKey, TaskCard[]>();
   STATUS_COLUMNS.forEach(({ id }) => map.set(id, []));
@@ -735,7 +745,7 @@ export default function TaskKanbanScreen() {
     setApiLoading(true);
     taskApi.getTasks(cid)
       .then(raw=>{ const tasks=normalizeTaskList(raw); setColumns(tasks.length?toColumns(tasks):EMPTY_COLS); showToast(tasks.length?`Loaded ${tasks.length} task(s) for ${label}`:`No tasks for ${label}`,tasks.length?"success":"info"); })
-      .catch((err:Error)=>{ showToast(`Failed: ${err.message}`,"error"); setColumns(EMPTY_COLS); })
+      .catch((err:Error)=>{ showToast(describeError(err,"Failed to load tasks"),"error"); setColumns(EMPTY_COLS); })
       .finally(()=>setApiLoading(false));
   }, [showToast]);
 
@@ -743,13 +753,20 @@ export default function TaskKanbanScreen() {
   // else my-tasks), with the agent 403 fallback. Used both directly and as
   // the source for the client-side Today/Overdue filters.
   const loadBaseTasks = async (): Promise<Task[]> => {
-    try {
-      const raw = isPrivileged ? await taskApi.getTeamTasks() : await taskApi.getMyTasks();
-      return normalizeTaskList(raw);
-    } catch (inner: any) {
-      if (isPrivileged && inner?.response?.status === 403) {
-        return normalizeTaskList(await taskApi.getMyTasks());
+    // Privileged users read the team board; everyone can read their own tasks.
+    // A 403 (backend restricts team to owners, or the role check disagrees)
+    // must never surface as an error — fall back to my-tasks, then to empty.
+    if (isPrivileged) {
+      try {
+        return normalizeTaskList(await taskApi.getTeamTasks());
+      } catch (inner: any) {
+        if (inner?.response?.status !== 403) throw inner;
       }
+    }
+    try {
+      return normalizeTaskList(await taskApi.getMyTasks());
+    } catch (inner: any) {
+      if (inner?.response?.status === 403) return [];
       throw inner;
     }
   };
@@ -776,7 +793,7 @@ export default function TaskKanbanScreen() {
       }
       setColumns(tasks.length ? toColumns(tasks) : EMPTY_COLS);
       showToast(tasks.length?`Loaded ${tasks.length} task(s)`:`No tasks for "${filter}"`,tasks.length?"success":"info");
-    } catch (err:any) { showToast(`Filter failed: ${err.message}`,"error"); } finally { setFilterLoading(false); }
+    } catch (err:any) { showToast(describeError(err,"Failed to load tasks"),"error"); } finally { setFilterLoading(false); }
   };
 
   const handleSelectContact = (c: Contact) => {
@@ -796,7 +813,7 @@ export default function TaskKanbanScreen() {
         return col;
       }));
       showToast(`Moved to ${STATUS_COLUMNS.find(c=>c.id===toCol)?.name}`);
-    } catch (err:any) { showToast(`Move failed: ${err.message}`,"error"); }
+    } catch (err:any) { showToast(describeError(err,"Could not move the task"),"error"); }
   };
 
   // ── Cross-column drag & drop (ported from PipelineScreen) ──
@@ -884,7 +901,7 @@ export default function TaskKanbanScreen() {
         setColumns(prev=>prev.map(col=>col.id===status?{...col,cards:[...col.cards,newCard]}:col));
         showToast("Task created");
       }
-    } catch (err:any){showToast(`Save failed: ${err.message}`,"error");}
+    } catch (err:any){showToast(describeError(err,"Could not save the task"),"error");}
     finally{setTaskSaving(false);}
   };
 
@@ -893,7 +910,7 @@ export default function TaskKanbanScreen() {
     const cid=card.contactId??contactId; const tid=card.id??card._id;
     if (!cid||tid==null){showToast("Cannot delete: missing id","error");return;}
     try { await taskApi.deleteTask(cid,tid); setColumns(prev=>prev.map(col=>({...col,cards:col.cards.filter(c=>c.key!==card.key)}))); showToast("Task deleted"); }
-    catch (err:any){showToast(`Delete failed: ${err.message}`,"error");}
+    catch (err:any){showToast(describeError(err,"Could not delete the task"),"error");}
   };
 
   const filteredCols = columns.map(col=>({...col,cards:search?col.cards.filter(c=>{const q=search.toLowerCase();return c.title.toLowerCase().includes(q)||c.description?.toLowerCase().includes(q)||c.contactName?.toLowerCase().includes(q)||c.assignedUserEmail?.toLowerCase().includes(q);}):col.cards}));
