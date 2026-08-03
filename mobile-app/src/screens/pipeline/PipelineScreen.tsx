@@ -246,39 +246,46 @@ function LostReasonModal({ visible, onConfirm, onCancel }: {
   onCancel: () => void;
 }) {
   const [reason, setReason] = useState("");
+  // KeyboardAvoidingView is unreliable inside a Modal on Android, so the
+  // keyboard covered this bottom sheet (and its reason field). Track the
+  // keyboard height directly and lift the sheet above it.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (!visible) { setKeyboardHeight(0); return; }
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvt, (e) => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, [visible]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <View style={lms.overlay}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={lms.kav}
-          keyboardVerticalOffset={0}
-        >
-          <View style={lms.sheet}>
-            <Text style={lms.title}>Reason for Loss</Text>
-            <Text style={lms.sub}>Describe why this opportunity was lost</Text>
-            <TextInput
-              style={lms.input}
-              value={reason}
-              onChangeText={setReason}
-              placeholder="e.g. Budget constraints, competitor chosen..."
-              placeholderTextColor="#94a3b8"
-              multiline
-              autoFocus
-            />
-            <View style={lms.btnRow}>
-              <TouchableOpacity style={lms.cancelBtn} onPress={onCancel}>
-                <Text style={lms.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={lms.confirmBtn}
-                onPress={() => { onConfirm(reason.trim()); setReason(""); }}
-              >
-                <Text style={lms.confirmText}>Mark Lost</Text>
-              </TouchableOpacity>
-            </View>
+      <View style={[lms.overlay, { paddingBottom: keyboardHeight }]}>
+        <View style={lms.sheet}>
+          <Text style={lms.title}>Reason for Loss</Text>
+          <Text style={lms.sub}>Describe why this opportunity was lost</Text>
+          <TextInput
+            style={lms.input}
+            value={reason}
+            onChangeText={setReason}
+            placeholder="e.g. Budget constraints, competitor chosen..."
+            placeholderTextColor="#94a3b8"
+            multiline
+            autoFocus
+          />
+          <View style={lms.btnRow}>
+            <TouchableOpacity style={lms.cancelBtn} onPress={onCancel}>
+              <Text style={lms.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={lms.confirmBtn}
+              onPress={() => { onConfirm(reason.trim()); setReason(""); }}
+            >
+              <Text style={lms.confirmText}>Mark Lost</Text>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );
