@@ -37,17 +37,35 @@ function normalizePage(data: any): ContactsPage {
   return { content: [], totalElements: 0, totalPages: 1, number: 0 };
 }
 
+export interface ContactFilters {
+  tag?: string;
+  stage?: string;
+  leadSource?: string;
+  city?: string;
+  conversationStatus?: string;
+  assignedUserId?: string;
+}
+
 export async function fetchContacts(params: {
   page?: number;
   size?: number;
   search?: string;
+  filters?: ContactFilters;
 }): Promise<ContactsPage> {
+  // Only send filter values that are actually set (web parity: the web omits
+  // empty filter params from /api/contacts/search/page).
+  const f = params.filters ?? {};
+  const filterParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(f)) {
+    if (v != null && String(v).trim() !== "") filterParams[k] = String(v).trim();
+  }
   try {
     const res = await api.get("/api/contacts/search/page", {
       params: {
         page: params.page ?? 0,
         size: params.size ?? 20,
         ...(params.search ? { query: params.search } : {}),
+        ...filterParams,
       },
     });
     return normalizePage(res.data);

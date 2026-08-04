@@ -37,7 +37,7 @@ function avatarColors(name: string) {
 }
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
-import { fetchContacts } from "../../api/contacts";
+import { fetchContacts, ContactFilters } from "../../api/contacts";
 import { emailValidationMessage, phoneValidationMessage } from "../../utils/validation";
 import api from "../../api/client";
 import { Contact } from "../../types";
@@ -389,6 +389,98 @@ function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => voi
   );
 }
 
+// ─── Filter options (web parity: Contacts.jsx DEFAULT_FILTERS) ────────────────
+const FILTER_LEAD_SOURCES = [
+  "WHATSAPP", "EMAIL", "WEBSITE_FORM", "WEBSITE", "FACEBOOK", "INSTAGRAM",
+  "GOOGLE_ADS", "REFERRAL", "WALK_IN", "PORTAL", "CAMPAIGN", "CSV_IMPORT", "MANUAL", "OTHER",
+];
+const FILTER_STAGES = ["NEW", "QUALIFIED", "FOLLOW_UP", "WON", "LOST"];
+const FILTER_CONVERSATION = ["OPEN", "CLOSED"];
+
+function labelize(v: string) {
+  return v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ContactFilterModal({
+  visible, initial, onClose, onApply,
+}: {
+  visible: boolean;
+  initial: ContactFilters;
+  onClose: () => void;
+  onApply: (f: ContactFilters) => void;
+}) {
+  const [draft, setDraft] = useState<ContactFilters>(initial);
+
+  useEffect(() => { if (visible) setDraft(initial); }, [visible, initial]);
+
+  const set = (key: keyof ContactFilters, value: string) =>
+    setDraft((d) => ({ ...d, [key]: d[key] === value ? "" : value }));
+
+  const Chips = ({ label, field, options }: { label: string; field: keyof ContactFilters; options: string[] }) => (
+    <View style={fm.group}>
+      <Text style={fm.groupLabel}>{label}</Text>
+      <View style={fm.chipWrap}>
+        {options.map((opt) => {
+          const active = draft[field] === opt;
+          return (
+            <TouchableOpacity key={opt} style={[fm.chip, active && fm.chipActive]} onPress={() => set(field, opt)}>
+              <Text style={[fm.chipText, active && fm.chipTextActive]}>{labelize(opt)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+        <View style={fm.header}>
+          <Text style={fm.title}>Filter Contacts</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={fm.body} keyboardShouldPersistTaps="handled">
+          <Chips label="Lead Source" field="leadSource" options={FILTER_LEAD_SOURCES} />
+          <Chips label="Stage" field="stage" options={FILTER_STAGES} />
+          <Chips label="Conversation" field="conversationStatus" options={FILTER_CONVERSATION} />
+
+          <View style={fm.group}>
+            <Text style={fm.groupLabel}>City</Text>
+            <TextInput
+              style={fm.input}
+              value={draft.city ?? ""}
+              onChangeText={(v) => setDraft((d) => ({ ...d, city: v }))}
+              placeholder="e.g. Mumbai"
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+          <View style={fm.group}>
+            <Text style={fm.groupLabel}>Tag</Text>
+            <TextInput
+              style={fm.input}
+              value={draft.tag ?? ""}
+              onChangeText={(v) => setDraft((d) => ({ ...d, tag: v }))}
+              placeholder="e.g. hot-lead"
+              placeholderTextColor="#94a3b8"
+              autoCapitalize="none"
+            />
+          </View>
+        </ScrollView>
+        <View style={fm.footer}>
+          <TouchableOpacity style={fm.clearBtn} onPress={() => onApply({})} activeOpacity={0.85}>
+            <Text style={fm.clearBtnText}>Clear all</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={fm.applyBtn} onPress={() => onApply(draft)} activeOpacity={0.85}>
+            <Text style={fm.applyBtnText}>Apply filters</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export default function ContactsScreen({ navigation }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState("");
@@ -400,9 +492,14 @@ export default function ContactsScreen({ navigation }: Props) {
   const [errorDetail, setErrorDetail] = useState("");
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<ContactFilters>({});
 
   const searchRef = useRef(search);
+  const filtersRef = useRef<ContactFilters>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeFilterCount = Object.values(filters).filter((v) => v != null && String(v).trim() !== "").length;
 
   const applyFilter = (data: Contact[], q: string) => {
     const query = q.toLowerCase().trim();
@@ -427,7 +524,7 @@ export default function ContactsScreen({ navigation }: Props) {
       // Server-side search + pagination (web parity). The server returns the
       // matching page, so with a huge address book search still finds contacts
       // that were never loaded on screen — a client-side filter can't.
-      const data = await fetchContacts({ page: p, size: 50, search: q });
+      const data = await fetchContacts({ page: p, size: 50, search: q, filters: filtersRef.current });
       const items = data.content ?? [];
 
       // Drop a stale response: if the user has since changed the query, this
@@ -502,6 +599,14 @@ export default function ContactsScreen({ navigation }: Props) {
     }
   }
 
+  function applyFilters(next: ContactFilters) {
+    setFilters(next);
+    filtersRef.current = next;
+    setFilterOpen(false);
+    setLoading(true);
+    load(0, searchRef.current || "");
+  }
+
   if (loading) return <LoadingSpinner message="Loading contacts…" />;
 
   return (
@@ -527,7 +632,26 @@ export default function ContactsScreen({ navigation }: Props) {
             autoCapitalize="none"
           />
         </View>
+        <TouchableOpacity
+          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          onPress={() => setFilterOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="options-outline" size={20} color={activeFilterCount > 0 ? "#0f766e" : "#6b7280"} />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterCountBadge}>
+              <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
+
+      <ContactFilterModal
+        visible={filterOpen}
+        initial={filters}
+        onClose={() => setFilterOpen(false)}
+        onApply={applyFilters}
+      />
 
       {!!error && <ErrorBanner message={error} detail={errorDetail} onRetry={() => load(0, search)} />}
 
@@ -579,8 +703,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
+  filterBtn: {
+    width: 42, height: 40, borderRadius: 12,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(118,118,128,0.08)",
+  },
+  filterBtnActive: { backgroundColor: "#ccfbf1" },
+  filterCountBadge: {
+    position: "absolute", top: -3, right: -3,
+    minWidth: 16, height: 16, borderRadius: 8, backgroundColor: "#0f766e",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+    borderWidth: 1.5, borderColor: "#fff",
+  },
+  filterCountText: { color: "#fff", fontSize: 9.5, fontWeight: "700" },
   searchField: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -653,4 +794,41 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
   },
+});
+const fm = StyleSheet.create({
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: "#fff",
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(60,60,67,0.12)",
+  },
+  title: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  body: { padding: 16, gap: 18, paddingBottom: 32 },
+  group: { gap: 8 },
+  groupLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.6 },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff",
+  },
+  chipActive: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
+  chipText: { fontSize: 13, fontWeight: "600", color: "#475569" },
+  chipTextActive: { color: "#fff" },
+  input: {
+    borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, color: "#0f172a", backgroundColor: "#fff",
+  },
+  footer: {
+    flexDirection: "row", gap: 10, padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(60,60,67,0.12)", backgroundColor: "#fff",
+  },
+  clearBtn: {
+    flex: 1, alignItems: "center", justifyContent: "center", minHeight: 48,
+    borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff",
+  },
+  clearBtnText: { fontSize: 15, fontWeight: "700", color: "#475569" },
+  applyBtn: {
+    flex: 2, alignItems: "center", justifyContent: "center", minHeight: 48,
+    borderRadius: 12, backgroundColor: "#0f766e",
+  },
+  applyBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
 });
