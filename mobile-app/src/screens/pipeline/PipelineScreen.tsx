@@ -59,6 +59,11 @@ interface Opportunity {
 
 interface StageMeta {
   key: string;
+  // The exact stageKey the backend stored (before display normalization). The
+  // stage-change API must receive THIS value — a custom pipeline whose stored
+  // key isn't already upper-snake (e.g. "new_lead") gets a 400 if we send the
+  // normalized display key ("NEW_LEAD") instead.
+  rawKey: string;
   label: string;
   color: string;
   icon: string;
@@ -92,11 +97,11 @@ const LS_SM = Platform.OS === "ios" ? -0.15 : 0; // 13-14pt
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const FALLBACK_STAGES: StageMeta[] = [
-  { key: "NEW",       label: "New",       color: "#0f766e", icon: "sparkles-outline" },
-  { key: "QUALIFIED", label: "Qualified", color: "#2563eb", icon: "checkmark-circle-outline" },
-  { key: "FOLLOW_UP", label: "Follow Up", color: "#7c3aed", icon: "calendar-outline" },
-  { key: "WON",       label: "Won",       color: "#059669", icon: "trophy-outline" },
-  { key: "LOST",      label: "Lost",      color: "#dc2626", icon: "close-circle-outline" },
+  { key: "NEW",       rawKey: "NEW",       label: "New",       color: "#0f766e", icon: "sparkles-outline" },
+  { key: "QUALIFIED", rawKey: "QUALIFIED", label: "Qualified", color: "#2563eb", icon: "checkmark-circle-outline" },
+  { key: "FOLLOW_UP", rawKey: "FOLLOW_UP", label: "Follow Up", color: "#7c3aed", icon: "calendar-outline" },
+  { key: "WON",       rawKey: "WON",       label: "Won",       color: "#059669", icon: "trophy-outline" },
+  { key: "LOST",      rawKey: "LOST",      label: "Lost",      color: "#dc2626", icon: "close-circle-outline" },
 ];
 
 const PALETTE = ["#0f766e","#2563eb","#7c3aed","#d97706","#059669","#dc2626","#0891b2"];
@@ -128,6 +133,7 @@ function normalizeStageKey(value?: string): string {
 function buildStagesMeta(keys: string[]): StageMeta[] {
   return keys.map((key, i) => ({
     key,
+    rawKey: key,
     label: key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
     color: key === "WON"  ? "#059669" : key === "LOST" ? "#dc2626" : PALETTE[i % PALETTE.length],
     icon: key === "WON"  ? "trophy-outline" : key === "LOST" ? "close-circle-outline" : ICONS[i % ICONS.length],
@@ -140,9 +146,11 @@ function buildStages(rawStages: any[]): StageMeta[] {
     .filter(s => s.active !== false)
     .sort((a, b) => (a.displayOrder ?? 100) - (b.displayOrder ?? 100))
     .map((s, i) => {
-      const key = normalizeStageKey(s.stageKey || s.key || s.label);
+      const rawKey = String(s.stageKey || s.key || s.label || "NEW");
+      const key = normalizeStageKey(rawKey);
       return {
         key,
+        rawKey,
         label: s.label || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
         color: key === "WON"  ? "#059669" : key === "LOST" ? "#dc2626" : PALETTE[i % PALETTE.length],
         icon: key === "WON"  ? "trophy-outline" : key === "LOST" ? "close-circle-outline" : ICONS[i % ICONS.length],
@@ -1657,9 +1665,13 @@ export default function PipelineScreen() {
       )
     );
     try {
+      // Send the backend's exact stored stage key, not the display-normalized
+      // one — otherwise a custom pipeline whose key isn't upper-snake 400s.
+      const backendStage = stagesMap[stage]?.rawKey ?? stage;
+      const isLost = stage === "LOST" || backendStage.toUpperCase() === "LOST";
       await api.post(`/api/opportunities/${opp.id}/stage`, {
-        stage,
-        lostReason: stage === "LOST" ? lostReason : null,
+        stage: backendStage,
+        lostReason: isLost ? lostReason : null,
       });
       showToast(`Moved to ${stagesMap[stage]?.label || stage}`);
     } catch (e: any) {
@@ -1671,10 +1683,12 @@ export default function PipelineScreen() {
   // ── Save (add / edit) ─────────────────────────────────────────────────────
   const saveCard = async (form: OppFormState) => {
     setSaving(true);
+    const normStage = normalizeStageKey(form.stage);
     const payload = {
       contactId: Number(form.contactId),
       title: form.title.trim(),
-      stage: normalizeStageKey(form.stage),
+      // Send the backend's stored stage key (web parity), not the normalized one.
+      stage: stagesMap[normStage]?.rawKey ?? normStage,
       pipelineId: selectedPipelineId ? Number(selectedPipelineId) : null,
       amount: form.amount === "" ? null : Number(form.amount),
       probability: form.probability === "" ? null : Number(form.probability),
