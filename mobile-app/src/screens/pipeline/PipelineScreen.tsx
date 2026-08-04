@@ -1778,6 +1778,26 @@ export default function PipelineScreen() {
     });
   }, [stages]);
 
+  // When the pipeline changes, the set of stage columns changes too. The
+  // columnBounds / columnRefs maps are refs keyed by stage key and are never
+  // overwritten for keys that no longer exist, so bounds from the PREVIOUS
+  // pipeline (e.g. the default pipeline's "NEW" column) linger. Since columns
+  // render at the same screen X, hitStage would match a stale key and post a
+  // stage that doesn't belong to the current pipeline → 400. Clear both maps
+  // whenever the stage set changes so only the current columns are hit-tested.
+  useEffect(() => {
+    const validKeys = new Set(stages.map(s => s.key));
+    for (const key of Object.keys(columnBounds.current)) {
+      if (!validKeys.has(key)) delete columnBounds.current[key];
+    }
+    for (const key of Object.keys(columnRefs.current)) {
+      if (!validKeys.has(key)) delete columnRefs.current[key];
+    }
+    // Re-measure the current columns on the next frame once they've laid out.
+    const t = setTimeout(measureAll, 150);
+    return () => clearTimeout(t);
+  }, [stages, measureAll]);
+
   const hitStage = (screenX: number): string | null => {
     for (const [key, b] of Object.entries(columnBounds.current)) {
       if (screenX >= b.left && screenX <= b.right) return key;
