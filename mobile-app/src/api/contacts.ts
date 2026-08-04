@@ -70,7 +70,12 @@ export async function fetchContacts(params: {
     });
     return normalizePage(res.data);
   } catch (err: any) {
-    if (err?.response?.status === 404 || err?.response?.status === 400) {
+    const hasQuery = !!params.search || Object.keys(filterParams).length > 0;
+    // Only fall back to the plain /api/contacts endpoint for an UNFILTERED
+    // load. Falling back while a search/filter is active would ignore it and
+    // return every contact — which looks exactly like "the filter doesn't
+    // work". Surface the error instead so a real problem is visible.
+    if (!hasQuery && (err?.response?.status === 404 || err?.response?.status === 400)) {
       const res = await api.get("/api/contacts", {
         params: { page: params.page ?? 0, size: params.size ?? 20 },
       });

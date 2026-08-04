@@ -401,6 +401,33 @@ function labelize(v: string) {
   return v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Module-level so it isn't recreated each render (which remounted the City/Tag
+// inputs and dropped their keyboard focus after each character).
+function ChipGroup({
+  label, value, options, onToggle,
+}: {
+  label: string;
+  value?: string;
+  options: string[];
+  onToggle: (opt: string) => void;
+}) {
+  return (
+    <View style={fm.group}>
+      <Text style={fm.groupLabel}>{label}</Text>
+      <View style={fm.chipWrap}>
+        {options.map((opt) => {
+          const active = value === opt;
+          return (
+            <TouchableOpacity key={opt} style={[fm.chip, active && fm.chipActive]} onPress={() => onToggle(opt)}>
+              <Text style={[fm.chipText, active && fm.chipTextActive]}>{labelize(opt)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function ContactFilterModal({
   visible, initial, onClose, onApply,
 }: {
@@ -413,24 +440,8 @@ function ContactFilterModal({
 
   useEffect(() => { if (visible) setDraft(initial); }, [visible, initial]);
 
-  const set = (key: keyof ContactFilters, value: string) =>
+  const toggle = (key: keyof ContactFilters) => (value: string) =>
     setDraft((d) => ({ ...d, [key]: d[key] === value ? "" : value }));
-
-  const Chips = ({ label, field, options }: { label: string; field: keyof ContactFilters; options: string[] }) => (
-    <View style={fm.group}>
-      <Text style={fm.groupLabel}>{label}</Text>
-      <View style={fm.chipWrap}>
-        {options.map((opt) => {
-          const active = draft[field] === opt;
-          return (
-            <TouchableOpacity key={opt} style={[fm.chip, active && fm.chipActive]} onPress={() => set(field, opt)}>
-              <Text style={[fm.chipText, active && fm.chipTextActive]}>{labelize(opt)}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -442,9 +453,9 @@ function ContactFilterModal({
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={fm.body} keyboardShouldPersistTaps="handled">
-          <Chips label="Lead Source" field="leadSource" options={FILTER_LEAD_SOURCES} />
-          <Chips label="Stage" field="stage" options={FILTER_STAGES} />
-          <Chips label="Conversation" field="conversationStatus" options={FILTER_CONVERSATION} />
+          <ChipGroup label="Lead Source" value={draft.leadSource} options={FILTER_LEAD_SOURCES} onToggle={toggle("leadSource")} />
+          <ChipGroup label="Stage" value={draft.stage} options={FILTER_STAGES} onToggle={toggle("stage")} />
+          <ChipGroup label="Conversation" value={draft.conversationStatus} options={FILTER_CONVERSATION} onToggle={toggle("conversationStatus")} />
 
           <View style={fm.group}>
             <Text style={fm.groupLabel}>City</Text>
