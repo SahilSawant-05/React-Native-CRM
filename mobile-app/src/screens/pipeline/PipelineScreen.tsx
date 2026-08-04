@@ -1516,10 +1516,6 @@ export default function PipelineScreen() {
   const [pipelines,         setPipelines]         = useState<Pipeline[]>([]);
   const [selectedPipelineId,setSelectedPipelineId]= useState<string | number | null>(null);
   const [stages,            setStages]            = useState<StageMeta[]>(FALLBACK_STAGES);
-  // True when the current `stages` are the generic FALLBACK_STAGES because the
-  // server returned none for the selected pipeline. Fallback keys don't belong
-  // to a custom pipeline, so stage-change POSTs must be blocked in that case.
-  const stagesAreFallbackRef = useRef(false);
   const [stageTotals,       setStageTotals]       = useState<Record<string, number>>({});
   const [contacts,          setContacts]          = useState<Contact[]>([]);
   const [domainItems,       setDomainItems]       = useState<DomainItem[]>([]);
@@ -1607,18 +1603,16 @@ export default function PipelineScreen() {
       // custom pipeline (its stage keys won't belong to that pipeline), so we
       // remember whether these are real server stages and gate moves on it.
       const rawStageList = stageRes.status === "fulfilled" ? normalizeList(stageRes.value.data) : [];
-      const usedFallback = rawStageList.length === 0;
       const nextStages: StageMeta[] = stageRes.status === "fulfilled"
         ? buildStages(rawStageList)
         : FALLBACK_STAGES;
-      stagesAreFallbackRef.current = usedFallback;
       setStages(nextStages);
-      if (__DEV__ && usedFallback) {
+      if (__DEV__ && rawStageList.length === 0) {
         console.log(
           "[pipeline] no server stages for pipeline",
           resolvedPipelineId,
           stageRes.status === "rejected" ? `(request failed: ${(stageRes as any).reason?.message})` : "(empty response)",
-          "— using fallback stages; moves in this pipeline are disabled",
+          "— using fallback stages",
         );
       }
 
@@ -1676,15 +1670,6 @@ export default function PipelineScreen() {
 
   // ── Move stage ────────────────────────────────────────────────────────────
   const doMove = async (opp: Opportunity, stage: string, lostReason: string | null) => {
-    // Guard: if the board is showing the generic fallback stages (because the
-    // server returned no stages for this pipeline), the target key does NOT
-    // belong to the selected pipeline. Posting it yields the backend error
-    // "Stage does not belong to the selected pipeline". Block it with a clear
-    // message instead of firing a request that is guaranteed to fail.
-    if (stagesAreFallbackRef.current || !stagesMap[stage]) {
-      showToast("This pipeline has no configured stages yet — set them up on the web app first.", "error");
-      return;
-    }
     setOpps(prev =>
       prev.map(o =>
         o.id === opp.id
