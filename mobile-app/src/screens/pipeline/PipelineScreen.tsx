@@ -1665,30 +1665,32 @@ export default function PipelineScreen() {
       )
     );
     try {
-      // Send the backend's exact stored stage key, not the display-normalized
-      // one — otherwise a custom pipeline whose key isn't upper-snake 400s.
-      const backendStage = stagesMap[stage]?.rawKey ?? stage;
-      const isLost = stage === "LOST" || backendStage.toUpperCase() === "LOST";
+      // Exact web payload: { stage: <normalized key>, lostReason }. Include
+      // pipelineId so the backend can validate the stage against the right
+      // pipeline when the opportunity spans pipelines.
+      const isLost = stage === "LOST";
       await api.post(`/api/opportunities/${opp.id}/stage`, {
-        stage: backendStage,
+        stage,
         lostReason: isLost ? lostReason : null,
+        ...(opp.pipelineId != null ? { pipelineId: opp.pipelineId } : {}),
       });
       showToast(`Moved to ${stagesMap[stage]?.label || stage}`);
     } catch (e: any) {
       setOpps(prev => prev.map(o => o.id === opp.id ? { ...o, stage: opp.stage } : o));
-      showToast(e?.response?.data?.message || "Stage update failed", "error");
+      const d = e?.response?.data;
+      const msg = d?.message || d?.error || (typeof d === "string" ? d : null) || e?.message || "Stage update failed";
+      if (__DEV__) console.log("[pipeline] stage change 400 body:", JSON.stringify(d), "sent stage:", stage, "pipelineId:", opp.pipelineId);
+      showToast(msg, "error");
     }
   };
 
   // ── Save (add / edit) ─────────────────────────────────────────────────────
   const saveCard = async (form: OppFormState) => {
     setSaving(true);
-    const normStage = normalizeStageKey(form.stage);
     const payload = {
       contactId: Number(form.contactId),
       title: form.title.trim(),
-      // Send the backend's stored stage key (web parity), not the normalized one.
-      stage: stagesMap[normStage]?.rawKey ?? normStage,
+      stage: normalizeStageKey(form.stage),
       pipelineId: selectedPipelineId ? Number(selectedPipelineId) : null,
       amount: form.amount === "" ? null : Number(form.amount),
       probability: form.probability === "" ? null : Number(form.probability),
