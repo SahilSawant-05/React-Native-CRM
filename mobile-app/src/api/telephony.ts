@@ -6,6 +6,21 @@ import api from "./client";
 // calls are placed through the CRM (tracked, recorded, reported). When the
 // toggle is off, we fall back to the phone's native dialer.
 
+// Format a phone number for the native dialer (`tel:` URI). Numbers are stored
+// as country code + 10 digits (e.g. "919876543210") without the leading "+".
+// The phone's dialer needs the "+" to treat "91" as the country code, so we
+// prepend it. Already-formatted ("+91…") and short/local numbers are left as-is.
+export function formatDialNumber(raw?: string | null): string {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("+")) return trimmed;
+  // Keep only leading digits; strip spaces, dashes, parentheses.
+  const digits = trimmed.replace(/[^\d]/g, "");
+  // 91 country code + 10-digit subscriber number → prepend "+".
+  if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
+  return trimmed;
+}
+
 export interface TelephonyToggles {
   active: boolean;
   clickToCallEnabled: boolean;
@@ -72,12 +87,12 @@ export async function smartCall(opts: {
       const result = res.data || {};
       if (String(result.status || "").toUpperCase() === "FAILED") {
         // CRM refused (e.g. no agent mapping) — fall back to the dialer.
-        if (opts.phone) await Linking.openURL(`tel:${opts.phone}`);
+        if (opts.phone) await Linking.openURL(`tel:${formatDialNumber(opts.phone)}`);
         return { mode: "PHONE", failureReason: result.failureReason || "CRM call failed" };
       }
       return { mode: "CRM", status: result.status || "REQUESTED" };
     } catch (err: any) {
-      if (opts.phone) await Linking.openURL(`tel:${opts.phone}`);
+      if (opts.phone) await Linking.openURL(`tel:${formatDialNumber(opts.phone)}`);
       return {
         mode: "PHONE",
         failureReason:
@@ -86,6 +101,6 @@ export async function smartCall(opts: {
     }
   }
 
-  if (opts.phone) await Linking.openURL(`tel:${opts.phone}`);
+  if (opts.phone) await Linking.openURL(`tel:${formatDialNumber(opts.phone)}`);
   return { mode: "PHONE" };
 }

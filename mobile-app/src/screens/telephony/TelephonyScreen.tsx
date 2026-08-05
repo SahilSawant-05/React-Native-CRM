@@ -18,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
-import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn } from "../../api/telephony";
+import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn, formatDialNumber } from "../../api/telephony";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -830,7 +830,7 @@ function NewCallSheet({
           );
           return;
         }
-        await Linking.openURL(`tel:${number}`);
+        await Linking.openURL(`tel:${formatDialNumber(number)}`);
         onDone("CRM calling is off — dialed from the phone instead.");
         setContactId(""); setCustomerNumber(""); setAgentNumber(""); setNotes("");
         onClose();
