@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Vistaar Flow",
-    "slug": "crm-agent-mobile",
+    "slug": "CRM-techoceanhub-VISTAAR",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -12,7 +12,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.techoceanhub.crmagent"
+      "bundleIdentifier": "com.techoceanhub.crmagent",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.techoceanhub.vistaarflow",
@@ -24,7 +27,7 @@
         "POST_NOTIFICATIONS"
       ]
     },
-    "plugins": [ 
+    "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
       [
@@ -42,7 +45,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "55d24b42-c9b8-491e-b540-711661360ed2"
+        "projectId": "7ecf6e79-173c-477e-a091-5200d30fc746"
       }
     }
   }
