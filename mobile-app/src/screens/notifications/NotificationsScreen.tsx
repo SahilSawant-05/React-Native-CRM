@@ -14,6 +14,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { useFocusEffect } from "@react-navigation/native";
 import { useBadges } from "../../state/BadgeContext";
+import { useAppNav, tabForTarget } from "../../navigation/useAppNav";
 
 interface Notification {
   id: number;
@@ -25,10 +26,14 @@ interface Notification {
   targetPath: string;
   targetType: string;
   type: string;
+  contactId?: number | string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
 }
 
 export default function NotificationsScreen() {
   const badges = useBadges();
+  const { navigateTo, openChat } = useAppNav();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -105,6 +110,27 @@ export default function NotificationsScreen() {
     }
   };
 
+  // Web parity (Notifications.jsx openNotification): mark the notification read
+  // and then navigate to the page/tab it points at (targetPath / targetType /
+  // type). A chat notification opens the conversation; everything else routes
+  // to the matching drawer tab.
+  const openNotification = (n: Notification) => {
+    if (!n.readAt) markRead(n.id);
+    const structured = [n.type, n.targetType, n.targetPath].filter(Boolean).join(" ");
+    const text = [n.title, n.body].filter(Boolean).join(" ");
+    const tab = tabForTarget(structured) || tabForTarget(text);
+    if (!tab) return;
+    if (tab === "Chat" && n.contactId != null && n.contactId !== "") {
+      openChat({
+        contactId: n.contactId as any,
+        contactName: n.contactName || n.title || "Chat",
+        contactPhone: n.contactPhone || undefined,
+      });
+      return;
+    }
+    navigateTo(tab);
+  };
+
   const iconForType = (
     type: string
   ): { name: keyof typeof Ionicons.glyphMap; color: string; bg: string } => {
@@ -155,7 +181,7 @@ export default function NotificationsScreen() {
         renderItem={({ item }) => {
           const icon = iconForType(item.type);
           return (
-            <TouchableOpacity onPress={() => markRead(item.id)} activeOpacity={0.7}>
+            <TouchableOpacity onPress={() => openNotification(item)} activeOpacity={0.7}>
               <View style={[styles.row, !item.readAt && styles.rowUnread]}>
                 <View style={styles.dotColumn}>
                   {!item.readAt && <View style={styles.unreadDot} />}
