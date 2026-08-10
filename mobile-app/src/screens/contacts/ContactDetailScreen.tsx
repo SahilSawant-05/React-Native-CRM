@@ -17,6 +17,21 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 const mediumFont = Platform.OS === "android" ? "sans-serif-medium" : undefined;
+
+// Web parity (config/leadSources.js leadSourceLabel): friendly label for a
+// lead source code, e.g. "FACEBOOK" → "Facebook", "WEBSITE_FORM" → "Website Form".
+const LEAD_SOURCE_LABELS: Record<string, string> = {
+  WHATSAPP: "WhatsApp", EMAIL: "Email", WEBSITE_FORM: "Website Form", WEBSITE: "Website",
+  WEB: "Website", FACEBOOK: "Facebook", INSTAGRAM: "Instagram", GOOGLE_ADS: "Google Ads",
+  REFERRAL: "Referral", WALK_IN: "Walk-in", PORTAL: "Portal", CAMPAIGN: "Campaign",
+  CSV_IMPORT: "CSV / Excel Import", IMPORT: "CSV / Excel Import", CSV: "CSV / Excel Import",
+  UPLOAD: "CSV / Excel Import", MANUAL: "Manual", OTHER: "Other",
+};
+function leadSourceLabel(value?: string | null): string {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (!normalized) return "";
+  return LEAD_SOURCE_LABELS[normalized] || normalized.replace(/_/g, " ");
+}
 import { RouteProp } from "@react-navigation/native";
 import { fetchContactById, fetchContactTimeline, updateContact, deleteContact } from "../../api/contacts";
 import { emailValidationMessage, phoneValidationMessage } from "../../utils/validation";
@@ -536,6 +551,18 @@ try {
           {[
             { label: "Phone", value: contact.phone },
             { label: "Email", value: contact.email },
+            { label: "Company", value: (contact as any).company },
+            { label: "Source", value: leadSourceLabel((contact as any).leadSource) },
+            // Web parity (Contacts.jsx Info: "Source Detail" = leadSourceDetail).
+            // For Facebook/Instagram lead-ad contacts this holds the form/site
+            // the lead came in against, so label it "Lead Form" in that case.
+            {
+              label: /FACEBOOK|INSTAGRAM|META/i.test(String((contact as any).leadSource || ""))
+                ? "Lead Form"
+                : "Source Detail",
+              value: (contact as any).leadSourceDetail || (contact as any).sourceDetail,
+            },
+            { label: "City", value: (contact as any).city },
             { label: "Status", value: contact.status },
             { label: "Created", value: contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : null },
           ]
