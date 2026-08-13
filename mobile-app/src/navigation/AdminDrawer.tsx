@@ -46,10 +46,6 @@ import AiSettingsScreen from "../screens/ai/AiSettingsScreen";
 import AiWorkQueueScreen from "../screens/ai/AiWorkQueueScreen";
 import FacebookLeadsScreen from "../screens/facebook/FacebookLeadsScreen";
 import TelephonyScreen from "../screens/telephony/TelephonyScreen";
-import UsersScreen from "../screens/users/UsersScreen";
-import WebhookEventsScreen from "../screens/webhooks/WebhookEventsScreen";
-import AuditLogsScreen from "../screens/audit/AuditLogsScreen";
-import SetupStatusScreen from "../screens/setup/SetupStatusScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -106,10 +102,6 @@ const NAV_SECTIONS: NavSection[] = [
       { name: "AutomationRules",  label: "Automation Rules",   icon: "flash-outline" },
       { name: "LeadAssignment",   label: "Lead Assignment",    icon: "locate-outline" },
       { name: "FacebookLeads",    label: "Facebook Leads",     icon: "logo-facebook" },
-      { name: "Users",            label: "Team",               icon: "people-circle-outline" },
-      { name: "SetupStatus",      label: "Setup Status",       icon: "checkmark-done-outline" },
-      { name: "WebhookEvents",    label: "Webhook Events",     icon: "git-network-outline" },
-      { name: "AuditLogs",        label: "Audit Logs",         icon: "document-text-outline" },
       { name: "AiSettings",       label: "AI Settings",        icon: "sparkles-outline" },
       { name: "CrmSettings",      label: "CRM Settings",       icon: "settings-outline" },
       { name: "WhatsAppSetup",    label: "WhatsApp Setup",     icon: "logo-whatsapp" },
@@ -355,10 +347,6 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   FacebookLeads:   withHeader(FacebookLeadsScreen,    "Facebook Leads"),
   AutomationRules: withHeader(AutomationRulesScreen, "Automation Rules"),
   LeadAssignment:  withHeader(LeadAssignmentScreen,  "Lead Assignment"),
-  Users:           withHeader(UsersScreen,           "Team"),
-  SetupStatus:     withHeader(SetupStatusScreen,     "Setup Status"),
-  WebhookEvents:   withHeader(WebhookEventsScreen,   "Webhook Events"),
-  AuditLogs:       withHeader(AuditLogsScreen,       "Audit Logs"),
   CrmSettings:   withHeader(CrmSettingsScreen,   "CRM Settings"),
   WhatsAppSetup: withHeader(WhatsAppSetupScreen, "WhatsApp Setup"),
   Billing:       withHeader(BillingStatusScreen, "Billing"),
