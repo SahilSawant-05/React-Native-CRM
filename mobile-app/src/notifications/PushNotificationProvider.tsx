@@ -17,6 +17,7 @@ export default function PushNotificationProvider({ children }: Props) {
 
   usePushNotifications({
     enabled: !!user,
+    userId: user?.id ?? null,
     onMessageReceived: () => {
       // New chat/mail arrived while app is open — update tab badges
       badges.refresh();

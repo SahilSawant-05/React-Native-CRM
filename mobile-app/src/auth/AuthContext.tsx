@@ -8,6 +8,7 @@ import {
   saveAuthSession,
 } from "./session";
 import { setCachedToken } from "../api/client";
+import { unregisterPushToken } from "../notifications/usePushNotifications";
 
 interface AuthContextValue {
   token: string | null;
@@ -83,6 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout() {
+    // Drop this device's push token from the backend WHILE still authenticated,
+    // so notifications for this user don't keep arriving for whoever logs in
+    // next on the same device (cross-account notification leak).
+    await unregisterPushToken().catch(() => {});
     await clearAuthSession();
     setCachedToken(null);                  // ← clear sync cache
     setToken(null);

@@ -39,6 +39,13 @@ async function promptBatteryExemptionOnce() {
   }
 }
  
+// The device token last registered with the backend for the CURRENT user. Kept
+// at module scope so logout can unregister it (see unregisterPushToken) — the
+// device token is tied to whichever user was logged in when it was registered,
+// so it MUST be dropped on logout or the next account on this device would keep
+// receiving the previous user's notifications.
+let lastRegisteredToken: string | null = null;
+
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
   // Send several field-name variants so the token lands regardless of what
   // the backend's /api/users/push-token endpoint expects for its columns.
@@ -53,6 +60,7 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
   };
   try {
     await api.post("/api/users/push-token", payload);
+    lastRegisteredToken = token;
     if (__DEV__) console.log("[FCM] push-token registered with backend ✔");
   } catch (err: any) {
     const status = err?.response?.status;
@@ -71,6 +79,37 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
   }
 }
  
+// Unregister this device's push token from the backend. MUST be called during
+// logout while the session token is still valid (the request is authenticated),
+// so the backend removes the token→user mapping. Without this, the token stays
+// bound to the user who logged out and the next account on the same device
+// receives that user's push notifications (cross-account leak).
+export async function unregisterPushToken(): Promise<void> {
+  let token = lastRegisteredToken;
+  if (!token) {
+    // The app may have been restarted since registration; recover the current
+    // device token so we can still drop it.
+    try {
+      const rnfbMessaging = await getMessagingModule();
+      if (rnfbMessaging) {
+        token = await rnfbMessaging.getToken(rnfbMessaging.getMessaging());
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!token) return;
+  const payload = { token, fcmToken: token, pushToken: token, provider: "FCM" };
+  try {
+    await api.delete("/api/users/push-token", { data: payload, params: { token } });
+    if (__DEV__) console.log("[FCM] push-token unregistered from backend ✔");
+  } catch (err: any) {
+    if (__DEV__) console.warn("[FCM] push-token unregister failed:", err?.response?.status ?? err?.message);
+  } finally {
+    lastRegisteredToken = null;
+  }
+}
+
 // Loads the RNFirebase messaging module and returns its modular-API
 // namespace (getMessaging, getToken, onMessage, …) rather than the
 // deprecated messaging() namespaced instance. Returns null when the native
@@ -116,9 +155,11 @@ interface Options {
   /** Called when a message arrives while the app is open (badge refresh etc.) */
   onMessageReceived?: (remoteMessage: any) => void;
   enabled?: boolean;
+  /** Current logged-in user id — re-registers the token when the account changes. */
+  userId?: string | number | null;
 }
- 
-export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true }: Options = {}) {
+
+export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true, userId }: Options = {}) {
   useEffect(() => {
     if (!enabled) return;
  
@@ -209,7 +250,9 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
       unsubscribeForeground?.();
       unsubscribeOpenedApp?.();
     };
-  }, [enabled]);
+    // Re-run when the account changes so the device token is re-registered to
+    // the newly logged-in user (defense in depth against stale token→user maps).
+  }, [enabled, userId]);
 }
  
  
