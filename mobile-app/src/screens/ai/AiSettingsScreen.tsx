@@ -73,6 +73,9 @@ export default function AiSettingsScreen() {
   const [msgIsError, setMsgIsError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  // When a key is already saved we hide the input and just show the connected
+  // status; the user can opt to reveal it only to replace the saved key.
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const selectedProvider = useMemo(
     () => PROVIDERS.find((p) => p.key === settings.provider) || PROVIDERS[0],
@@ -128,6 +131,7 @@ export default function AiSettingsScreen() {
       });
       setSettings({ ...EMPTY_SETTINGS, ...(res.data || {}) });
       setApiKey("");
+      setShowKeyInput(false);
       showMsg("AI settings saved.");
     } catch (err: any) {
       showMsg(err?.response?.data?.message || err?.response?.data?.error || err.message || "Save failed", true);
@@ -244,45 +248,47 @@ export default function AiSettingsScreen() {
           </TouchableOpacity>
           <Text style={styles.modelHint}>Tap to cycle through {modelOptions.length} available models</Text>
 
-          {/* API key */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>API Key</Text>
-          <TextInput
-            style={styles.input}
-            value={apiKey}
-            onChangeText={setApiKey}
-            placeholder={settings.hasApiKey ? "Saved — enter new key to replace" : "Paste your provider API key"}
-            placeholderTextColor="#94a3b8"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          {/* Key status hint (web parity: AiSettings.jsx) */}
-          <View
-            style={[
-              styles.keyHint,
-              settings.hasApiKey ? styles.keyHintSaved : styles.keyHintNone,
-            ]}
-          >
-            <Ionicons
-              name={settings.hasApiKey ? "shield-checkmark" : "alert-circle-outline"}
-              size={15}
-              color={settings.hasApiKey ? "#047857" : "#b45309"}
-              style={{ marginTop: 1 }}
-            />
-            <Text
-              style={[
-                styles.keyHintText,
-                settings.hasApiKey ? styles.keyHintTextSaved : styles.keyHintTextNone,
-              ]}
-            >
-              {settings.hasApiKey
-                ? apiKey.trim()
-                  ? "You are replacing the saved encrypted key. Save settings to apply the new key."
-                  : "A key is already saved securely. Paste a new key only when you want to replace it."
-                : "No API key saved yet. Paste your provider key, then save and test connection."}
-            </Text>
+          {/* API key connection status. Once a key is saved we only show the
+              connected status and hide the input; the user can reveal it to
+              replace the key if needed. */}
+          <View style={styles.keyStatusRow}>
+            <Text style={styles.fieldLabel}>API Key</Text>
+            <View style={[styles.connBadge, settings.hasApiKey ? styles.connBadgeOk : styles.connBadgeNo]}>
+              <Ionicons
+                name={settings.hasApiKey ? "shield-checkmark" : "alert-circle-outline"}
+                size={13}
+                color={settings.hasApiKey ? "#047857" : "#b45309"}
+              />
+              <Text style={[styles.connText, settings.hasApiKey ? styles.connTextOk : styles.connTextNo]}>
+                {settings.hasApiKey ? "Connected" : "Not connected"}
+              </Text>
+            </View>
           </View>
+
+          {/* Input shown only when no key is saved, or when replacing. */}
+          {(!settings.hasApiKey || showKeyInput) ? (
+            <>
+              <TextInput
+                style={[styles.input, { marginTop: 8 }]}
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder={settings.hasApiKey ? "Enter new key to replace" : "Paste your provider API key"}
+                placeholderTextColor="#94a3b8"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {settings.hasApiKey && (
+                <TouchableOpacity onPress={() => { setShowKeyInput(false); setApiKey(""); }}>
+                  <Text style={styles.replaceLink}>Cancel replace</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <TouchableOpacity onPress={() => setShowKeyInput(true)}>
+              <Text style={styles.replaceLink}>Replace saved key</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Active toggle */}
           <View style={styles.toggleRow}>
@@ -428,6 +434,15 @@ const styles = StyleSheet.create({
   keyHintText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: "500" },
   keyHintTextSaved: { color: "#047857" },
   keyHintTextNone: { color: "#b45309" },
+
+  keyStatusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16 },
+  connBadge: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  connBadgeOk: { backgroundColor: "#ecfdf5" },
+  connBadgeNo: { backgroundColor: "#fffbeb" },
+  connText: { fontSize: 12, fontWeight: "700", fontFamily: androidMedium },
+  connTextOk: { color: "#047857" },
+  connTextNo: { color: "#b45309" },
+  replaceLink: { fontSize: 12.5, fontWeight: "700", color: "#0f766e", marginTop: 8 },
 
   input: {
     borderWidth: StyleSheet.hairlineWidth,
