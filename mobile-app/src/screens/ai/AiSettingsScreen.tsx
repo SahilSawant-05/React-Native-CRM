@@ -244,17 +244,14 @@ export default function AiSettingsScreen() {
           </TouchableOpacity>
           <Text style={styles.modelHint}>Tap to cycle through {modelOptions.length} available models</Text>
 
-          {/* API key. Once a key is saved the field is frozen (read-only) so it
-              can't be edited from the app — key changes are done on the web. */}
+          {/* API key. The field is always read-only in the app — it can't be
+              typed into; key setup/changes are done on the web dashboard. */}
           <Text style={[styles.fieldLabel, { marginTop: 16 }]}>API Key</Text>
           <TextInput
-            style={[styles.input, settings.hasApiKey && styles.inputFrozen]}
-            value={settings.hasApiKey ? "••••••••••••  saved" : apiKey}
-            onChangeText={setApiKey}
-            editable={!settings.hasApiKey}
-            placeholder={settings.hasApiKey ? "Saved" : "Paste your provider API key"}
+            style={[styles.input, styles.inputFrozen]}
+            value={settings.hasApiKey ? "••••••••••••  saved" : "No key saved"}
+            editable={false}
             placeholderTextColor="#94a3b8"
-            secureTextEntry={!settings.hasApiKey}
             autoCapitalize="none"
             autoCorrect={false}
           />
