@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Alert, Linking, PermissionsAndroid, Platform } from "react-native";
+import { AppState, Alert, Linking, PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../api/client";
 import { displayFcmNotification, ensureNotificationChannel } from "./displayNotification";
@@ -166,6 +166,8 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
     let unsubscribeTokenRefresh: (() => void) | undefined;
     let unsubscribeForeground: (() => void) | undefined;
     let unsubscribeOpenedApp: (() => void) | undefined;
+    let appStateSub: { remove: () => void } | undefined;
+    let currentToken: string | null = null;
  
     (async () => {
       try {
@@ -206,11 +208,21 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           // Firebase Console > Messaging > Send test message to verify the
           // device pipeline end-to-end without any backend code.
           console.log("[FCM] Device token:", token);
+          currentToken = token;
           await registerTokenWithBackend(token);
         }
  
         unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
+          currentToken = newToken;
           registerTokenWithBackend(newToken);
+        });
+
+        // Re-assert the token → current-user binding every time the app returns
+        // to the foreground. On a shared device this ensures an agent's token is
+        // (re)bound to the agent, not left mapped to a previous user (e.g. the
+        // owner), so agents reliably receive their OWN push notifications.
+        appStateSub = AppState.addEventListener("change", (state) => {
+          if (state === "active" && currentToken) registerTokenWithBackend(currentToken);
         });
  
         // Foreground messages: FCM does NOT display these automatically.
@@ -249,6 +261,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
       unsubscribeTokenRefresh?.();
       unsubscribeForeground?.();
       unsubscribeOpenedApp?.();
+      appStateSub?.remove();
     };
     // Re-run when the account changes so the device token is re-registered to
     // the newly logged-in user (defense in depth against stale token→user maps).
