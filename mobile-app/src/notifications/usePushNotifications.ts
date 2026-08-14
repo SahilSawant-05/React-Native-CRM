@@ -46,10 +46,19 @@ async function promptBatteryExemptionOnce() {
 // receiving the previous user's notifications.
 let lastRegisteredToken: string | null = null;
 
+// The current logged-in user id, kept at module scope so token registration
+// can bind the device token to the RIGHT user (the auth token identifies the
+// caller, but sending the id explicitly lets the backend reassign a token that
+// was previously bound to another user on this device — e.g. owner → agent).
+let currentUserId: string | number | null = null;
+export function setPushUserId(id: string | number | null) {
+  currentUserId = id;
+}
+
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
   // Send several field-name variants so the token lands regardless of what
   // the backend's /api/users/push-token endpoint expects for its columns.
-  const payload = {
+  const payload: Record<string, any> = {
     token,
     fcmToken: token,
     pushToken: token,
@@ -58,6 +67,10 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
     tokenType: "FCM",
     provider: "FCM",
   };
+  if (currentUserId != null && currentUserId !== "") {
+    payload.userId = currentUserId;
+    payload.assignedUserId = currentUserId;
+  }
   try {
     await api.post("/api/users/push-token", payload);
     lastRegisteredToken = token;
@@ -161,6 +174,9 @@ interface Options {
 
 export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true, userId }: Options = {}) {
   useEffect(() => {
+    // Keep the module-scoped id in sync so every (re)registration — including
+    // token-refresh and foreground re-asserts — binds to the current user.
+    setPushUserId(enabled ? (userId ?? null) : null);
     if (!enabled) return;
  
     let unsubscribeTokenRefresh: (() => void) | undefined;
