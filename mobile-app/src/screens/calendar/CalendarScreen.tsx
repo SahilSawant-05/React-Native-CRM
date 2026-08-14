@@ -257,7 +257,20 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
         e?.message ??
         "Failed to create event";
 
-      Alert.alert("Error", detail);
+      // 409 = calendar conflict (web parity: Events.jsx surfaces a "Calendar
+      // conflict:" banner). The event overlaps another scheduled event for the
+      // assignee — show the backend's reason and let the user pick another
+      // time rather than a generic failure.
+      if (e?.response?.status === 409) {
+        Alert.alert(
+          "Scheduling conflict",
+          detail && detail !== "Failed to create event"
+            ? detail
+            : "This time overlaps another scheduled event. Please choose a different time.",
+        );
+      } else {
+        Alert.alert("Error", detail);
+      }
     } finally {
       setSaving(false);
     }
