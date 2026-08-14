@@ -1,5 +1,6 @@
-import React, { use } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -9,9 +10,30 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  getPushDiagnostics,
+  subscribePushDiagnostics,
+  forceReregisterPushToken,
+  PushDiagnostics,
+} from "../../notifications/usePushNotifications";
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const [diag, setDiag] = useState<PushDiagnostics>(getPushDiagnostics());
+  const [reRegistering, setReRegistering] = useState(false);
+
+  useEffect(() => subscribePushDiagnostics(setDiag), []);
+
+  async function reRegister() {
+    setReRegistering(true);
+    await forceReregisterPushToken();
+    setDiag(getPushDiagnostics());
+    setReRegistering(false);
+  }
+
+  const diagOk = diag.ok === true;
+  const diagState = diag.ok === null ? "Pending" : diagOk ? "Registered" : "Failed";
+  const diagColor = diag.ok === null ? "#94a3b8" : diagOk ? "#047857" : "#dc2626";
 
   function handleLogout() {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -60,6 +82,40 @@ export default function ProfileScreen() {
             <Text style={styles.rowLabel}>User ID</Text>
             <Text style={styles.rowValue}>{user?.id || "—"}</Text>
           </View>
+        </View>
+
+        {/* Push notification diagnostics */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Push Notifications</Text>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Status</Text>
+            <Text style={[styles.rowValue, { color: diagColor, fontWeight: "700" }]}>{diagState}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Bound to user</Text>
+            <Text style={styles.rowValue}>{diag.userId != null ? String(diag.userId) : "—"}</Text>
+          </View>
+          {diag.status != null && (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Last response</Text>
+              <Text style={styles.rowValue}>{diag.status}{diag.message ? ` · ${diag.message}` : ""}</Text>
+            </View>
+          )}
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Device token</Text>
+            <Text style={styles.rowValue} numberOfLines={1}>
+              {diag.token ? `${diag.token.slice(0, 10)}…${diag.token.slice(-6)}` : "—"}
+            </Text>
+          </View>
+          <View style={[styles.row, { borderBottomWidth: 0 }]}>
+            <Text style={styles.rowLabel}>Updated</Text>
+            <Text style={styles.rowValue}>{diag.at || "—"}</Text>
+          </View>
+          <TouchableOpacity style={styles.reRegBtn} onPress={reRegister} disabled={reRegistering}>
+            {reRegistering
+              ? <ActivityIndicator size="small" color="#0f766e" />
+              : <Text style={styles.reRegText}>Re-register this device</Text>}
+          </TouchableOpacity>
         </View>
 
         {/* App info */}
@@ -138,4 +194,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logoutText: { color: "#dc2626", fontSize: 15, fontWeight: "700" },
+  reRegBtn: {
+    marginTop: 12,
+    backgroundColor: "#f0fdfa",
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  reRegText: { color: "#0f766e", fontSize: 14, fontWeight: "700" },
 });

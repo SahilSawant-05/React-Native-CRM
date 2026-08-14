@@ -55,6 +55,44 @@ export function setPushUserId(id: string | number | null) {
   currentUserId = id;
 }
 
+// Last registration outcome, exposed to an in-app diagnostics card so support
+// can see — without dev tools — whether THIS device registered its push token
+// and, if it failed, the exact HTTP status/message.
+export interface PushDiagnostics {
+  token: string | null;
+  userId: string | number | null;
+  ok: boolean | null;   // null = not attempted yet
+  status: number | null;
+  message: string | null;
+  at: string | null;
+}
+let pushDiagnostics: PushDiagnostics = { token: null, userId: null, ok: null, status: null, message: null, at: null };
+const diagListeners = new Set<(d: PushDiagnostics) => void>();
+function setDiagnostics(patch: Partial<PushDiagnostics>) {
+  pushDiagnostics = { ...pushDiagnostics, ...patch, at: new Date().toLocaleTimeString() };
+  diagListeners.forEach((l) => l(pushDiagnostics));
+}
+export function getPushDiagnostics(): PushDiagnostics {
+  return pushDiagnostics;
+}
+export function subscribePushDiagnostics(fn: (d: PushDiagnostics) => void): () => void {
+  diagListeners.add(fn);
+  return () => diagListeners.delete(fn);
+}
+// Force a re-registration of the current device token (used by the diagnostics
+// "Re-register" button). Returns the fresh device token, or null.
+export async function forceReregisterPushToken(): Promise<string | null> {
+  try {
+    const rnfbMessaging = await getMessagingModule();
+    if (!rnfbMessaging) return null;
+    const token = await rnfbMessaging.getToken(rnfbMessaging.getMessaging());
+    if (token) await registerTokenWithBackend(token);
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
   // Send several field-name variants so the token lands regardless of what
   // the backend's /api/users/push-token endpoint expects for its columns.
@@ -74,13 +112,16 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
   try {
     await api.post("/api/users/push-token", payload);
     lastRegisteredToken = token;
+    setDiagnostics({ token, userId: currentUserId, ok: true, status: 200, message: "Registered" });
     if (__DEV__) console.log("[FCM] push-token registered with backend ✔");
   } catch (err: any) {
     const status = err?.response?.status;
+    const message = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message ?? "Registration failed";
+    setDiagnostics({ token, userId: currentUserId, ok: false, status: status ?? null, message });
     if (__DEV__) {
       console.warn(
         `[FCM] push-token registration failed (attempt ${attempt}) — ` +
-        `status=${status ?? "network"} ${err?.response?.data?.message ?? err?.message ?? ""}`
+        `status=${status ?? "network"} ${message}`
       );
     }
     // Retry transient failures (network / 5xx) a few times with backoff;
