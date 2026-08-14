@@ -216,11 +216,19 @@ function CreateEventModal({ visible, defaultDate, onClose, onCreated }: {
       // reject a missing field even when it's logically optional. This is
       // a defensive guess; the console.log below will show us if the
       // real 400 reason is something else entirely.
+      // Web parity (Events.jsx handleSave): the backend keys the category off
+      // the `category` KEY string (e.g. "MEETING"), not `categoryId`. Sending
+      // categoryId was ignored server-side so every event fell back to
+      // Planning. Send the key (and categoryId too, harmlessly, for any DTO
+      // that reads it) plus the SCHEDULED status the web sends.
+      const category = getCategoryById(categoryId);
       const payload: Record<string, any> = {
         title: title.trim(),
         startAt,
         allDay,
+        category: category.key,
         categoryId,
+        status: "SCHEDULED",
         description: description.trim(),
       };
 
