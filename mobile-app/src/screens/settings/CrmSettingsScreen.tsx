@@ -5,9 +5,14 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  TouchableOpacity,
+  Clipboard,
+  Alert,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../../api/client";
+import { API_BASE_URL } from "../../config/env";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { useFocusEffect } from "@react-navigation/native";
@@ -131,7 +136,8 @@ export default function CrmSettingsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f766e" />}
         contentContainerStyle={{ paddingBottom: 24 }}
       >
-        <Text style={styles.sectionHeader}>EMAIL / GMAIL</Text>
+        <Text style={styles.sectionHeader}>EMAIL</Text>
+        {/* Gmail (web parity: Phase2Settings.jsx gmailOAuthConnected) */}
         {(() => {
           const connected = Boolean(emailConfig?.gmailOAuthConnected);
           const who = emailConfig?.gmailOauthEmail || emailConfig?.fromEmail || "";
@@ -150,6 +156,60 @@ export default function CrmSettingsScreen() {
                   ? `Connected as ${who}`
                   : "Connect Gmail from the web CRM (Settings → Email) to send and receive email."}
               </Text>
+            </View>
+          );
+        })()}
+        {/* Outlook / Microsoft 365 (web parity: Phase2Settings.jsx
+            outlookOAuthConnected). Previously missing entirely, so a tenant
+            connected via Outlook always looked "Not connected". */}
+        {(() => {
+          const connected = Boolean(emailConfig?.outlookOAuthConnected);
+          const who = emailConfig?.outlookOauthEmail || emailConfig?.fromEmail || "";
+          return (
+            <View style={[styles.card, { backgroundColor: connected ? "#ecfdf5" : "#f0f9ff" }]}>
+              <View style={styles.row}>
+                <Text style={[styles.itemName, { color: connected ? "#065f46" : "#075985" }]}>Microsoft 365 / Outlook</Text>
+                <View style={[styles.badge, { backgroundColor: connected ? "#059669" : "#e0f2fe" }]}>
+                  <Text style={[styles.badgeText, { color: connected ? "#fff" : "#0284c7" }]}>
+                    {connected ? "Connected" : "Not connected"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 12.5, marginTop: 4, color: connected ? "#047857" : "#075985" }}>
+                {connected
+                  ? `Connected as ${who}`
+                  : "Connect Microsoft 365 from the web CRM (Settings → Email) to send and receive email."}
+              </Text>
+            </View>
+          );
+        })()}
+
+        {/* Website widget snippet (web parity: Phase2Settings.jsx —
+            <script src="{baseUrl}/widget.js" data-tenant=… data-key=…>). */}
+        <Text style={styles.sectionHeader}>WEBSITE WIDGET</Text>
+        {(() => {
+          const tenantKey = settings?.widgetTenantKey;
+          const publicKey = settings?.widgetPublicKey;
+          if (!tenantKey || !publicKey) {
+            return <Text style={styles.emptyText}>Widget keys not available yet.</Text>;
+          }
+          const baseUrl = String(API_BASE_URL || "").replace(/\/+$/, "");
+          const snippet = `<script src="${baseUrl}/widget.js" data-tenant="${tenantKey}" data-key="${publicKey}"></script>`;
+          const copy = () => {
+            Clipboard.setString(snippet);
+            Alert.alert("Copied", "Widget snippet copied to clipboard.");
+          };
+          return (
+            <View style={styles.card}>
+              <Text style={{ fontSize: 12.5, color: "#475569", marginBottom: 8 }}>
+                Paste this script on any website to capture leads into this CRM.
+              </Text>
+              <View style={styles.codeBox}>
+                <Text style={styles.codeText} selectable>{snippet}</Text>
+              </View>
+              <TouchableOpacity style={styles.copyBtn} onPress={copy} activeOpacity={0.8}>
+                <Text style={styles.copyBtnText}>Copy snippet</Text>
+              </TouchableOpacity>
             </View>
           );
         })()}
@@ -217,4 +277,8 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 15, fontWeight: "600", color: "#1e293b", flex: 1 },
   badge: { borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: "#ccfbf1" },
   badgeText: { fontSize: 11, fontWeight: "700", color: "#0f766e" },
+  codeBox: { backgroundColor: "#0f172a", borderRadius: 10, padding: 12 },
+  codeText: { fontSize: 12, color: "#e2e8f0", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
+  copyBtn: { marginTop: 10, alignSelf: "flex-start", backgroundColor: "#0f766e", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 9 },
+  copyBtnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
 });
