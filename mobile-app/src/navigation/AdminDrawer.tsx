@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth/AuthContext";
 import { useBadges } from "../state/BadgeContext";
 import BottomTabBar from "./BottomTabBar";
+import { consumePendingNavigation, subscribePendingNavigation } from "../state/pendingNavigation";
 
 // Existing screens
 import WorkQueueScreen from "../screens/workqueue/WorkQueueScreen";
@@ -369,6 +370,20 @@ export default function AdminDrawer() {
     pendingChatRef.current = contact;
     navigate("Chat");
   }
+
+  // Navigate when a push notification is tapped (intent set by
+  // PushNotificationProvider). Consume on mount for cold-start taps (app
+  // launched from a killed state), and subscribe for taps while running.
+  React.useEffect(() => {
+    const apply = (intent: { tab?: string | null; chat?: PendingChat | null } | null) => {
+      if (!intent) return;
+      if (intent.chat) openChat(intent.chat);
+      else if (intent.tab) navigate(intent.tab);
+    };
+    apply(consumePendingNavigation());
+    return subscribePendingNavigation(apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ActiveScreen = SCREEN_MAP[activeTab] ?? SCREEN_MAP["Dashboard"];
 
