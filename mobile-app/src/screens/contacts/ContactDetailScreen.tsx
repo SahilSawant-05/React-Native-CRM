@@ -32,6 +32,17 @@ function leadSourceLabel(value?: string | null): string {
   if (!normalized) return "";
   return LEAD_SOURCE_LABELS[normalized] || normalized.replace(/_/g, " ");
 }
+
+// Web parity (Contacts.jsx normTags): tags may arrive as an array or a
+// comma-separated string; normalize to a clean string array.
+function normTags(raw: any): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((t) => String(t).trim()).filter(Boolean);
+  return String(raw)
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
 import { RouteProp } from "@react-navigation/native";
 import { fetchContactById, fetchContactTimeline, updateContact, deleteContact } from "../../api/contacts";
 import { emailValidationMessage, phoneValidationMessage } from "../../utils/validation";
@@ -573,6 +584,23 @@ try {
                 <Text style={styles.fieldValue}>{f.value}</Text>
               </View>
             ))}
+          {/* Tags (web parity: Contacts.jsx Info "Tags" pills). */}
+          {(() => {
+            const tags = normTags((contact as any).tags);
+            if (tags.length === 0) return null;
+            return (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Tags</Text>
+                <View style={styles.tagRow}>
+                  {tags.map((tag) => (
+                    <View key={tag} style={styles.tag}>
+                      <Text style={styles.tagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         {/* Timeline */}
@@ -767,6 +795,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(60,60,67,0.12)",
   },
   fieldLabel: { fontSize: 12, color: "#6b7280", fontWeight: "500", letterSpacing: iosTightSm },
+  tagRow: { flex: 1, flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, marginLeft: 12 },
   fieldValue: {
     fontSize: 14,
     color: "#111827",
