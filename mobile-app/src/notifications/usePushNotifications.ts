@@ -46,24 +46,78 @@ async function promptBatteryExemptionOnce() {
 // receiving the previous user's notifications.
 let lastRegisteredToken: string | null = null;
 
+// The current logged-in user id, kept at module scope so token registration
+// can bind the device token to the RIGHT user (the auth token identifies the
+// caller, but sending the id explicitly lets the backend reassign a token that
+// was previously bound to another user on this device — e.g. owner → agent).
+let currentUserId: string | number | null = null;
+export function setPushUserId(id: string | number | null) {
+  currentUserId = id;
+}
+
+// Last registration outcome, exposed to an in-app diagnostics card so support
+// can see — without dev tools — whether THIS device registered its push token
+// and, if it failed, the exact HTTP status/message.
+export interface PushDiagnostics {
+  token: string | null;
+  userId: string | number | null;
+  ok: boolean | null;   // null = not attempted yet
+  status: number | null;
+  message: string | null;
+  at: string | null;
+}
+let pushDiagnostics: PushDiagnostics = { token: null, userId: null, ok: null, status: null, message: null, at: null };
+const diagListeners = new Set<(d: PushDiagnostics) => void>();
+function setDiagnostics(patch: Partial<PushDiagnostics>) {
+  pushDiagnostics = { ...pushDiagnostics, ...patch, at: new Date().toLocaleTimeString() };
+  diagListeners.forEach((l) => l(pushDiagnostics));
+}
+export function getPushDiagnostics(): PushDiagnostics {
+  return pushDiagnostics;
+}
+export function subscribePushDiagnostics(fn: (d: PushDiagnostics) => void): () => void {
+  diagListeners.add(fn);
+  return () => diagListeners.delete(fn);
+}
+// Force a re-registration of the current device token (used by the diagnostics
+// "Re-register" button). Returns the fresh device token, or null.
+export async function forceReregisterPushToken(): Promise<string | null> {
+  try {
+    const rnfbMessaging = await getMessagingModule();
+    if (!rnfbMessaging) return null;
+    const token = await rnfbMessaging.getToken(rnfbMessaging.getMessaging());
+    if (token) await registerTokenWithBackend(token);
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
-  // The backend keys the token off the authenticated caller (JWT) and only
-  // needs the FCM token itself — so send just the token. Field-name variants
-  // are included so it lands regardless of the DTO's column name; no user id
-  // is sent (the server derives the user from the auth token, which is what
-  // binds the token to whoever is currently logged in on this device).
-  const payload = {
+  // Send several field-name variants so the token lands regardless of what
+  // the backend's /api/users/push-token endpoint expects for its columns.
+  const payload: Record<string, any> = {
     token,
     fcmToken: token,
     pushToken: token,
+    platform: Platform.OS,
+    deviceType: Platform.OS?.toUpperCase(),
+    tokenType: "FCM",
+    provider: "FCM",
   };
+  if (currentUserId != null && currentUserId !== "") {
+    payload.userId = currentUserId;
+    payload.assignedUserId = currentUserId;
+  }
   try {
     await api.post("/api/users/push-token", payload);
     lastRegisteredToken = token;
+    setDiagnostics({ token, userId: currentUserId, ok: true, status: 200, message: "Registered" });
     if (__DEV__) console.log("[FCM] push-token registered with backend ✔");
   } catch (err: any) {
     const status = err?.response?.status;
     const message = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message ?? "Registration failed";
+    setDiagnostics({ token, userId: currentUserId, ok: false, status: status ?? null, message });
     if (__DEV__) {
       console.warn(
         `[FCM] push-token registration failed (attempt ${attempt}) — ` +
@@ -161,6 +215,9 @@ interface Options {
 
 export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true, userId }: Options = {}) {
   useEffect(() => {
+    // Keep the module-scoped id in sync so every (re)registration — including
+    // token-refresh and foreground re-asserts — binds to the current user.
+    setPushUserId(enabled ? (userId ?? null) : null);
     if (!enabled) return;
  
     let unsubscribeTokenRefresh: (() => void) | undefined;
