@@ -125,8 +125,14 @@ export default function CrmSettingsScreen() {
 
   if (loading) return <LoadingSpinner message="Loading settings..." />;
 
+  // Show scalar settings under "General", but hide the widget-related fields —
+  // the raw snippet/keys are surfaced properly in the dedicated Website Widget
+  // card above, so dumping them here again (including a raw script string) is
+  // noise.
   const settingsEntries = settings
-    ? Object.entries(settings).filter(([, v]) => typeof v !== "object")
+    ? Object.entries(settings).filter(
+        ([k, v]) => typeof v !== "object" && !/widget|snippet|script/i.test(k)
+      )
     : [];
 
   return (
