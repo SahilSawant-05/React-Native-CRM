@@ -56,9 +56,6 @@ const FOLDERS: { key: Folder; label: string }[] = [
 ];
 
 const PAGE_SIZE = 20;
-// How often to pull new mail from the connected mailbox while the Mail screen
-// is open (web parity: Mail.jsx Sync Inbox → POST /api/email/sync).
-const AUTO_SYNC_MS = 60_000;
 
 // Media asset from /api/media-assets — same shape the web's
 // MediaLibraryDialog works with (publicUrl is what gets embedded).
@@ -501,36 +498,14 @@ export default function MailScreen({ navigation }: any) {
     }
   }, []);
 
-  // Pull new mail from the connected mailbox in the background, then refresh
-  // the current view. Silent + guarded so overlapping/failed syncs never
-  // disrupt the list (a mailbox may not be connected, which is non-fatal).
-  const syncingRef = useRef(false);
-  const syncInbox = useCallback(async (currentFolder: Folder, currentSearch: string) => {
-    if (syncingRef.current) return;
-    syncingRef.current = true;
-    try {
-      await api.post("/api/email/sync", null, { params: { maxMessages: 10 } });
-      if (!isMountedRef.current) return;
-      await fetchEmails(0, true, currentFolder, currentSearch);
-      fetchCounts(currentSearch);
-    } catch {
-      // Non-fatal — no mailbox connected or sync unsupported. Stay silent.
-    } finally {
-      syncingRef.current = false;
-    }
-  }, [fetchEmails, fetchCounts]);
-
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
       setLoading(true);
       fetchEmails(0, true, folder, search);
       fetchCounts(search);
-      // Kick an immediate background sync, then poll while the screen is open.
-      syncInbox(folder, search);
-      const syncTimer = setInterval(() => syncInbox(folder, search), AUTO_SYNC_MS);
-      return () => { isMountedRef.current = false; clearInterval(syncTimer); };
-    }, [fetchEmails, fetchCounts, syncInbox, folder, search])
+      return () => { isMountedRef.current = false; };
+    }, [fetchEmails, fetchCounts, folder, search])
   );
 
   const onRefresh = () => {
