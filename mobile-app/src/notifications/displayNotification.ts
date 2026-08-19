@@ -68,7 +68,7 @@ export async function displayFcmNotification(remoteMessage: any): Promise<void> 
         pressAction: { id: "default" }, // makes tapping open the app
       },
     });
-  } catch {
-    // best-effort — never crash the headless task
+  } catch(err) {
+    console.error("[FCM] displayNotification failed:", err); // TEMP — reveal the real error
   }
 }

@@ -26,8 +26,6 @@ async function promptBatteryExemptionOnce() {
         {
           text: "Open settings",
           onPress: () => {
-            // Opens the per-app battery-optimization exemption screen; falls
-            // back to this app's settings page if the intent isn't supported.
             Linking.sendIntent?.("android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS")
               .catch(() => Linking.openSettings());
           },
@@ -46,6 +44,13 @@ async function promptBatteryExemptionOnce() {
 // receiving the previous user's notifications.
 let lastRegisteredToken: string | null = null;
 
+// The FCM device token as last read from Firebase, kept at module scope
+// (independent of lastRegisteredToken, which gets cleared on logout/unregister)
+// so we can re-POST the SAME token to a newly active backend — e.g. after
+// switching between the testing and production API endpoints — without
+// needing to re-request permissions or hit Firebase again.
+let lastKnownDeviceToken: string | null = null;
+
 // The current logged-in user id, kept at module scope so token registration
 // can bind the device token to the RIGHT user (the auth token identifies the
 // caller, but sending the id explicitly lets the backend reassign a token that
@@ -57,16 +62,19 @@ export function setPushUserId(id: string | number | null) {
 
 // Last registration outcome, exposed to an in-app diagnostics card so support
 // can see — without dev tools — whether THIS device registered its push token
-// and, if it failed, the exact HTTP status/message.
+// and, if it failed, the exact HTTP status/message. Also records which env
+// (api.defaults.baseURL at the time of the call) the token was sent to, so
+// you can visually confirm a test/production switch actually re-registered.
 export interface PushDiagnostics {
   token: string | null;
   userId: string | number | null;
   ok: boolean | null;   // null = not attempted yet
   status: number | null;
   message: string | null;
+  baseURL: string | null;
   at: string | null;
 }
-let pushDiagnostics: PushDiagnostics = { token: null, userId: null, ok: null, status: null, message: null, at: null };
+let pushDiagnostics: PushDiagnostics = { token: null, userId: null, ok: null, status: null, message: null, baseURL: null, at: null };
 const diagListeners = new Set<(d: PushDiagnostics) => void>();
 function setDiagnostics(patch: Partial<PushDiagnostics>) {
   pushDiagnostics = { ...pushDiagnostics, ...patch, at: new Date().toLocaleTimeString() };
@@ -79,18 +87,41 @@ export function subscribePushDiagnostics(fn: (d: PushDiagnostics) => void): () =
   diagListeners.add(fn);
   return () => diagListeners.delete(fn);
 }
+
 // Force a re-registration of the current device token (used by the diagnostics
-// "Re-register" button). Returns the fresh device token, or null.
+// "Re-register" button, and by forceReregisterPushToken below). Returns the
+// fresh device token, or null.
 export async function forceReregisterPushToken(): Promise<string | null> {
   try {
     const rnfbMessaging = await getMessagingModule();
     if (!rnfbMessaging) return null;
     const token = await rnfbMessaging.getToken(rnfbMessaging.getMessaging());
-    if (token) await registerTokenWithBackend(token);
+    if (token) {
+      lastKnownDeviceToken = token;
+      await registerTokenWithBackend(token);
+    }
     return token || null;
   } catch {
     return null;
   }
+}
+
+// Call this immediately after you switch which backend the app talks to
+// (testing <-> production), wherever that switch happens in your code —
+// e.g. right after you update your api client's baseURL. It re-POSTs the
+// EXISTING device token (no need to touch Firebase again, the token itself
+// doesn't change) to whichever backend `api` now points at, so the test/
+// production DB you just switched to gets a fresh row immediately instead
+// of waiting for the next full app restart.
+export async function reregisterPushTokenForCurrentEnvironment(): Promise<void> {
+  let token = lastKnownDeviceToken ?? lastRegisteredToken;
+  if (!token) {
+    // No cached token yet (e.g. called before initial setup finished) —
+    // fetch fresh instead of no-op-ing.
+    token = await forceReregisterPushToken();
+    return;
+  }
+  await registerTokenWithBackend(token);
 }
 
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
@@ -109,18 +140,20 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
     payload.userId = currentUserId;
     payload.assignedUserId = currentUserId;
   }
+  const baseURL = (api as any)?.defaults?.baseURL ?? null;
   try {
     await api.post("/api/users/push-token", payload);
     lastRegisteredToken = token;
-    setDiagnostics({ token, userId: currentUserId, ok: true, status: 200, message: "Registered" });
-    if (__DEV__) console.log("[FCM] push-token registered with backend ✔");
+    lastKnownDeviceToken = token;
+    setDiagnostics({ token, userId: currentUserId, ok: true, status: 200, message: "Registered", baseURL });
+    if (__DEV__) console.log(`[FCM] push-token registered with backend (${baseURL}) ✔`);
   } catch (err: any) {
     const status = err?.response?.status;
     const message = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message ?? "Registration failed";
-    setDiagnostics({ token, userId: currentUserId, ok: false, status: status ?? null, message });
+    setDiagnostics({ token, userId: currentUserId, ok: false, status: status ?? null, message, baseURL });
     if (__DEV__) {
       console.warn(
-        `[FCM] push-token registration failed (attempt ${attempt}) — ` +
+        `[FCM] push-token registration failed against ${baseURL} (attempt ${attempt}) — ` +
         `status=${status ?? "network"} ${message}`
       );
     }
@@ -141,8 +174,6 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
 export async function unregisterPushToken(): Promise<void> {
   let token = lastRegisteredToken;
   if (!token) {
-    // The app may have been restarted since registration; recover the current
-    // device token so we can still drop it.
     try {
       const rnfbMessaging = await getMessagingModule();
       if (rnfbMessaging) {
@@ -164,10 +195,6 @@ export async function unregisterPushToken(): Promise<void> {
   }
 }
 
-// Loads the RNFirebase messaging module and returns its modular-API
-// namespace (getMessaging, getToken, onMessage, …) rather than the
-// deprecated messaging() namespaced instance. Returns null when the native
-// module isn't available (Expo Go, web, etc.) so callers can no-op.
 async function getMessagingModule() {
   try {
     const mod = await import("@react-native-firebase/messaging");
@@ -177,9 +204,6 @@ async function getMessagingModule() {
   }
 }
  
-// expo-notifications is used ONLY to display local banners for FCM
-// data received while the app is foregrounded (FCM doesn't show those
-// itself). Lazy-required so web / Expo Go never crash.
 function getLocalNotifications() {
   if (Platform.OS === "web") return null;
   try {
@@ -190,9 +214,6 @@ function getLocalNotifications() {
 }
  
 async function requestAndroid13Permission(): Promise<boolean> {
-  // Firebase's requestPermission() is a no-op for the Android 13+
-  // POST_NOTIFICATIONS runtime permission — it must be requested via
-  // PermissionsAndroid or notifications silently never appear.
   if (Platform.OS !== "android" || Number(Platform.Version) < 33) return true;
   try {
     const res = await PermissionsAndroid.request(
@@ -206,17 +227,22 @@ async function requestAndroid13Permission(): Promise<boolean> {
  
 interface Options {
   onNotificationTapped?: (remoteMessage: any) => void;
-  /** Called when a message arrives while the app is open (badge refresh etc.) */
   onMessageReceived?: (remoteMessage: any) => void;
   enabled?: boolean;
-  /** Current logged-in user id — re-registers the token when the account changes. */
   userId?: string | number | null;
+  /**
+   * Any value that identifies the current API environment (e.g. "testing" |
+   * "production", or the base URL string itself). Optional — but if you pass
+   * it, changing this value re-runs the whole setup effect, which re-POSTs
+   * the device token to whichever backend `api` now points at. Use this if
+   * your env switch happens via a React state/context value rather than a
+   * full app restart.
+   */
+  environment?: string | number | null;
 }
 
-export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true, userId }: Options = {}) {
+export function usePushNotifications({ onNotificationTapped, onMessageReceived, enabled = true, userId, environment }: Options = {}) {
   useEffect(() => {
-    // Keep the module-scoped id in sync so every (re)registration — including
-    // token-refresh and foreground re-asserts — binds to the current user.
     setPushUserId(enabled ? (userId ?? null) : null);
     if (!enabled) return;
  
@@ -233,17 +259,9 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
  
         const messagingInstance = rnfbMessaging.getMessaging();
  
-        // Android 13+ runtime permission FIRST. FCM can still generate a
-        // device token before this permission is granted, but that token
-        // cannot display notifications, so do not register it with the CRM
-        // until the user explicitly allows notifications.
         const androidPermissionGranted = await requestAndroid13Permission();
         if (!androidPermissionGranted) return;
  
-        // Android 8+ drops any notification sent to a channel that doesn't
-        // exist. FCM background/quit notifications land on the channel named
-        // by default_notification_channel_id ("default") in the manifest —
-        // create it here so app-closed pushes actually appear.
         if (Platform.OS === "android") {
           await ensureNotificationChannel();
         }
@@ -254,50 +272,37 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           authStatus === rnfbMessaging.AuthorizationStatus.PROVISIONAL;
         if (!allowed) return;
  
-        // Nudge the user to exempt the app from battery optimization so FCM
-        // keeps arriving when the app is closed (OEM app-kill is the usual
-        // cause of "no notifications when closed").
         promptBatteryExemptionOnce();
  
         const token = await rnfbMessaging.getToken(messagingInstance);
         if (token) {
-          // Visible in `npx expo start` / adb logcat — copy this token into
-          // Firebase Console > Messaging > Send test message to verify the
-          // device pipeline end-to-end without any backend code.
           console.log("[FCM] Device token:", token);
           currentToken = token;
+          lastKnownDeviceToken = token;
+          // Always (re)register on every run of this effect — including the
+          // run triggered by an `environment` change — so switching test/
+          // production re-POSTs the token to whichever backend is now active.
           await registerTokenWithBackend(token);
         }
  
         unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
           currentToken = newToken;
+          lastKnownDeviceToken = newToken;
           registerTokenWithBackend(newToken);
         });
 
-        // Re-assert the token → current-user binding every time the app returns
-        // to the foreground. On a shared device this ensures an agent's token is
-        // (re)bound to the agent, not left mapped to a previous user (e.g. the
-        // owner), so agents reliably receive their OWN push notifications.
         appStateSub = AppState.addEventListener("change", (state) => {
           if (state === "active" && currentToken) registerTokenWithBackend(currentToken);
         });
  
-        // Foreground messages: FCM does NOT display these automatically.
-        // Show a local notification banner so "app open" pushes are visible.
         unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
           onMessageReceived?.(remoteMessage);
-          // Do NOT show a banner for a message that belongs to the chat the
-          // user is already viewing (WhatsApp behaviour). The FCM payload
-          // carries the conversation/contact id in its data block.
           const data = remoteMessage?.data ?? {};
           const convId =
             data.contactId ?? data.conversationId ?? data.chatId ?? data.senderId ?? data.fromContactId;
           if (convId != null && isActiveConversation(convId)) {
             return;
           }
-          // FCM never auto-displays in the foreground — render it ourselves
-          // via Notifee (same path used in the background handler, so the
-          // notification looks identical in every app state).
           await displayFcmNotification(remoteMessage);
         });
  
@@ -320,9 +325,7 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
       unsubscribeOpenedApp?.();
       appStateSub?.remove();
     };
-    // Re-run when the account changes so the device token is re-registered to
-    // the newly logged-in user (defense in depth against stale token→user maps).
-  }, [enabled, userId]);
+    // Re-run when the account OR the environment changes, so the device
+    // token is re-registered against whichever backend is now active.
+  }, [enabled, userId, environment]);
 }
- 
- 
