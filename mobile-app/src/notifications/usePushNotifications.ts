@@ -316,30 +316,11 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           authStatus === rnfbMessaging.AuthorizationStatus.AUTHORIZED ||
           authStatus === rnfbMessaging.AuthorizationStatus.PROVISIONAL;
         if (!allowed) return;
- 
-        promptBatteryExemptionOnce();
- 
-        const token = await rnfbMessaging.getToken(messagingInstance);
-        if (token) {
-          console.log("[FCM] Device token:", token);
-          currentToken = token;
-          lastKnownDeviceToken = token;
-          // Always (re)register on every run of this effect — including the
-          // run triggered by an `environment` change — so switching test/
-          // production re-POSTs the token to whichever backend is now active.
-          await registerTokenWithBackend(token);
-        }
- 
-        unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
-          currentToken = newToken;
-          lastKnownDeviceToken = newToken;
-          registerTokenWithBackend(newToken);
-        });
 
-        appStateSub = AppState.addEventListener("change", (state) => {
-          if (state === "active" && currentToken) registerTokenWithBackend(currentToken);
-        });
- 
+        // Attach the foreground + tap handlers FIRST — before the slower
+        // getToken()/registration below — so notifications arriving during the
+        // ~1–2s of startup aren't dropped (the cause of "the first few
+        // notifications after opening the app get missed").
         unsubscribeForeground = rnfbMessaging.onMessage(messagingInstance, async (remoteMessage: any) => {
           onMessageReceived?.(remoteMessage);
           const data = remoteMessage?.data ?? {};
@@ -350,15 +331,38 @@ export function usePushNotifications({ onNotificationTapped, onMessageReceived, 
           }
           await displayFcmNotification(remoteMessage);
         });
- 
+
         unsubscribeOpenedApp = rnfbMessaging.onNotificationOpenedApp(messagingInstance, (remoteMessage: any) => {
           onNotificationTapped?.(remoteMessage);
         });
- 
+
         const initialMessage = await rnfbMessaging.getInitialNotification(messagingInstance);
         if (initialMessage) {
           onNotificationTapped?.(initialMessage);
         }
+
+        promptBatteryExemptionOnce();
+
+        const token = await rnfbMessaging.getToken(messagingInstance);
+        if (token) {
+          console.log("[FCM] Device token:", token);
+          currentToken = token;
+          lastKnownDeviceToken = token;
+          // Always (re)register on every run of this effect — including the
+          // run triggered by an `environment` change — so switching test/
+          // production re-POSTs the token to whichever backend is now active.
+          await registerTokenWithBackend(token);
+        }
+
+        unsubscribeTokenRefresh = rnfbMessaging.onTokenRefresh(messagingInstance, (newToken: string) => {
+          currentToken = newToken;
+          lastKnownDeviceToken = newToken;
+          registerTokenWithBackend(newToken);
+        });
+
+        appStateSub = AppState.addEventListener("change", (state) => {
+          if (state === "active" && currentToken) registerTokenWithBackend(currentToken);
+        });
       } catch (err) {
         console.warn("[FCM] Push notification setup failed:", err);
       }
