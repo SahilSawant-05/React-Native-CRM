@@ -18,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
-import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn } from "../../api/telephony";
+import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn, getAgentCrmCallingPref, setAgentCrmCallingPref } from "../../api/telephony";
 import { useAuth } from "../../auth/AuthContext";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -513,11 +513,19 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Agent-only, on-device CRM-calling preference (the tenant config is
+  // admin-only, so agents control their own routing locally).
+  const [crmCallingOn, setCrmCallingOn] = useState(true);
 
   const activeProvider =
     PROVIDER_OPTIONS.find((p) => p.value === config.provider) || PROVIDER_OPTIONS[0];
 
+  useEffect(() => { getAgentCrmCallingPref().then(setCrmCallingOn); }, []);
+
   useEffect(() => {
+    // Loading the tenant config is admin-only — skip it for agents so their
+    // view (just the CRM-calling toggle) never hits a 403.
+    if (!isPrivileged) { setLoading(false); return; }
     (async () => {
       try {
         const res = await api.get("/api/telephony/config");
@@ -599,48 +607,25 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
   // credentials, webhooks, or agent mapping. The toggle saves immediately so
   // it behaves like a simple on/off switch (provider setup stays with admins).
   if (!isPrivileged) {
-    const toggleCrmCalling = async (v: boolean) => {
-      if (saving) return;
-      setConfig((cur) => ({ ...cur, clickToCallEnabled: v }));
-      setSaving(true);
-      setError("");
-      try {
-        const { inboundWebhookUrl, ...editable } = config;
-        await api.post("/api/telephony/config", {
-          ...editable,
-          clickToCallEnabled: v,
-          apiToken: config.apiToken === "********" ? null : config.apiToken,
-          webhookSecret: config.webhookSecret === "********" ? null : config.webhookSecret,
-        });
-        invalidateTelephonyToggles();
-        onInfo(v ? "CRM calling enabled." : "CRM calling disabled.");
-      } catch (err: any) {
-        setConfig((cur) => ({ ...cur, clickToCallEnabled: !v })); // revert on failure
-        setError(apiErrorMessage(err, "Couldn't update CRM calling. Ask your admin if this is restricted."));
-      } finally {
-        setSaving(false);
-      }
+    const toggleCrmCalling = (v: boolean) => {
+      setCrmCallingOn(v);
+      setAgentCrmCallingPref(v);
+      invalidateTelephonyToggles();
+      onInfo(v ? "CRM calling enabled for your calls." : "CRM calling off — your calls use the phone dialer.");
     };
     return (
       <View style={{ gap: 12 }}>
-        {!!error && (
-          <View style={s.errorBox}><Text style={s.errorBoxText}>{error}</Text></View>
-        )}
         <View style={s.switchRow}>
           <Text style={s.switchLabel}>Enable CRM calling</Text>
-          {saving
-            ? <ActivityIndicator color="#0f766e" />
-            : (
-              <Switch
-                value={config.clickToCallEnabled}
-                onValueChange={toggleCrmCalling}
-                trackColor={{ true: "#0f766e" }}
-              />
-            )}
+          <Switch
+            value={crmCallingOn}
+            onValueChange={toggleCrmCalling}
+            trackColor={{ true: "#0f766e" }}
+          />
         </View>
         <Text style={s.fieldHelp}>
-          When on, calls are placed through the CRM (tracked and recorded). When off, calls open
-          your phone's dialer. Provider setup is managed by your administrator.
+          When on, your calls are placed through the CRM (tracked and recorded). When off, your calls
+          open the phone's dialer. Provider setup is managed by your administrator.
         </Text>
       </View>
     );
