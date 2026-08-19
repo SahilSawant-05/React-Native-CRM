@@ -124,7 +124,21 @@ export async function reregisterPushTokenForCurrentEnvironment(): Promise<void> 
   await registerTokenWithBackend(token);
 }
 
+// A stable per-install device identifier. The backend deactivates old active
+// tokens for the SAME deviceId when a new user registers this device, so this
+// value MUST stay constant across logins/logouts on this device (persisted in
+// AsyncStorage) for owner→agent hand-off to work correctly.
+async function getPushDeviceId(): Promise<string> {
+  const storageKey = "crm_push_device_id";
+  const existing = await AsyncStorage.getItem(storageKey);
+  if (existing) return existing;
+  const generated = `${Platform.OS}-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  await AsyncStorage.setItem(storageKey, generated);
+  return generated;
+}
+
 async function registerTokenWithBackend(token: string, attempt = 1): Promise<void> {
+  const deviceId = await getPushDeviceId();
   // Send several field-name variants so the token lands regardless of what
   // the backend's /api/users/push-token endpoint expects for its columns.
   const payload: Record<string, any> = {
@@ -132,6 +146,7 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
     fcmToken: token,
     pushToken: token,
     platform: Platform.OS,
+    deviceId,
     deviceType: Platform.OS?.toUpperCase(),
     tokenType: "FCM",
     provider: "FCM",
@@ -142,11 +157,22 @@ async function registerTokenWithBackend(token: string, attempt = 1): Promise<voi
   }
   const baseURL = (api as any)?.defaults?.baseURL ?? null;
   try {
-    await api.post("/api/users/push-token", payload);
+    const response = await api.post("/api/users/push-token", payload);
     lastRegisteredToken = token;
     lastKnownDeviceToken = token;
-    setDiagnostics({ token, userId: currentUserId, ok: true, status: 200, message: "Registered", baseURL });
-    if (__DEV__) console.log(`[FCM] push-token registered with backend (${baseURL}) ✔`);
+    // Backend returns tenantId/userId so we can verify the token was saved
+    // under the CURRENT user (agent) — not left bound to a previous user.
+    const savedTenant = response?.data?.tenantId;
+    const savedUser = response?.data?.userId;
+    setDiagnostics({ token, userId: savedUser ?? currentUserId, ok: true, status: 200, message: "Registered", baseURL });
+    if (__DEV__) {
+      console.log(
+        `[FCM] push-token registered with backend (${baseURL}) ✔`,
+        savedTenant != null ? `tenant=${savedTenant}` : "",
+        savedUser != null ? `user=${savedUser}` : "",
+        `device=${deviceId}`
+      );
+    }
   } catch (err: any) {
     const status = err?.response?.status;
     const message = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message ?? "Registration failed";
@@ -184,9 +210,10 @@ export async function unregisterPushToken(): Promise<void> {
     }
   }
   if (!token) return;
-  const payload = { token, fcmToken: token, pushToken: token, provider: "FCM" };
+  const deviceId = await getPushDeviceId();
+  const payload = { token, fcmToken: token, pushToken: token, deviceId, provider: "FCM" };
   try {
-    await api.delete("/api/users/push-token", { data: payload, params: { token } });
+    await api.delete("/api/users/push-token", { data: payload, params: { token, deviceId } });
     if (__DEV__) console.log("[FCM] push-token unregistered from backend ✔");
   } catch (err: any) {
     if (__DEV__) console.warn("[FCM] push-token unregister failed:", err?.response?.status ?? err?.message);
