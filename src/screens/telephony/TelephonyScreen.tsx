@@ -596,8 +596,31 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
   if (loading) return <ActivityIndicator color="#0f766e" style={{ marginVertical: 16 }} />;
 
   // Agents get ONLY the enable/disable CRM-calling toggle — no provider,
-  // credentials, webhooks, or agent mapping. Provider setup stays with admins.
+  // credentials, webhooks, or agent mapping. The toggle saves immediately so
+  // it behaves like a simple on/off switch (provider setup stays with admins).
   if (!isPrivileged) {
+    const toggleCrmCalling = async (v: boolean) => {
+      if (saving) return;
+      setConfig((cur) => ({ ...cur, clickToCallEnabled: v }));
+      setSaving(true);
+      setError("");
+      try {
+        const { inboundWebhookUrl, ...editable } = config;
+        await api.post("/api/telephony/config", {
+          ...editable,
+          clickToCallEnabled: v,
+          apiToken: config.apiToken === "********" ? null : config.apiToken,
+          webhookSecret: config.webhookSecret === "********" ? null : config.webhookSecret,
+        });
+        invalidateTelephonyToggles();
+        onInfo(v ? "CRM calling enabled." : "CRM calling disabled.");
+      } catch (err: any) {
+        setConfig((cur) => ({ ...cur, clickToCallEnabled: !v })); // revert on failure
+        setError(apiErrorMessage(err, "Couldn't update CRM calling. Ask your admin if this is restricted."));
+      } finally {
+        setSaving(false);
+      }
+    };
     return (
       <View style={{ gap: 12 }}>
         {!!error && (
@@ -605,26 +628,20 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
         )}
         <View style={s.switchRow}>
           <Text style={s.switchLabel}>Enable CRM calling</Text>
-          <Switch
-            value={config.clickToCallEnabled}
-            onValueChange={(v) => update("clickToCallEnabled", v)}
-            trackColor={{ true: "#0f766e" }}
-          />
+          {saving
+            ? <ActivityIndicator color="#0f766e" />
+            : (
+              <Switch
+                value={config.clickToCallEnabled}
+                onValueChange={toggleCrmCalling}
+                trackColor={{ true: "#0f766e" }}
+              />
+            )}
         </View>
         <Text style={s.fieldHelp}>
           When on, calls are placed through the CRM (tracked and recorded). When off, calls open
           your phone's dialer. Provider setup is managed by your administrator.
         </Text>
-        <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
-          {saving ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Ionicons name="save-outline" size={16} color="#fff" />
-              <Text style={s.primaryBtnText}>Save</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </View>
     );
   }
