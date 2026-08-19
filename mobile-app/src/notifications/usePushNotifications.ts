@@ -222,6 +222,24 @@ export async function unregisterPushToken(): Promise<void> {
   }
 }
 
+// Force Firebase to issue a BRAND-NEW device token. Called on logout (after
+// unregister) so the next user to log in on this device gets a different token
+// registered under THEIR id — guaranteeing the previous user can never keep
+// receiving this device's notifications. The next getToken() (on the new
+// login) returns the fresh token, which then registers under the new user.
+export async function resetDeviceToken(): Promise<void> {
+  try {
+    const rnfbMessaging = await getMessagingModule();
+    if (!rnfbMessaging) return;
+    await rnfbMessaging.deleteToken(rnfbMessaging.getMessaging());
+    lastRegisteredToken = null;
+    lastKnownDeviceToken = null;
+    if (__DEV__) console.log("[FCM] device token reset — a new token will issue on next login");
+  } catch (err: any) {
+    if (__DEV__) console.warn("[FCM] device token reset failed:", err?.message);
+  }
+}
+
 async function getMessagingModule() {
   try {
     const mod = await import("@react-native-firebase/messaging");

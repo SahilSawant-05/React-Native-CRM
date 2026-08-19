@@ -8,7 +8,7 @@ import {
   saveAuthSession,
 } from "./session";
 import { setCachedToken } from "../api/client";
-import { unregisterPushToken } from "../notifications/usePushNotifications";
+import { unregisterPushToken, resetDeviceToken } from "../notifications/usePushNotifications";
 
 interface AuthContextValue {
   token: string | null;
@@ -88,6 +88,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // so notifications for this user don't keep arriving for whoever logs in
     // next on the same device (cross-account notification leak).
     await unregisterPushToken().catch(() => {});
+    // Then invalidate the FCM token so the next user to log in on this device
+    // gets a DIFFERENT token registered under their own id.
+    await resetDeviceToken().catch(() => {});
     await clearAuthSession();
     setCachedToken(null);                  // ← clear sync cache
     setToken(null);
