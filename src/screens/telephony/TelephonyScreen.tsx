@@ -19,6 +19,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
 import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn } from "../../api/telephony";
+import { useAuth } from "../../auth/AuthContext";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -504,6 +505,8 @@ function CallAiPanel({
 // ─── Telephony settings form (mirrors web Telephony Settings card) ────────────
 
 function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN", "OWNER"].includes(String(user?.role || "").toUpperCase());
   const [config, setConfig] = useState<TelephonyConfig>(DEFAULT_CONFIG);
   const [hasToken, setHasToken] = useState(false);
   const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
@@ -591,6 +594,40 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
   }
 
   if (loading) return <ActivityIndicator color="#0f766e" style={{ marginVertical: 16 }} />;
+
+  // Agents get ONLY the enable/disable CRM-calling toggle — no provider,
+  // credentials, webhooks, or agent mapping. Provider setup stays with admins.
+  if (!isPrivileged) {
+    return (
+      <View style={{ gap: 12 }}>
+        {!!error && (
+          <View style={s.errorBox}><Text style={s.errorBoxText}>{error}</Text></View>
+        )}
+        <View style={s.switchRow}>
+          <Text style={s.switchLabel}>Enable CRM calling</Text>
+          <Switch
+            value={config.clickToCallEnabled}
+            onValueChange={(v) => update("clickToCallEnabled", v)}
+            trackColor={{ true: "#0f766e" }}
+          />
+        </View>
+        <Text style={s.fieldHelp}>
+          When on, calls are placed through the CRM (tracked and recorded). When off, calls open
+          your phone's dialer. Provider setup is managed by your administrator.
+        </Text>
+        <TouchableOpacity style={[s.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} activeOpacity={0.85}>
+          {saving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={16} color="#fff" />
+              <Text style={s.primaryBtnText}>Save</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={{ gap: 12 }}>
@@ -1431,6 +1468,8 @@ function CallCard({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function TelephonyScreen() {
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN", "OWNER"].includes(String(user?.role || "").toUpperCase());
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [report, setReport] = useState<CallReport | null>(null);
   const [status, setStatus] = useState("ALL");
@@ -1561,26 +1600,30 @@ export default function TelephonyScreen() {
               ))}
             </ScrollView>
 
-            {/* Admin setup — collapsed dropdowns */}
+            {/* Settings — full provider setup for admins, just the CRM-calling
+                on/off toggle for agents. */}
             <Section
               title="Telephony Settings"
               icon="settings-outline"
-              subtitle="Provider, credentials, caller ID"
+              subtitle={isPrivileged ? "Provider, credentials, caller ID" : "Enable or disable CRM calling"}
               open={settingsOpen}
               onToggle={() => setSettingsOpen((v) => !v)}
             >
               <SettingsForm onInfo={handleDone} />
             </Section>
 
-            <Section
-              title="Agent Phone Mapping"
-              icon="people-outline"
-              subtitle="Map CRM users to their calling numbers"
-              open={mappingOpen}
-              onToggle={() => setMappingOpen((v) => !v)}
-            >
-              <AgentMappingForm onInfo={handleDone} />
-            </Section>
+            {/* Agent Phone Mapping is admin-only. */}
+            {isPrivileged && (
+              <Section
+                title="Agent Phone Mapping"
+                icon="people-outline"
+                subtitle="Map CRM users to their calling numbers"
+                open={mappingOpen}
+                onToggle={() => setMappingOpen((v) => !v)}
+              >
+                <AgentMappingForm onInfo={handleDone} />
+              </Section>
+            )}
 
             {/* Call logs dropdown — filters + list only when open */}
             <Section
