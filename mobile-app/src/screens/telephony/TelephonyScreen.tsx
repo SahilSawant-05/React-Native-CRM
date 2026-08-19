@@ -18,7 +18,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../../api/client";
-import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn, formatDialNumber } from "../../api/telephony";
+import { getTelephonyToggles, invalidateTelephonyToggles, isCrmCallingOn, formatDialNumber, getAgentCrmCallingPref, setAgentCrmCallingPref } from "../../api/telephony";
+import { useAuth } from "../../auth/AuthContext";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -504,17 +505,25 @@ function CallAiPanel({
 // ─── Telephony settings form (mirrors web Telephony Settings card) ────────────
 
 function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN", "OWNER"].includes(String(user?.role || "").toUpperCase());
   const [config, setConfig] = useState<TelephonyConfig>(DEFAULT_CONFIG);
   const [hasToken, setHasToken] = useState(false);
   const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Agent-only, on-device CRM-calling preference (tenant config is admin-only).
+  const [agentCrmOn, setAgentCrmOn] = useState(true);
 
   const activeProvider =
     PROVIDER_OPTIONS.find((p) => p.value === config.provider) || PROVIDER_OPTIONS[0];
 
+  useEffect(() => { getAgentCrmCallingPref().then(setAgentCrmOn); }, []);
+
   useEffect(() => {
+    // The tenant config is admin-only; agents just use their local preference.
+    if (!isPrivileged) { setLoading(false); return; }
     (async () => {
       try {
         const res = await api.get("/api/telephony/config");
@@ -595,7 +604,19 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
     }
   }
 
+  // Agents can't change the tenant config, so their toggle flips a per-agent,
+  // on-device preference that smartCall respects (no admin endpoint = no 403).
+  function setAgentActive(next: boolean) {
+    setAgentCrmOn(next);
+    setAgentCrmCallingPref(next);
+    invalidateTelephonyToggles();
+    onInfo(next ? "CRM calling on for your calls." : "CRM calling off — your calls use the phone dialer.");
+  }
+
   if (loading) return <ActivityIndicator color="#0f766e" style={{ marginVertical: 16 }} />;
+
+  const toggleOn = isPrivileged ? config.active : agentCrmOn;
+  const onToggle = isPrivileged ? setActive : setAgentActive;
 
   return (
     <View style={{ gap: 12 }}>
@@ -606,18 +627,18 @@ function SettingsForm({ onInfo }: { onInfo: (msg: string) => void }) {
       <View style={s.switchRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.switchLabel}>CRM Calling</Text>
-          <Text style={s.switchSubLabel}>{config.active ? "On" : "Off"}</Text>
+          <Text style={s.switchSubLabel}>{toggleOn ? "On" : "Off"}</Text>
         </View>
         {saving
           ? <ActivityIndicator color="#0f766e" size="small" style={{ marginRight: 6 }} />
-          : <Switch value={config.active} onValueChange={setActive} trackColor={{ true: "#0f766e" }} />}
+          : <Switch value={toggleOn} onValueChange={onToggle} trackColor={{ true: "#0f766e" }} />}
       </View>
 
       <View style={s.infoBox}>
         <Ionicons name="information-circle-outline" size={16} color="#0f766e" style={{ marginTop: 1 }} />
         <Text style={s.infoText}>
           When on, calls are placed through your CRM telephony provider and logged automatically.
-          When off, calls open your phone's dialer. Provider setup is managed by your administrator.
+          When off, calls open your phone's dialer.{isPrivileged ? "" : " Provider setup is managed by your administrator."}
         </Text>
       </View>
     </View>

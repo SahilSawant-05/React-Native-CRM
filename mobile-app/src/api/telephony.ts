@@ -1,5 +1,34 @@
 import { Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "./client";
+
+// Per-agent, on-device CRM-calling preference. The tenant-wide telephony config
+// (/api/telephony/config) is admin-only, so an agent can't change it — trying to
+// gives "only admin can access". This lets an agent turn CRM calling on/off for
+// THEIR OWN calls without admin rights: when off, their calls use the phone
+// dialer even if the tenant has CRM calling active. Default = follow the tenant.
+const AGENT_CRM_CALLING_KEY = "agent_crm_calling_enabled";
+let agentPref: boolean | null = null;
+
+export async function getAgentCrmCallingPref(): Promise<boolean> {
+  if (agentPref !== null) return agentPref;
+  try {
+    const v = await AsyncStorage.getItem(AGENT_CRM_CALLING_KEY);
+    agentPref = v === null ? true : v === "1";
+  } catch {
+    agentPref = true;
+  }
+  return agentPref;
+}
+
+export async function setAgentCrmCallingPref(enabled: boolean): Promise<void> {
+  agentPref = enabled;
+  try {
+    await AsyncStorage.setItem(AGENT_CRM_CALLING_KEY, enabled ? "1" : "0");
+  } catch {
+    /* best-effort */
+  }
+}
 
 // Smart calling: when the telephony provider is active AND click-to-call is
 // enabled (the toggles on the Calls → Telephony Settings screen / web CRM),
@@ -75,8 +104,10 @@ export async function smartCall(opts: {
   notes?: string | null;
 }): Promise<SmartCallResult> {
   const toggles = await getTelephonyToggles();
+  const agentWantsCrm = await getAgentCrmCallingPref();
 
-  if (isCrmCallingOn(toggles)) {
+  // CRM calling only when the tenant has it on AND this agent hasn't opted out.
+  if (isCrmCallingOn(toggles) && agentWantsCrm) {
     try {
       const res = await api.post("/api/telephony/calls/click-to-call", {
         contactId: opts.contactId != null && opts.contactId !== "" ? Number(opts.contactId) : null,
