@@ -23,24 +23,25 @@ const CA_TIMEZONES = [
   "America/Halifax", "America/Regina", "America/St_Johns", "America/Moncton",
 ];
 
-// Detect the device COUNTRY using the built-in Intl API (available in Hermes on
-// Expo SDK 54). This reflects where the user/device is set up — the practical
-// stand-in for "where the app was downloaded", which the OS does not expose.
+// Detect the device region using the built-in Intl API (available in Hermes on
+// Expo SDK 54). The TIMEZONE is the primary signal because it reflects where
+// the device physically is — the locale often stays "en-US" regardless of
+// country, so it's only a weak secondary hint. This is the practical stand-in
+// for "where the app was downloaded", which the OS does not expose.
 export function detectRegion(): Region {
   try {
     const opts = Intl.DateTimeFormat().resolvedOptions();
 
-    // 1) Country from the device locale, e.g. "en-CA" → "CA", "en-IN" → "IN".
+    // 1) Timezone (reliable for physical location).
+    const tz = String(opts.timeZone || "");
+    if (CA_TIMEZONES.includes(tz)) return "CA";
+    if (tz.startsWith("America/")) return "CA";   // North America → Canada (.com)
+    if (tz.startsWith("Asia/")) return "IN";      // Asia (incl. Asia/Calcutta) → India (.in)
+
+    // 2) Locale country as a weak fallback only when timezone was unhelpful.
     const country = String(opts.locale || "").split("-")[1]?.toUpperCase();
     if (country === "CA") return "CA";
     if (country === "IN") return "IN";
-    // Any other explicit country → default (they aren't IN or CA users).
-    if (country) return DEFAULT_REGION;
-
-    // 2) Timezone fallback only when no country tag is present.
-    const tz = String(opts.timeZone || "");
-    if (tz === "Asia/Kolkata" || tz === "Asia/Calcutta") return "IN";
-    if (CA_TIMEZONES.includes(tz)) return "CA";
   } catch {
     // Intl unavailable — fall through to the default.
   }
