@@ -12,25 +12,39 @@ const REGION_BASE_URL: Record<Region, string> = {
   CA: "https://api.vistaarflow.com",
 };
 
-// Detect the device region using the built-in Intl API (available in Hermes on
-// Expo SDK 54). Falls back to India when nothing conclusive is found.
+// The country the app treats as the default when the device country is neither
+// India nor Canada (or can't be read).
+const DEFAULT_REGION: Region = "IN";
+
+// Canadian IANA timezones — used only as a fallback when the device country
+// code isn't available from the locale.
+const CA_TIMEZONES = [
+  "America/Toronto", "America/Vancouver", "America/Edmonton", "America/Winnipeg",
+  "America/Halifax", "America/Regina", "America/St_Johns", "America/Moncton",
+];
+
+// Detect the device COUNTRY using the built-in Intl API (available in Hermes on
+// Expo SDK 54). This reflects where the user/device is set up — the practical
+// stand-in for "where the app was downloaded", which the OS does not expose.
 export function detectRegion(): Region {
   try {
     const opts = Intl.DateTimeFormat().resolvedOptions();
 
-    // 1) Locale region tag, e.g. "en-CA" → "CA", "en-IN" → "IN".
-    const localeRegion = String(opts.locale || "").split("-")[1]?.toUpperCase();
-    if (localeRegion === "CA") return "CA";
-    if (localeRegion === "IN") return "IN";
+    // 1) Country from the device locale, e.g. "en-CA" → "CA", "en-IN" → "IN".
+    const country = String(opts.locale || "").split("-")[1]?.toUpperCase();
+    if (country === "CA") return "CA";
+    if (country === "IN") return "IN";
+    // Any other explicit country → default (they aren't IN or CA users).
+    if (country) return DEFAULT_REGION;
 
-    // 2) Timezone fallback — North America → Canada (.com), Asia → India (.in).
+    // 2) Timezone fallback only when no country tag is present.
     const tz = String(opts.timeZone || "");
-    if (tz.startsWith("America/")) return "CA";
-    if (tz.startsWith("Asia/")) return "IN";
+    if (tz === "Asia/Kolkata" || tz === "Asia/Calcutta") return "IN";
+    if (CA_TIMEZONES.includes(tz)) return "CA";
   } catch {
     // Intl unavailable — fall through to the default.
   }
-  return "IN";
+  return DEFAULT_REGION;
 }
 
 export const REGION: Region = detectRegion();
