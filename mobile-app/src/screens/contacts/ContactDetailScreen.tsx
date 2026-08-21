@@ -637,6 +637,22 @@ try {
                         <Text style={styles.timelineDesc} numberOfLines={3}>{detail}</Text>
                       )}
                       {!!callMeta && <Text style={styles.timelineDesc}>{callMeta}</Text>}
+                      {/* Call recording (web parity: Contacts.jsx CallRecordingPlayer).
+                          Opens the recording in the device player. */}
+                      {isCall && (
+                        item.recordingUrl ? (
+                          <TouchableOpacity
+                            style={styles.recordingBtn}
+                            onPress={() => Linking.openURL(item.recordingUrl)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="play-circle-outline" size={15} color="#047857" />
+                            <Text style={styles.recordingBtnText}>Play recording</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={styles.noRecordingText}>No recording</Text>
+                        )
+                      )}
                       {!!when && (
                         <Text style={styles.timelineDate}>
                           {new Date(when).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
@@ -795,6 +811,9 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(60,60,67,0.12)",
   },
   fieldLabel: { fontSize: 12, color: "#6b7280", fontWeight: "500", letterSpacing: iosTightSm },
+  recordingBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", marginTop: 8, borderWidth: 1, borderColor: "#a7f3d0", backgroundColor: "#ecfdf5", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  recordingBtnText: { fontSize: 12.5, fontWeight: "700", color: "#047857" },
+  noRecordingText: { fontSize: 12, color: "#94a3b8", marginTop: 8, fontStyle: "italic" },
   tagRow: { flex: 1, flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, marginLeft: 12 },
   fieldValue: {
     fontSize: 14,
