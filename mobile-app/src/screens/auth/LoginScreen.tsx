@@ -134,12 +134,15 @@ export default function LoginScreen() {
           <Text style={styles.agentNote}>
             Admins and Agents can sign in here, but the web portal offers the best experience.          </Text>
         </View>
+
+        <Text style={styles.poweredBy}>Powered by Techoceanhub Private Limited</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+    poweredBy: { textAlign: "center", fontSize: 12, color: "#94a3b8", marginTop: 20, marginBottom: 12 },
     localImage: { width:50, height: 50 ,borderRadius:10},
 
   root: { flex: 1, backgroundColor: "#f1f5f9" },
