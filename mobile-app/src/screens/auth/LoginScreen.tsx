@@ -135,7 +135,7 @@ export default function LoginScreen() {
             Admins and Agents can sign in here, but the web portal offers the best experience.          </Text>
         </View>
 
-        <Text style={styles.poweredBy}>Powered by Techoceanhub Private Limited</Text>
+        <Text style={styles.poweredBy}>Powered by Techoceanhub</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
