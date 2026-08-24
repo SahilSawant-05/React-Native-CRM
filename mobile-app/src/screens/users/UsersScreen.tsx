@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
@@ -295,7 +296,15 @@ function CreateUserModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.overlay}>
+      {/* KeyboardAvoidingView wraps the whole bottom sheet so it rides up
+          above the keyboard instead of the Email/Password fields hiding
+          under it — this is a bottom-anchored sheet (not a full-screen
+          pageSheet), so the avoidance has to move the sheet, not just the
+          inner ScrollView. */}
+      <KeyboardAvoidingView
+        style={s.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={s.modalCard}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>Create User</Text>
@@ -303,7 +312,11 @@ function CreateUserModal({
               <Ionicons name="close" size={20} color="#475569" />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={{ padding: 16, gap: 12 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
             <Text style={s.modalSub}>Add a new admin or agent to this tenant.</Text>
             {!!error && <Text style={s.modalError}>{error}</Text>}
             <View>
@@ -351,7 +364,7 @@ function CreateUserModal({
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
