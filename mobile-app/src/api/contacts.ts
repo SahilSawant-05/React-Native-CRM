@@ -44,6 +44,11 @@ export interface ContactFilters {
   city?: string;
   conversationStatus?: string;
   assignedUserId?: string;
+  // Web parity (Contacts.jsx): sent alongside `stage` so the backend can
+  // disambiguate which pipeline's stage key to match. Without it, a stage
+  // filter can silently fail to narrow results on tenants with a custom
+  // pipeline whose stage keys differ from the legacy defaults.
+  pipelineId?: string;
 }
 
 export async function fetchContacts(params: {

@@ -43,6 +43,7 @@ import api from "../../api/client";
 import { Contact } from "../../types";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
+import { useAuth } from "../../auth/AuthContext";
 
 const LEAD_SOURCES = [
   { value: "", label: "Select source" },
@@ -406,45 +407,84 @@ const FILTER_LEAD_SOURCES = [
   "WHATSAPP", "EMAIL", "WEBSITE_FORM", "WEBSITE", "FACEBOOK", "INSTAGRAM",
   "GOOGLE_ADS", "REFERRAL", "WALK_IN", "PORTAL", "CAMPAIGN", "CSV_IMPORT", "MANUAL", "OTHER",
 ];
-const FILTER_STAGES = ["NEW", "QUALIFIED", "FOLLOW_UP", "WON", "LOST"];
 const FILTER_CONVERSATION = ["OPEN", "CLOSED"];
+// Web parity (Contacts.jsx fallbackStageOptions) — used until the tenant's
+// actual pipeline stages load.
+const FALLBACK_STAGE_OPTIONS: SelectOption[] = ["NEW", "QUALIFIED", "FOLLOW_UP", "WON", "LOST"]
+  .map((s) => ({ value: s, label: labelize(s) }));
 
 function labelize(v: string) {
   return v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Module-level so it isn't recreated each render (which remounted the City/Tag
-// inputs and dropped their keyboard focus after each character).
-function ChipGroup({
-  label, value, options, onToggle,
+interface SelectOption { value: string; label: string }
+
+// Real dropdown control: shows the current selection, taps open a modal list
+// to pick one option (or "All" to clear). Module-level so it isn't recreated
+// each render (which would remount inputs and drop keyboard focus).
+function SelectField({
+  label, value, options, placeholder = "All", onChange,
 }: {
   label: string;
   value?: string;
-  options: string[];
-  onToggle: (opt: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  onChange: (v: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
   return (
     <View style={fm.group}>
       <Text style={fm.groupLabel}>{label}</Text>
-      <View style={fm.chipWrap}>
-        {options.map((opt) => {
-          const active = value === opt;
-          return (
-            <TouchableOpacity key={opt} style={[fm.chip, active && fm.chipActive]} onPress={() => onToggle(opt)}>
-              <Text style={[fm.chipText, active && fm.chipTextActive]}>{labelize(opt)}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <TouchableOpacity style={fm.select} onPress={() => setOpen(true)} activeOpacity={0.7}>
+        <Text style={[fm.selectText, !selected && fm.selectPlaceholder]} numberOfLines={1}>
+          {selected ? selected.label : placeholder}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color="#94a3b8" />
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={fm.selectOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={fm.selectSheet}>
+            <Text style={fm.selectSheetTitle}>{label}</Text>
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              <TouchableOpacity
+                style={[fm.selectRow, !value && fm.selectRowActive]}
+                onPress={() => { onChange(""); setOpen(false); }}
+              >
+                <Text style={[fm.selectRowText, !value && fm.selectRowTextActive]}>{placeholder}</Text>
+                {!value && <Ionicons name="checkmark" size={18} color="#0f766e" />}
+              </TouchableOpacity>
+              {options.map((o) => {
+                const active = o.value === value;
+                return (
+                  <TouchableOpacity
+                    key={o.value}
+                    style={[fm.selectRow, active && fm.selectRowActive]}
+                    onPress={() => { onChange(o.value); setOpen(false); }}
+                  >
+                    <Text style={[fm.selectRowText, active && fm.selectRowTextActive]} numberOfLines={1}>
+                      {o.label}
+                    </Text>
+                    {active && <Ionicons name="checkmark" size={18} color="#0f766e" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
 
 function ContactFilterModal({
-  visible, initial, onClose, onApply,
+  visible, initial, stageOptions, ownerOptions, showOwnerFilter, onClose, onApply,
 }: {
   visible: boolean;
   initial: ContactFilters;
+  stageOptions: SelectOption[];
+  ownerOptions: SelectOption[];
+  showOwnerFilter: boolean;
   onClose: () => void;
   onApply: (f: ContactFilters) => void;
 }) {
@@ -452,8 +492,11 @@ function ContactFilterModal({
 
   useEffect(() => { if (visible) setDraft(initial); }, [visible, initial]);
 
-  const toggle = (key: keyof ContactFilters) => (value: string) =>
-    setDraft((d) => ({ ...d, [key]: d[key] === value ? "" : value }));
+  const set = (key: keyof ContactFilters) => (value: string) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+
+  const leadSourceOptions: SelectOption[] = FILTER_LEAD_SOURCES.map((s) => ({ value: s, label: labelize(s) }));
+  const conversationOptions: SelectOption[] = FILTER_CONVERSATION.map((s) => ({ value: s, label: labelize(s) }));
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -465,9 +508,12 @@ function ContactFilterModal({
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={fm.body} keyboardShouldPersistTaps="handled">
-          <ChipGroup label="Lead Source" value={draft.leadSource} options={FILTER_LEAD_SOURCES} onToggle={toggle("leadSource")} />
-          <ChipGroup label="Stage" value={draft.stage} options={FILTER_STAGES} onToggle={toggle("stage")} />
-          <ChipGroup label="Conversation" value={draft.conversationStatus} options={FILTER_CONVERSATION} onToggle={toggle("conversationStatus")} />
+          <SelectField label="Stage" value={draft.stage} options={stageOptions} placeholder="All stages" onChange={set("stage")} />
+          <SelectField label="Lead Source" value={draft.leadSource} options={leadSourceOptions} placeholder="All sources" onChange={set("leadSource")} />
+          <SelectField label="Conversation" value={draft.conversationStatus} options={conversationOptions} placeholder="All conversations" onChange={set("conversationStatus")} />
+          {showOwnerFilter && (
+            <SelectField label="Owner" value={draft.assignedUserId} options={ownerOptions} placeholder="All owners" onChange={set("assignedUserId")} />
+          )}
 
           <View style={fm.group}>
             <Text style={fm.groupLabel}>City</Text>
@@ -517,12 +563,68 @@ export default function ContactsScreen({ navigation }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<ContactFilters>({});
+  // Web parity (Contacts.jsx loadPipelineStages / users effect): the Stage
+  // dropdown reflects the tenant's ACTUAL pipeline stages (falls back to the
+  // legacy 5-stage list), and its pipelineId is sent alongside `stage` so the
+  // backend can disambiguate which pipeline's key to match — omitting it was
+  // the reason the Stage filter silently returned unfiltered/empty results
+  // for tenants with a custom pipeline.
+  const [stageOptions, setStageOptions] = useState<SelectOption[]>(FALLBACK_STAGE_OPTIONS);
+  const [stagePipelineId, setStagePipelineId] = useState("");
+  const [ownerOptions, setOwnerOptions] = useState<SelectOption[]>([]);
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN", "OWNER"].includes(String(user?.role || "").toUpperCase());
 
   const searchRef = useRef(search);
   const filtersRef = useRef<ContactFilters>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeFilterCount = Object.values(filters).filter((v) => v != null && String(v).trim() !== "").length;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const pipelineRes = await api.get("/api/pipelines");
+        const pipelines: any[] = Array.isArray(pipelineRes.data) ? pipelineRes.data : pipelineRes.data?.items || pipelineRes.data?.data || [];
+        const defaultPipeline = pipelines.find((p) => p.defaultPipeline) || pipelines[0];
+        const pipelineId = defaultPipeline?.id ? String(defaultPipeline.id) : "";
+        const stageRes = await api.get(
+          "/api/crm-config/pipeline-stages",
+          pipelineId ? { params: { pipelineId } } : undefined
+        );
+        const rawStages: any[] = Array.isArray(stageRes.data) ? stageRes.data : stageRes.data?.items || stageRes.data?.data || stageRes.data?.stages || [];
+        const nextStages: SelectOption[] = rawStages
+          .filter((s) => s && s.active !== false)
+          .map((s) => {
+            const key = s.stageKey || s.key || s.value;
+            if (!key) return null;
+            return { value: String(key), label: s.label || s.name || labelize(String(key)) };
+          })
+          .filter((o): o is SelectOption => !!o);
+        if (!cancelled) {
+          setStagePipelineId(pipelineId);
+          setStageOptions(nextStages.length ? nextStages : FALLBACK_STAGE_OPTIONS);
+        }
+      } catch {
+        if (!cancelled) { setStagePipelineId(""); setStageOptions(FALLBACK_STAGE_OPTIONS); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!isPrivileged) return;
+    let cancelled = false;
+    api.get("/api/users")
+      .then((res) => {
+        if (cancelled) return;
+        const list: any[] = Array.isArray(res.data) ? res.data : res.data?.items || [];
+        setOwnerOptions(list.map((u) => ({ value: String(u.id), label: u.email || `User #${u.id}` })));
+      })
+      .catch(() => { if (!cancelled) setOwnerOptions([]); });
+    return () => { cancelled = true; };
+  }, [isPrivileged]);
 
   const applyFilter = (data: Contact[], q: string) => {
     const query = q.toLowerCase().trim();
@@ -624,7 +726,13 @@ export default function ContactsScreen({ navigation }: Props) {
 
   function applyFilters(next: ContactFilters) {
     setFilters(next);
-    filtersRef.current = next;
+    // pipelineId is sent to the API but not shown/stored as a user-facing
+    // filter (web parity: it's derived from the Stage selection, not a field
+    // the user picks directly).
+    filtersRef.current = {
+      ...next,
+      pipelineId: next.stage && stagePipelineId ? stagePipelineId : undefined,
+    };
     setFilterOpen(false);
     setLoading(true);
     load(0, searchRef.current || "");
@@ -672,6 +780,9 @@ export default function ContactsScreen({ navigation }: Props) {
       <ContactFilterModal
         visible={filterOpen}
         initial={filters}
+        stageOptions={stageOptions}
+        ownerOptions={ownerOptions}
+        showOwnerFilter={isPrivileged}
         onClose={() => setFilterOpen(false)}
         onApply={applyFilters}
       />
@@ -830,14 +941,23 @@ const fm = StyleSheet.create({
   body: { padding: 16, gap: 18, paddingBottom: 32 },
   group: { gap: 8 },
   groupLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.6 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-    borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff",
+  select: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff",
   },
-  chipActive: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
-  chipText: { fontSize: 13, fontWeight: "600", color: "#475569" },
-  chipTextActive: { color: "#fff" },
+  selectText: { fontSize: 15, color: "#0f172a", flex: 1, marginRight: 8 },
+  selectPlaceholder: { color: "#94a3b8" },
+  selectOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.4)", justifyContent: "center", padding: 24 },
+  selectSheet: { backgroundColor: "#fff", borderRadius: 16, paddingVertical: 12, maxHeight: "70%" },
+  selectSheetTitle: { fontSize: 13, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.6, paddingHorizontal: 18, paddingBottom: 8 },
+  selectRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 18, paddingVertical: 13,
+  },
+  selectRowActive: { backgroundColor: "#f0fdfa" },
+  selectRowText: { fontSize: 15, color: "#374151", flex: 1, marginRight: 8 },
+  selectRowTextActive: { color: "#0f766e", fontWeight: "700" },
   input: {
     borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, color: "#0f172a", backgroundColor: "#fff",
