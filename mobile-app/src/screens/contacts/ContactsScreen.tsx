@@ -380,13 +380,25 @@ function ContactRow({ contact, onPress }: { contact: Contact; onPress: () => voi
         {!!contact.phone && <Text style={styles.sub}>{contact.phone}</Text>}
         {!!contact.email && <Text style={styles.sub}>{contact.email}</Text>}
       </View>
-      {tags.length > 0 && (
-        <View style={styles.tagBadge}>
-          <Text style={styles.tagText}>{tags[0]}</Text>
-        </View>
-      )}
+      <View style={styles.rowRight}>
+        {tags.length > 0 && (
+          <View style={styles.tagBadge}>
+            <Text style={styles.tagText}>{tags[0]}</Text>
+          </View>
+        )}
+        {!!(contact as any).createdAt && (
+          <Text style={styles.createdText}>{formatCreatedAt((contact as any).createdAt)}</Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
+}
+
+// "Created" date shown on each contact row (web parity: Contacts.jsx Created At).
+function formatCreatedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "2-digit" });
 }
 
 // ─── Filter options (web parity: Contacts.jsx DEFAULT_FILTERS) ────────────────
@@ -791,6 +803,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   tagText: { fontSize: 11.5, color: "#0f766e", fontWeight: "600", fontFamily: mediumFont },
+  rowRight: { alignItems: "flex-end", gap: 4, marginLeft: 8 },
+  createdText: { fontSize: 11, color: "#94a3b8", fontWeight: "500" },
   separator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(60,60,67,0.12)",

@@ -51,6 +51,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { ErrorBanner } from "../../components/common/ErrorBanner";
 import { DrawerCtx } from "../../navigation/AdminDrawer";
 import { AgentDrawerCtx } from "../../navigation/AgentDrawer";
+import { useAuth } from "../../auth/AuthContext";
 import { smartCall } from "../../api/telephony";
 import AiAssistPanel from "../../components/ai/AiAssistPanel";
 import api from "../../api/client";
@@ -369,6 +370,38 @@ export default function ContactDetailScreen({ route, navigation }: Props) {
   const [taskNotice, setTaskNotice] = useState("");
   const [editOpen, setEditOpen] = useState(false);
 
+  // Assign-to-agent (web parity: POST /api/inbox/{contactId}/assign). The user
+  // list is admin/owner-only, so only privileged roles can reassign.
+  const { user } = useAuth();
+  const isPrivileged = ["ADMIN", "OWNER"].includes(String(user?.role || "").toUpperCase());
+  const [users, setUsers] = useState<any[]>([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+
+  useEffect(() => {
+    if (!isPrivileged) return;
+    let cancelled = false;
+    api.get("/api/users")
+      .then((res) => { if (!cancelled) setUsers(Array.isArray(res.data) ? res.data : res.data?.items || []); })
+      .catch(() => { /* non-privileged / unavailable */ });
+    return () => { cancelled = true; };
+  }, [isPrivileged]);
+
+  async function assignTo(u: any) {
+    const cid = contact.id ?? contact._id;
+    if (!cid) return;
+    setAssigning(true);
+    try {
+      await api.post(`/api/inbox/${cid}/assign`, { assignedUserId: Number(u.id) });
+      setContact((c) => ({ ...c, assignedUserId: u.id, assignedUserEmail: u.email } as any));
+      setAssignOpen(false);
+    } catch (e: any) {
+      Alert.alert("Assign failed", e?.response?.data?.message || e?.message || "Could not assign this contact.");
+    } finally {
+      setAssigning(false);
+    }
+  }
+
   function confirmDelete() {
     Alert.alert("Delete Contact", `Delete "${contact.name}"? This cannot be undone.`, [
       { text: "Cancel", style: "cancel" },
@@ -603,6 +636,52 @@ try {
           })()}
         </View>
 
+        {/* Assignment (web parity: Owner / assign to agent) */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Assigned Agent</Text>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Owner</Text>
+            <Text style={styles.fieldValue}>
+              {(contact as any).assignedUserEmail || (contact as any).assignedUserName || "Unassigned"}
+            </Text>
+          </View>
+          {isPrivileged && (
+            <TouchableOpacity
+              style={styles.assignBtn}
+              onPress={() => setAssignOpen((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="people-outline" size={16} color="#0f766e" />
+              <Text style={styles.assignBtnText}>{assignOpen ? "Close" : "Assign to agent"}</Text>
+            </TouchableOpacity>
+          )}
+          {isPrivileged && assignOpen && (
+            <View style={styles.assignList}>
+              {users.length === 0 ? (
+                <Text style={styles.noRecordingText}>No agents available.</Text>
+              ) : (
+                users.map((u) => {
+                  const active = String((contact as any).assignedUserId ?? "") === String(u.id);
+                  return (
+                    <TouchableOpacity
+                      key={String(u.id)}
+                      style={[styles.assignRow, active && styles.assignRowActive]}
+                      onPress={() => assignTo(u)}
+                      disabled={assigning}
+                    >
+                      <Text style={[styles.assignRowText, active && styles.assignRowTextActive]} numberOfLines={1}>
+                        {u.email || u.name || `User #${u.id}`}{u.role ? ` · ${u.role}` : ""}
+                      </Text>
+                      {active && <Ionicons name="checkmark" size={16} color="#0f766e" />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              {assigning && <ActivityIndicator color="#0f766e" style={{ marginTop: 8 }} />}
+            </View>
+          )}
+        </View>
+
         {/* Timeline */}
         {timeline.length > 0 && (
           <View style={styles.card}>
@@ -815,6 +894,13 @@ const styles = StyleSheet.create({
   recordingBtnText: { fontSize: 12.5, fontWeight: "700", color: "#047857" },
   noRecordingText: { fontSize: 12, color: "#94a3b8", marginTop: 8, fontStyle: "italic" },
   tagRow: { flex: 1, flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, marginLeft: 12 },
+  assignBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 10, borderWidth: 1, borderColor: "#a7f3d0", backgroundColor: "#ecfdf5", borderRadius: 10, paddingVertical: 10 },
+  assignBtnText: { fontSize: 13.5, fontWeight: "700", color: "#0f766e" },
+  assignList: { marginTop: 10, gap: 4 },
+  assignRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 },
+  assignRowActive: { backgroundColor: "#ecfdf5" },
+  assignRowText: { fontSize: 13.5, color: "#374151", flex: 1, marginRight: 8 },
+  assignRowTextActive: { color: "#0f766e", fontWeight: "700" },
   fieldValue: {
     fontSize: 14,
     color: "#111827",
