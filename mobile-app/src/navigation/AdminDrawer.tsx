@@ -47,6 +47,7 @@ import AiSettingsScreen from "../screens/ai/AiSettingsScreen";
 import AiWorkQueueScreen from "../screens/ai/AiWorkQueueScreen";
 import FacebookLeadsScreen from "../screens/facebook/FacebookLeadsScreen";
 import TelephonyScreen from "../screens/telephony/TelephonyScreen";
+import UsersScreen from "../screens/users/UsersScreen";
 
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Admin",
     items: [
+      { name: "Users",            label: "Users",              icon: "people-circle-outline" },
       { name: "AutomationRules",  label: "Automation Rules",   icon: "flash-outline" },
       { name: "LeadAssignment",   label: "Lead Assignment",    icon: "locate-outline" },
       { name: "FacebookLeads",    label: "Facebook Leads",     icon: "logo-facebook" },
@@ -346,6 +348,7 @@ const SCREEN_MAP: Record<string, React.ComponentType<any>> = {
   AiWorkQueue:     withHeader(AiWorkQueueScreen,      "AI Work Queue"),
   Telephony:       withHeader(TelephonyScreen,        "Calls"),
   FacebookLeads:   withHeader(FacebookLeadsScreen,    "Facebook Leads"),
+  Users:           withHeader(UsersScreen,           "Users"),
   AutomationRules: withHeader(AutomationRulesScreen, "Automation Rules"),
   LeadAssignment:  withHeader(LeadAssignmentScreen,  "Lead Assignment"),
   CrmSettings:   withHeader(CrmSettingsScreen,   "CRM Settings"),
